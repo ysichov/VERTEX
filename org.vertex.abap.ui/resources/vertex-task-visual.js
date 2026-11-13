@@ -70,16 +70,51 @@ const BITS = "1011010010110011010011011001";
 const bitGlyph = (one, x) => one
   ? `<path d="M${x} 14v12M${x - 3} 16.5l3-2.5"/>`
   : `<ellipse cx="${x}" cy="20" rx="4" ry="6"/>`;
-const searchWide = (() => {
-  const step = 28, x0 = 26, count = 34, hits = [13, 26];
+const esc = value => String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+/* The band the search scene runs along. Given what is being looked for, the bits part in the middle and the text
+   itself stands there, lit like a hit; given nothing, it is the plain chain of bits. The text is escaped: it comes
+   from a tool's arguments, which the model wrote. */
+const searchBand = (text) => {
+  const step = 28, x0 = 26, count = 34, middle = 500, hits = [13, 26];
+  const said = String(text || "").replace(/\s+/g, " ").trim().slice(0, 28);
+  // Slots are wider than letters: the word takes the room it needs and the bits step aside for it.
+  const half = said ? (said.length * 11) / 2 + step * 0.5 : 0;
   let bits = "";
   for (let i = 0; i < count; i++) {
-    bits += `<g class="sw-bit${hits.indexOf(i) < 0 ? "" : " sw-hit"}" style="animation-delay:${(i * 0.133).toFixed(2)}s">`
-      + bitGlyph(BITS[i % BITS.length] === "1", x0 + i * step) + `</g>`;
+    const x = x0 + i * step;
+    if (said && x > middle - half && x < middle + half) continue;
+    bits += `<g class="sw-bit${said || hits.indexOf(i) < 0 ? "" : " sw-hit"}" style="animation-delay:${(i * 0.133).toFixed(2)}s">`
+      + bitGlyph(BITS[i % BITS.length] === "1", x) + `</g>`;
   }
-  return `<svg viewBox="0 0 1000 40" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">${bits}<g class="sw-lens"><circle cx="26" cy="20" r="14" fill="currentColor" fill-opacity=".06" stroke-width="2.2"/><path stroke-width="2.6" d="m36.5 29.5 7 7"/></g></g></svg>`;
-})();
+  const word = said
+    ? `<g class="sw-bit sw-hit" style="animation-delay:${(Math.round((middle - x0) / step) * 0.133).toFixed(2)}s">`
+      + `<text class="sw-word" x="${middle}" y="20">${esc(said)}</text></g>`
+    : "";
+  return `<svg viewBox="0 0 1000 40" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">${bits}${word}<g class="sw-lens"><circle cx="26" cy="20" r="14" fill="currentColor" fill-opacity=".06" stroke-width="2.2"/><path stroke-width="2.6" d="m36.5 29.5 7 7"/></g></g></svg>`;
+};
+const searchWide = searchBand("");
 const mcpWide = `<svg viewBox="0 0 1000 40" focusable="false" aria-hidden="true"><g class="mw-stage" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path class="mw-cloud" fill="var(--task-paper)" d="M40 34C26 34 22 22 33 17 31 6 48 1 57 9 64-1 84 1 86 12 100 6 114 16 108 25 118 28 116 34 106 34Z"/><text class="mw-label" x="68" y="28" text-anchor="middle" stroke="none">LLM</text><path class="mw-lane" d="M132 12H828"/><path class="mw-lane" d="M828 28H132"/><path stroke-opacity=".5" d="m822 8 5 4-5 4"/><path stroke-opacity=".5" d="m138 24-5 4 5 4"/><path class="mw-ask" d="M132 12H828"/><path class="mw-answer" d="M828 28H132"/><g class="mw-packets"></g><rect x="846" y="3" width="134" height="34" rx="4" fill="var(--task-paper)" stroke-opacity=".55"/><rect class="mw-glow" x="846" y="3" width="134" height="34" rx="4" fill="var(--task-ok)" stroke="none"/><circle class="mw-led" cx="860" cy="11" r="2.2" fill="var(--task-ok)" stroke="none"/><circle class="mw-led" cx="860" cy="20" r="2.2" fill="var(--task-ok)" stroke="none"/><circle class="mw-led" cx="860" cy="29" r="2.2" fill="var(--task-ok)" stroke="none"/><path stroke-opacity=".3" d="M872 7v26"/><text class="mw-label" x="930" y="26" text-anchor="middle" stroke="none">SAP</text><path class="mw-arc" d="M886 9l7 7-5 2 6 9"/><path class="mw-arc mw-arc2" d="M968 10l-6 7 5 2-7 8"/></g></svg>`;
+/* recognize: a screenshot is read. The band is the picture itself - grain under a beam that sweeps it once -
+   and what the beam has passed stays framed, the way the search band keeps its hits lit. Same 4.8s as the
+   others, CSS alone: nothing here has to fall at random. */
+const recognizeWide = (() => {
+  const corner = (x, y, w, h) => `M${x} ${y + 7}V${y}h7M${x + w - 7} ${y}h7v7M${x + w} ${y + h - 7}v7h-7M${x + 7} ${y + h}h-7v-7`;
+  const at = x => ((x / 1000) * 4.8).toFixed(2);
+  const found = (x, y, w, h) => `<g class="kw-box" style="animation-delay:${at(x + w)}s"><path d="${corner(x, y, w, h)}"/></g>`;
+  let grain = "";
+  for (let i = 0; i < 70; i++) {
+    grain += `<rect class="kw-px" x="${126 + i * 12}" y="${8 + ((i * 7) % 6) * 5}" width="6" height="4" rx="1"`
+      + ` style="animation-delay:${at(126 + i * 12)}s"/>`;
+  }
+  return `<svg viewBox="0 0 1000 40" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">`
+    + `<rect x="14" y="3" width="972" height="34" rx="5" fill="var(--task-paper)" stroke-opacity=".5"/>`
+    + `<g class="kw-photo" opacity=".5"><circle cx="48" cy="13" r="4.5"/><path d="M26 32l15-14 9 8 7-6 15 12z"/></g>`
+    + grain
+    + found(150, 8, 150, 24) + found(430, 6, 210, 28) + found(760, 10, 160, 20)
+    + `<g class="kw-beam"><rect x="4" y="3" width="24" height="34" rx="3" fill="currentColor" stroke="none" opacity=".08"/>`
+    + `<rect x="14" y="3" width="3" height="34" rx="1.5" fill="currentColor" stroke="none" opacity=".5"/></g>`
+    + `</g></svg>`;
+})();
 const HX_STEP = 70, HX_X0 = 40, HX_KEEP = 21;
 const hxColumn = (one, ph, x) => `<g class="hx-col" style="transform:translateX(${x}px)"><path class="hx-r hx-p${ph}" d="M0 9V31"/><text class="hx-n hx-p${ph}" x="0" y="20">${one ? 1 : 0}</text><text class="hx-n hx-p${(ph + 4) % 8}" x="0" y="20">${one ? 0 : 1}</text></g>`;
 const editWide = (() => {
@@ -244,7 +279,8 @@ function html(kind, wide = false, name = "") {
   if (kind === "start") return timed(`<span class="vertex-task-visual task-start" aria-hidden="true">${startScene(name)}</span>`);
   // The wide review is the generation strip: the commit strip's host set to its generate operation.
   if (kind === "review" && wide) return timed(`<span class="task-wide-host" data-operation="generate"><span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${commitWide}${reviewWide}</span></span>`);
-  if (kind === "search") return timed(`<span class="vertex-task-visual task-band" aria-hidden="true">${searchWide}</span>`);
+  if (kind === "search") return timed(`<span class="vertex-task-visual task-band" aria-hidden="true">${name ? searchBand(name) : searchWide}</span>`);
+  if (kind === "recognize") return timed(`<span class="vertex-task-visual task-band" aria-hidden="true">${recognizeWide}</span>`);
   if (kind === "mcp") return timed(`<span class="vertex-task-visual task-band" aria-hidden="true">${mcpWide}</span>`);
   if (kind === "edit") return timed(`<span class="vertex-task-visual task-band" aria-hidden="true">${editWide}</span>`);
   if (kind === "pr") return timed(`<span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${prWide}</span>`);
@@ -451,7 +487,15 @@ body.vertex-motion-off .vertex-task-visual{display:none!important}
 .sw-bit{transform-origin:center;opacity:.38;animation:vertex-sw-bit 4.8s ease-in-out infinite}
 .sw-hit{animation-name:vertex-sw-hit}
 .sw-hit ellipse,.sw-hit path{stroke:var(--task-ok)}
+.sw-hit .sw-word{fill:var(--task-ok)}
+.sw-word{fill:currentColor;stroke:none;font:600 15px var(--vscode-editor-font-family,ui-monospace,monospace);letter-spacing:1px;text-anchor:middle;dominant-baseline:central}
 .sw-lens{animation:vertex-sw-lens 4.8s linear infinite}
+.kw-px{fill:currentColor;stroke:none;opacity:.12;animation:vertex-kw-px 4.8s ease-in-out infinite}
+.kw-box{stroke:var(--task-ok);stroke-width:2.2;opacity:0;animation:vertex-kw-box 4.8s ease-out infinite}
+.kw-beam{animation:vertex-kw-beam 4.8s linear infinite}
+@keyframes vertex-kw-px{0%{opacity:.12}6%{opacity:.5}14%,100%{opacity:.22}}
+@keyframes vertex-kw-box{0%,3%{opacity:0;transform:scale(1.3)}9%{opacity:1;transform:scale(1)}88%{opacity:1}100%{opacity:0}}
+@keyframes vertex-kw-beam{0%{transform:translateX(0);opacity:0}4%{opacity:1}92%{transform:translateX(956px);opacity:1}100%{transform:translateX(978px);opacity:0}}
 @keyframes vertex-sw-bit{0%{transform:scale(1);opacity:.38}4%{transform:scale(1.4);opacity:1}11%,100%{transform:scale(1);opacity:.38}}
 @keyframes vertex-sw-hit{0%{transform:scale(1);opacity:.38}4%{transform:scale(1.45);opacity:1}11%,93%{transform:scale(1.15);opacity:1}100%{transform:scale(1);opacity:.38}}
 @keyframes vertex-sw-lens{0%{transform:translateX(0);opacity:0}4%{opacity:1}88%{transform:translateX(924px);opacity:1}100%{transform:translateX(980px);opacity:0}}

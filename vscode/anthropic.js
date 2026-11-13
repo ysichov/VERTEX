@@ -62,7 +62,12 @@ async function ask(options) {
     input_schema: tool.inputSchema })).concat([{ name: "submit_vertex_answer",
       description: "Submit the final VERTEX answer and navigation plan.", input_schema: options.schema }]);
   let apiTools = toolsNow();
-  const messages = [{ role: "user", content: options.prompt }];
+  const content = options.images?.length ? [
+    { type: "text", text: options.prompt },
+    ...options.images.map(image => ({ type: "image", source: { type: "base64", media_type: image.media_type, data: image.data } }))
+  ] : options.prompt;
+  const messages = [{ role: "user", content }];
+  const imageBytes = (options.images || []).reduce((sum, image) => sum + Buffer.byteLength(image.data || "", "utf8") + 256, 0);
   async function retryAnswer(plan){
     const feedback=await options.onBeforeAnswer?.(plan);
     if(!feedback)return false;
@@ -74,7 +79,7 @@ async function ask(options) {
     const response = await request(options.apiKey, { model: options.model, max_tokens: options.maxOutputTokens || 16000,
       system: options.instructions, messages, ...(options.structuredResult?{tool_choice:{type:"tool",name:"submit_vertex_answer"}}:{}), ...(apiTools.length ? {tools:apiTools} : {}) },
       // The limit is on the conversation and its context; the tool definitions come on top of it.
-      (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 64000)) + (apiTools.length ? Buffer.byteLength(JSON.stringify(apiTools), "utf8") : 0), options.signal);
+      (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 128000)) + imageBytes + (apiTools.length ? Buffer.byteLength(JSON.stringify(apiTools), "utf8") : 0), options.signal);
     let answer;
     try { answer = JSON.parse(response.text); } catch (_) { answer = null; }
     if (answer && options.onProviderResponse) options.onProviderResponse({
@@ -83,8 +88,10 @@ async function ask(options) {
       throw new Error("Anthropic API returned " + response.status + ": "
         + (answer && answer.error && answer.error.message || response.text.substring(0, 500)));
     }
-    for (const key of Object.keys(usage)) { usage[key] += Number(answer.usage && answer.usage[key]) || 0; }
-    const roundUsage = answer.usage || null;
+    const roundUsage = require("./anthropic-pricing").priceUsage(answer.model || options.model, answer.usage) || null;
+    for (const key of ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"]) { usage[key] += Number(roundUsage && roundUsage[key]) || 0; }
+    if (Number.isFinite(roundUsage?.cost_usd)) usage.cost_usd = (usage.cost_usd || 0) + roundUsage.cost_usd;
+    else usage.cost_missing = (usage.cost_missing || 0) + 1;
     const calls = (answer.content || []).filter(block => block.type === "tool_use");
     const final = calls.find(call => call.name === "submit_vertex_answer");
     if (final) {
@@ -118,12 +125,8 @@ async function ask(options) {
         throw new Error("Anthropic requested an unavailable tool: " + call.name);
       }
       let content, isError = false;
-      try { content = JSON.stringify(await options.callTool(call.name, call.input || {})); }
+      try { content = require("./tool-result").bound(await options.callTool(call.name, call.input || {})); }
       catch (error) { if(error.orchestratorFatal||options.signal?.aborted)throw error;content = JSON.stringify({ error: error.message }); isError = true; }
-      if (Buffer.byteLength(content, "utf8") > 24000) {
-        content = "Result too large for chat. Ask the user to open the relevant method in VERTEX; the full source was not sent.";
-        isError = true;
-      }
       results.push({ type: "tool_result", tool_use_id: call.id, is_error: isError, content });
     }
     messages.push({ role: "user", content: results });

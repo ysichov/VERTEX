@@ -46,4 +46,14 @@ function detail(name, input) {
   return said ? ": " + (said.length > 90 ? said.slice(0, 89) + "…" : said) : "";
 }
 
-module.exports = { listen, report, scene, detail };
+/* What the search scene spells out while it runs: the pattern being looked for, without the path it is looked for
+   in. Only a search by pattern has a word to show; reading a named file does not, and its band stays bits. */
+function subject(name, input) {
+  if (!input || typeof input !== "object") return "";
+  const tool = String(name || "").replace(/^mcp__vertex__/, "");
+  if (tool !== "Grep" && tool !== "Glob") return "";
+  const pattern = typeof input.pattern === "string" ? input.pattern.trim().replace(/\s+/g, " ") : "";
+  return pattern.length > 28 ? pattern.slice(0, 27) + "…" : pattern;
+}
+
+module.exports = { listen, report, scene, detail, subject };

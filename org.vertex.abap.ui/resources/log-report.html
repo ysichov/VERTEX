@@ -61,6 +61,8 @@
   .entry.model { --entry-color: var(--vscode-charts-green, var(--vscode-textLink-foreground)); }
   .entry > summary { padding: 6px 8px; cursor: pointer; color: var(--entry-color); font-weight: 600; }
   .entry > summary:hover { background: var(--vscode-list-hoverBackground); }
+  /* A failed request reads as a failure in the list, without opening it. */
+  .entry.failed > summary { color: var(--vscode-errorForeground); }
   table.jev-table { width: 100%; margin: 4px 0; }
   table.jev-table td { vertical-align: top; }
   td.jev-about { max-width: 420px; overflow-wrap: anywhere; }
@@ -95,6 +97,8 @@
   .list-tools[hidden]{display:none}
   .list-tools { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 8px 0; }
   .kind-filter { color: var(--vscode-descriptionForeground); white-space: nowrap; }
+  .conversation-place { display: block; color: var(--vscode-descriptionForeground); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log-context { font: inherit; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }
   .log-search { flex: 1; max-width: 420px; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }
   table.session-table th { position: relative; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   th.sortable { cursor: pointer; }
@@ -272,6 +276,40 @@ function markdown(text, target) {
 
   /* A Jev answer as a table: one row per question - what it was about (taken from the saved Jev input), the answer,
      the confidence and each option's probability. TEXT is jev.js formatAnswers' output; null when it is not. */
+  /* The routing report read as a table, in the shape Jev answers are already shown in: one row for the route
+     itself, then one per topic Jev was asked about, so what it ruled out is visible without reading JSON. */
+  function routingTable(report) {
+    var answers = report && report.answers;
+    if (!answers || typeof answers !== "object" || !answers.route) return null;
+    var topics = Array.isArray(report.topics) ? report.topics : [];
+    var label = function (key) {
+      if (key === "route") return "Which topic this question belongs to";
+      var found = topics.filter(function (t) { return "need_" + t.id === key; })[0];
+      return found ? (found.label || found.lastQuestion || found.id) : key;
+    };
+    var table = el("table", "jev-table"), head = el("tr"), number = 0;
+    ["#", "About", "Answer", "Confidence", "Probabilities"].forEach(function (h) {
+      head.appendChild(el("th", h === "#" || h === "Confidence" ? "num" : "", h));
+    });
+    table.appendChild(head);
+    Object.keys(answers).forEach(function (key) {
+      var a = answers[key];
+      if (!a || typeof a !== "object" || typeof a.choice !== "string") return;
+      var tr = el("tr");
+      tr.appendChild(el("td", "num", String(++number)));
+      var about = el("td", "jev-about", label(key)); about.title = key; tr.appendChild(about);
+      tr.appendChild(el("td", "jev-answer", a.choice));
+      tr.appendChild(el("td", "num", typeof a.confidence === "number" ? a.confidence.toFixed(2) : "—"));
+      var odds = el("td", "jev-odds"), p = a.probabilities || {};
+      Object.keys(p).forEach(function (name) {
+        odds.appendChild(el("div", name === a.choice ? "chosen" : "", name + ": " + p[name]));
+      });
+      tr.appendChild(odds);
+      table.appendChild(tr);
+    });
+    return number ? table : null;
+  }
+
   function jevTable(text, decision) {
     var parts = String(text || "").split(/\n\n(?=Question \d+: |Estimated cost: )/);
     var keys = Object.keys(decision.questions || {}), state = decision.state || {};
@@ -595,7 +633,19 @@ function markdown(text, target) {
       if (d.type === "answer" || d.type === "tool" || d.type === "tool result") return;
       var label = d.type === "Model request and context" ? "Request and context" : d.type;
       if (d.snapshot) label = d.snapshot.kind === "uml" ? "Recorded UML" : "Recorded metrics";
-      var detail = section(label, "technical", d.text);
+      var detail;
+      if (d.routing) {
+        // Jev's answers as a table, with the whole report under it for anything the table leaves out.
+        detail = section(label, "technical");
+        var routingShown = false;
+        detail.addEventListener("toggle", function () {
+          if (!detail.open || routingShown) return;
+          routingShown = true;
+          var answers = routingTable(d.routing);
+          if (answers) detail.appendChild(answers);
+          detail.appendChild(el("div", "detail", d.text));
+        });
+      } else detail = section(label, d.failed ? "technical failed" : "technical", d.text);
       objectLinks(detail, d.objects);
       if (d.snapshot) {
         var open = el("button", "recording-link", "Open recorded " + (d.snapshot.kind === "uml" ? "UML" : "metrics"));
@@ -670,7 +720,22 @@ function markdown(text, target) {
     table.appendChild(colgroup);
     table.appendChild(hr);
   }
-  var lastReport = null, listState = { query: "", hiddenKinds: {} };
+  /* Where a conversation was held, as one comparable key and a short label: the folder's own name, or the
+     SAP system with its client. A conversation logged before this was recorded has no context at all. */
+  function contextKey(c) {
+    if (!c) return "";
+    return c.mode === "folder" ? "folder:" + c.folder : "sap:" + c.system + (c.client ? "/" + c.client : "");
+  }
+  function contextLabel(c) {
+    if (!c) return "";
+    if (c.mode !== "folder") return c.system + (c.client ? " " + c.client : "");
+    var parts = String(c.folder).replace(/[\\/]+$/, "").split(/[\\/]/);
+    return parts[parts.length - 1] || c.folder;
+  }
+
+  // Session Logs shows every conversation by default; the place is a filter the reader chooses. The chat's
+  // own Continue a chat list is the opposite: it offers only the place the chat is working in.
+  var lastReport = null, listState = { query: "", hiddenKinds: {}, context: "" };
   function render(report) {
     selected.clear(); selectionChanged();
     content.textContent = "";
@@ -682,9 +747,11 @@ function markdown(text, target) {
       var key = source.conversation ? "conversation:" + source.conversation : "file:" + source.id;
       var group = groups.get(key);
       if (!group) {
-        group = { id: source.id, start: source.start, end: source.end, fileIds: [], providers: [], models: [], prompts: [], usage: {} };
+        group = { id: source.id, start: source.start, end: source.end, fileIds: [], providers: [], models: [], prompts: [], usage: {}, context: null };
         groups.set(key, group);
       }
+      // One conversation is held in one place, whichever of its files records it first.
+      if (!group.context && source.context) group.context = source.context;
       group.fileIds.push(source.id);
       group.start = Math.min(group.start, source.start); group.end = Math.max(group.end, source.end);
       if (!group.providers.includes(source.provider)) group.providers.push(source.provider);
@@ -728,10 +795,38 @@ function markdown(text, target) {
       var box = el("input"); box.type = "checkbox"; box.checked = !listState.hiddenKinds[kind];
       var label = el("label", "kind-filter");
       label.title = "Show the " + kinds[kind] + " technical conversation(s) of this kind";
-      label.appendChild(box); label.appendChild(document.createTextNode(" " + kind + " (" + kinds[kind] + ")"));
+      // The count stays in the hover: nine filters with their numbers spelled out wrap onto a second row.
+      label.appendChild(box); label.appendChild(document.createTextNode(" " + kind));
       tools.appendChild(label);
       kindBoxes[kind] = box;
     });
+    // Folders and systems the conversations were held in, each with its count. Offered only when there is
+    // something to choose between; one folder alone is not a filter.
+    var held = {};
+    report.sessions.forEach(function (s) {
+      var key = contextKey(s.context);
+      if (!held[key]) held[key] = { key: key, context: s.context, count: 0 };
+      held[key].count++;
+    });
+    var heldKeys = Object.keys(held).filter(function (key) { return key; }).sort();
+    var contextSelect = null;
+    if (Object.keys(held).length > 1) {
+      contextSelect = el("select", "log-context");
+      contextSelect.setAttribute("aria-label", "Show conversations held in one folder or SAP system");
+      contextSelect.title = "Where the conversation was held: the local folder, or the SAP system";
+      var option = function (value, text, hover) {
+        var item = el("option", "", text); item.value = value; if (hover) item.title = hover;
+        contextSelect.appendChild(item);
+      };
+      option("", "All folders and systems");
+      heldKeys.forEach(function (key) {
+        option(key, contextLabel(held[key].context) + " (" + held[key].count + ")", key.slice(key.indexOf(":") + 1));
+      });
+      if (held[""]) option("none", "Without context (" + held[""].count + ")", "Logged before VERTEX recorded where a conversation was held");
+      contextSelect.value = listState.context || "";
+      if (contextSelect.value !== (listState.context || "")) { listState.context = ""; contextSelect.value = ""; }
+      tools.appendChild(contextSelect);
+    } else listState.context = "";
     var anyCost = report.sessions.some(function (s) { return s.usage.cost != null; });
     var columns = [
       { name: "", cls: "select-cell", width: 34, nosort: true },
@@ -764,6 +859,14 @@ function markdown(text, target) {
       title.appendChild(caret);
       title.appendChild(el("span", "preview", " " + (preview || "(no prompt text)")));
       title.title = preview;
+      // Where it was held, under the question: with no filter chosen the list mixes places, and the row
+      // has to say which one it belongs to. A conversation without a recorded place shows no line.
+      if (s.context) {
+        var place = el("span", "conversation-place", contextLabel(s.context));
+        place.title = s.context.mode === "folder" ? s.context.folder
+          : "SAP system " + s.context.system + (s.context.client ? ", client " + s.context.client : "");
+        title.appendChild(place);
+      }
       title.tabIndex = 0;
       main.appendChild(title);
       var actions = el("div", "list-tools");
@@ -802,7 +905,7 @@ function markdown(text, target) {
       body.colSpan = columns.length;
       detail.appendChild(body);
       detail.hidden = true;
-      var record = { item: s, rows: [main, detail], technical: technical, kind: technical ? kindOf(s) : "", open: false, loaded: false,
+      var record = { item: s, rows: [main, detail], technical: technical, kind: technical ? kindOf(s) : "", context: contextKey(s.context), open: false, loaded: false,
         text: (s.prompts.map(function (p) { return p.text || ""; }).join(" ") + " " + s.provider + " " + models.join(" ")).toLowerCase() };
       // The questions' table is built the first time the conversation opens, and kept.
       record.toggle = function () {
@@ -821,15 +924,21 @@ function markdown(text, target) {
     var filter = function () {
       listState.query = search.value;
       Object.keys(kindBoxes).forEach(function (kind) { if (kindBoxes[kind].checked) delete listState.hiddenKinds[kind]; else listState.hiddenKinds[kind] = true; });
-      var q = String(search.value || "").trim().toLowerCase(), shown = 0;
+      if (contextSelect) listState.context = contextSelect.value;
+      var q = String(search.value || "").trim().toLowerCase(), shown = 0, want = listState.context || "";
       records.forEach(function (r) {
-        var show = (!q || r.text.indexOf(q) >= 0) && !(r.technical && listState.hiddenKinds[r.kind]);
+        var here = !want || (want === "none" ? !r.context : r.context === want);
+        var show = here && (!q || r.text.indexOf(q) >= 0) && !(r.technical && listState.hiddenKinds[r.kind]);
         if (show) shown++;
         r.rows[0].hidden = !show; r.rows[1].hidden = !show || !r.open;
       });
-      status.textContent = (shown === records.length ? records.length : shown + " of " + records.length) + " conversations in " + report.folder;
+      // Naming the place keeps an empty list readable: nothing here yet, rather than something broken.
+      var where = want === "none" ? "without a recorded place" : want && held[want] ? contextLabel(held[want].context) : "";
+      status.textContent = (shown === records.length ? records.length : shown + " of " + records.length)
+        + " conversations in " + report.folder + (where ? " · showing " + where : "");
     };
     search.addEventListener("input", filter);
+    if (contextSelect) contextSelect.addEventListener("change", filter);
     Object.keys(kindBoxes).forEach(function (kind) { kindBoxes[kind].addEventListener("change", filter); });
     var scroll = el("div", "table-scroll");
     scroll.appendChild(list);
@@ -871,6 +980,13 @@ function markdown(text, target) {
     function renderPrompt(p) {
       var row = el("tr", several ? "compact" : "");
       var cell = el("td", "prompt-cell");
+      // The conversation body gets a row of its own, spanning every column, as the conversation list already
+      // does: inside the first cell a fixed-layout table squeezes an answer into the Conversation column.
+      var detail = el("tr", "prompt-detail");
+      var detailBody = el("td", "conversation-body");
+      detailBody.colSpan = columns.length;
+      detail.appendChild(detailBody);
+      detail.hidden = true;
       if (several) {
         // One narrow line per prompt; its conversation opens under the line.
         var prompt = el("details", "prompt");
@@ -880,10 +996,11 @@ function markdown(text, target) {
         var promptLoaded = false;
         prompt.ontoggle = function () {
           row.className = prompt.open ? "" : "compact";
-          if (prompt.open && !promptLoaded) { promptLoaded = true; prompt.appendChild(lazyConversation(p)); }
+          if (prompt.open && !promptLoaded) { promptLoaded = true; detailBody.appendChild(lazyConversation(p)); }
+          detail.hidden = !prompt.open;
         };
         cell.appendChild(prompt);
-      } else cell.appendChild(lazyConversation(p));
+      } else { detail.hidden = false; detailBody.appendChild(lazyConversation(p)); }
       row.appendChild(cell);
       // Its topic, coloured as the chat colours it, so the topics of a conversation can be told apart at a glance.
       var topicCell = el("td", "topic-cell");
@@ -935,8 +1052,9 @@ function markdown(text, target) {
       duration.title = "Elapsed time from the prompt to its last recorded assistant response";
       row.appendChild(duration);
       row.appendChild(el("td", "time", promptTime(p.time, s.start)));
-      rows.push({ item: p, rows: [row] });
+      rows.push({ item: p, rows: [row, detail] });
       table.appendChild(row);
+      table.appendChild(detail);
     }
     function renderPage(){
       rows.forEach(function(record){record.rows.forEach(function(row){row.remove();});});rows.length=0;

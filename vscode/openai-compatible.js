@@ -3,6 +3,7 @@
 const https = require("https");
 const http = require("http");
 const toolSupport = require("./tool-support");
+const toolResult = require("./tool-result");
 
 // Provider endpoints from ABAP-AI-Code's ZAICODE_PROVIDER seed list. The
 // Assistant calls only these fixed HTTPS hosts; keys stay in SecretStorage.
@@ -306,7 +307,7 @@ async function ask(options) {
       ...(Number.isInteger(options.maxOutputTokens)&&options.maxOutputTokens>0 ? id==="openai-api"?{max_completion_tokens:options.maxOutputTokens}:{max_tokens:options.maxOutputTokens} : {}), stream: false
     // The limit is on the conversation and its context; the tool definitions are a fixed part on top of it -
     // an MCP server's alone can pass 64 KB.
-    }, (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 64000)) + imageBytes + (tools.length ? Buffer.byteLength(JSON.stringify(tools), "utf8") : 0)), options);
+    }, (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 128000)) + imageBytes + (tools.length ? Buffer.byteLength(JSON.stringify(tools), "utf8") : 0)), options);
     let response;
     try { response = await send(); }
     catch (error) {
@@ -421,11 +422,8 @@ async function ask(options) {
       let content;
       try {
         const args = JSON.parse(call.function.arguments || "{}");
-        content = JSON.stringify(await options.callTool(name, args));
+        content = toolResult.bound(await options.callTool(name, args));
       } catch (error) { if(error.orchestratorFatal||options.signal?.aborted)throw error; content = JSON.stringify({ error: error.message }); }
-      if (Buffer.byteLength(content, "utf8") > 24000) {
-        content = "Result too large for chat. Ask the user to narrow the request; the full result was not sent.";
-      }
       messages.push({ role: "tool", tool_call_id: call.id, content });
     }
   }

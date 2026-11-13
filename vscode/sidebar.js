@@ -225,9 +225,15 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if (message.action === "conversationHistory") {
           try {
-            const report = require("./log-report").readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
-            await view.webview.postMessage({ conversationHistory: { items: require("./log-report").conversationList(report),
-              message: report.configured ? "" : "Choose a log folder in Session Logs to save and continue conversations." } });
+            const logs = require("./log-report");
+            const report = logs.readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
+            // The chat continues its own work: only the conversations held where it is working now. Session
+            // Logs is the place to see every folder and system.
+            const place = logs.placeKey(logs.currentPlace(vscode));
+            const items = logs.conversationList(report, place);
+            await view.webview.postMessage({ conversationHistory: { items,
+              message: report.configured ? (items.length || !report.sessions.length ? "" : "No conversation of this folder or system yet. Session Logs shows every one.")
+                : "Choose a log folder in Session Logs to save and continue conversations." } });
           } catch (error) { await view.webview.postMessage({ conversationHistory: { items: [], message: error.message } }); }
           return;
         }
@@ -924,13 +930,17 @@ document.addEventListener('keydown', event => {
   if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'c') copySelectedText(event);
 });
 const progressItems = new Map();
-const taskVisuals=${JSON.stringify(["review", "commit", "search", "mcp", "edit"].reduce((all, kind) =>
+const taskVisuals=${JSON.stringify(["review", "commit", "search", "mcp", "edit", "recognize"].reduce((all, kind) =>
   Object.assign(all, { [kind]: require(require("path").join(__dirname, "task-visual")).html(kind, true) }), {}))};
 function paintTaskScene(item,update){
-      if(['review','commit','search','mcp','edit'].includes(update.kind))item.dataset.taskKind=update.kind;
+      if(['review','commit','search','mcp','edit','recognize'].includes(update.kind))item.dataset.taskKind=update.kind;
+      // What a search is looking for travels with the step, so its band can spell the pattern out.
+      if(typeof update.subject==='string')item.dataset.taskSubject=update.subject;
       let scene=item.querySelector('.task-scene');
       if(update.done){if(scene)scene.remove();}
-      else if(taskVisuals[item.dataset.taskKind]){if(!scene){scene=document.createElement('span');scene.className='task-scene';scene.setAttribute('aria-hidden','true');item.appendChild(scene);}if(scene.dataset.kind!==item.dataset.taskKind){scene.dataset.kind=item.dataset.taskKind;scene.innerHTML=taskVisuals[item.dataset.taskKind];
+      else if(taskVisuals[item.dataset.taskKind]){if(!scene){scene=document.createElement('span');scene.className='task-scene';scene.setAttribute('aria-hidden','true');item.appendChild(scene);}const want=item.dataset.taskKind,said=item.dataset.taskSubject||'';
+        if(scene.dataset.kind!==want||scene.dataset.said!==said){scene.dataset.kind=want;scene.dataset.said=said;
+        scene.innerHTML=want==='search'&&said&&typeof window!=='undefined'&&window.vertexTaskVisual?window.vertexTaskVisual.html('search',false,said):taskVisuals[want];
         // The edit and MCP scenes change at random, which CSS cannot do: they need their driver on the node drawn.
         if(window.vertexTaskVisual)window.vertexTaskVisual.drive(scene);}}
       item.setAttribute('aria-busy',String(!update.done));

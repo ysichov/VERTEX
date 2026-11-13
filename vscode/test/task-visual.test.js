@@ -31,3 +31,27 @@ test("commit waiting visual covers generation and commit, and stops after succes
  node("commit-generate").onclick();listeners[0]({data:{commitDraft:{summary:"Update code",description:"Details"}}});assert.equal(node("commit-working").hidden,true);
  node("commit-form").onsubmit({preventDefault(){}});assert.equal(node("commit-working")["data-operation"],"commit");assert.match(node("commit-status").textContent,/Creating a local Git commit/);assert.equal(node("commit-working").hidden,false);listeners[0]({data:{commitDone:{hash:"abc"}}});assert.equal(node("commit-working").hidden,true);assert.equal(context.commitDialog['aria-busy'],"false");assert.equal(node("commit-status").dataset.operationStatus,"success");assert.equal(node("commit-status")["aria-atomic"],"true");listeners[0]({data:{commitDone:{hash:"abc",warning:"Post-commit warning"}}});assert.equal(node("commit-status").dataset.operationStatus,"warning");
 });
+
+test("the search band spells out what is being looked for, in the middle of the bits", () => {
+  const visual = require("../task-visual");
+  const band = visual.html("search", false, "AI logging");
+  const word = /<text class="sw-word"[^>]*>([^<]*)<\/text>/.exec(band);
+  assert.ok(word, "the pattern is drawn as text");
+  assert.equal(word[1], "AI logging");
+  assert.match(band, /class="sw-bit sw-hit"[^>]*><text class="sw-word"/, "and is lit like a hit");
+  assert.match(band, /class="sw-bit"/, "bits still run on both sides of it");
+  // A band with nothing to say is the chain of bits it always was.
+  const plain = visual.html("search", false, "");
+  assert.doesNotMatch(plain, /sw-word/);
+  assert.match(plain, /sw-hit/, "its own lit bits stay");
+});
+
+test("a pattern from the model is escaped before it is drawn, and a long one is cut", () => {
+  const visual = require("../task-visual");
+  const band = visual.html("search", false, '<script>alert(1)</script>');
+  assert.doesNotMatch(band, /<script>/);
+  assert.match(band, /&lt;script&gt;/);
+  const long = visual.html("search", false, "x".repeat(100));
+  const word = /<text class="sw-word"[^>]*>([^<]*)<\/text>/.exec(long);
+  assert.ok(word[1].length <= 28, "a long pattern is cut to the band: " + word[1].length);
+});

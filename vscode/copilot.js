@@ -65,11 +65,8 @@ async function ask(vscode, options) {
         throw new Error("Copilot requested an unavailable tool: " + call.name);
       }
       let content;
-      try { content = JSON.stringify(await options.callTool(call.name, call.input || {})); }
+      try { content = require("./tool-result").bound(await options.callTool(call.name, call.input || {})); }
       catch (error) { if(error.orchestratorFatal||options.signal?.aborted)throw error;content = JSON.stringify({ error: error.message }); }
-      if (Buffer.byteLength(content, "utf8") > 24000) {
-        content = "Result too large for chat. Ask the user to narrow the request; the full result was not sent.";
-      }
       results.push(new vscode.LanguageModelToolResultPart(call.callId, [new vscode.LanguageModelTextPart(content)]));
     }
     messages.push(vscode.LanguageModelChatMessage.User(results));

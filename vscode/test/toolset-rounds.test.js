@@ -37,7 +37,7 @@ test("the Anthropic request offers tools added during the request from the next 
   assert.equal(typeof anthropic.ask, "function");
 });
 
-test("the 64 KB request limit counts the conversation, not the tool definitions", async () => {
+test("the request limit counts the conversation, not the tool definitions", async () => {
   const compatible = require("../openai-compatible");
   const id = Object.keys(compatible.PROVIDERS).find(key => key !== "vercel-api" && key !== "openrouter-api");
   const big = { type: "object", properties: { note: { type: "string", description: "x".repeat(100000) } } };
@@ -51,5 +51,5 @@ test("the 64 KB request limit counts the conversation, not the tool definitions"
   await compatible.ask({ assistant: id, model: "m", apiKey: "k", prompt: "q", instructions: "i", schema: { type: "object" }, tools, request, callTool: async () => ({}) });
   assert.ok(sent > 100000, "the request carries the large tool definitions");
   assert.ok(limit >= sent, "and still fits the limit: " + limit + " >= " + sent);
-  assert.ok(limit - Buffer.byteLength(JSON.stringify(tools), "utf8") < 70000, "the conversation keeps its own 64 KB");
+  assert.ok(limit - Buffer.byteLength(JSON.stringify(tools), "utf8") < 140000, "the conversation keeps its own 128 KB");
 });

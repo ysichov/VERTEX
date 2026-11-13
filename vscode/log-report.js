@@ -44,7 +44,7 @@ function parseSession(text, file) {
   // The file's name without folder or extension, read as text: Eclipse parses logs in its browser, without Node's path.
   const name = String(file).replace(/^.*[\\/]/, "").replace(/\.jsonl$/, "");
   const provider = name.replace(/_\d{8}_\d{6}(?:_[0-9a-f]+)?$/, "");
-  const session = { id: name, provider, conversation: null, start: null, end: null, usage: emptyUsage(), prompts: [], models: [] };
+  const session = { id: name, provider, conversation: null, context: null, start: null, end: null, usage: emptyUsage(), prompts: [], models: [] };
   const seen = new Set();
   const toolCalls = new Map();
   let current;
@@ -54,6 +54,17 @@ function parseSession(text, file) {
     try { record = JSON.parse(line); } catch { continue; }
     const time = Date.parse(record.timestamp || "");
     if (!session.conversation && typeof record.vertex_conversation === "string") session.conversation = record.vertex_conversation;
+    // Where the conversation was held. Only the two shapes the log writes are accepted; a log without it
+    // stays uncontexted rather than being guessed from its file name or its content.
+    if (!session.context) {
+      const held = record.vertex_context;
+      if (held && typeof held === "object" && typeof held.mode === "string") {
+        if (held.mode === "folder" && typeof held.folder === "string" && held.folder) session.context = { mode: "folder", folder: held.folder };
+        else if (held.mode === "sap" && typeof held.system === "string" && held.system) {
+          session.context = { mode: "sap", system: held.system, ...(typeof held.client === "string" && held.client ? { client: held.client } : {}) };
+        }
+      }
+    }
     if (typeof record.vertex_related_conversation === "string") session.relatedConversation = record.vertex_related_conversation;
     if (Number.isFinite(time)) {
       session.start = session.start === null ? time : Math.min(session.start, time);
@@ -73,6 +84,7 @@ function parseSession(text, file) {
         if (last && id && last.id === id) last.usage = record.response?.usage || last.usage;
         else current.timeline.push({ kind: "model", id, usage: record.response?.usage || null, time: Number.isFinite(time) ? time : null });
       } else if (current) current.details.push({ type: record.scope === "request_error" ? "Request failed" + (record.response?.model_step ? " at model step " + record.response.model_step : "") : "Provider usage (" + record.scope + ")",
+        ...(record.scope === "request_error" ? { failed: true } : {}),
         text: prettyJson({ provider: record.provider, response: record.response }) });
       continue;
     }
@@ -80,7 +92,8 @@ function parseSession(text, file) {
       if (current && record.input) current.decision = record.input;
       continue;
     }
-    if(record.type==="vertex_topic_routing"){if(current){current.topic=record.report?.topic||null;current.details.push({type:"Topic routing (Jev)",text:prettyJson(record.report)});}continue;}
+    // The report travels whole as well as prettified: the page reads Jev's answers as a table from it.
+    if(record.type==="vertex_topic_routing"){if(current){current.topic=record.report?.topic||null;current.details.push({type:"Topic routing (Jev)",routing:record.report&&typeof record.report==="object"?record.report:null,text:prettyJson(record.report)});}continue;}
     if (record.type === "vertex_context_optimization") {
       if(current) current.details.push({type:"Context optimization (Jev)",text:prettyJson(record.report)});
       continue;
@@ -135,6 +148,7 @@ function parseSession(text, file) {
     }
     if (record.type !== "assistant" || !record.message) continue;
     const message = record.message;
+    if (provider === "anthropic-api" && message.usage) message.usage = require("./anthropic-pricing").priceUsage(message.model, message.usage);
     if (message.id && seen.has(message.id)) continue;
     if (message.id) seen.add(message.id);
     if (message.usage) {
@@ -220,18 +234,29 @@ function readSessions(root) {
 /* The questions and answers of the conversation SESSION belongs to, in the order they were asked: every file that
    carries its conversation id (one per provider it used), or the file alone when it was written before ids existed.
    Commit and PR descriptions are separate operations, not turns of the chat. */
-function conversationList(report) {
+/** Where a conversation was held, as one comparable key; the page builds the same key for its filter. */
+function placeKey(context) {
+  if (!context) return "";
+  return context.mode === "folder" ? "folder:" + context.folder
+    : "sap:" + context.system + (context.client ? "/" + context.client : "");
+}
+
+/** place: show only the conversations held there. The chat's own list passes the place it is working in. */
+function conversationList(report, place) {
   const groups = new Map();
   for (const session of report.sessions) {
     const prompts = session.prompts.filter(prompt => prompt.operation === "Chat" || prompt.operation === "Web search");
     if (!prompts.length) continue;
     const key = session.conversation || session.id;
-    if (!groups.has(key)) groups.set(key, { prompts: [], providers: new Set() });
+    if (!groups.has(key)) groups.set(key, { prompts: [], providers: new Set(), context: null });
     const group = groups.get(key);
+    // The place belongs to the conversation, not to one of its files: continuing an older one that has no
+    // place gives the whole conversation the place it is continued in, with its earlier questions kept.
+    if (!group.context && session.context) group.context = session.context;
     group.providers.add(session.provider);
     group.prompts.push(...prompts.map(prompt => ({ ...prompt, sessionId: session.id })));
   }
-  return [...groups.values()].map(group => {
+  return [...groups.values()].filter(group => !place || placeKey(group.context) === place).map(group => {
     group.prompts.sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key));
     const first = group.prompts[0], last = group.prompts[group.prompts.length - 1];
     const preview = text => String(text || "").replace(/\s+/g, " ").slice(0, 180);
@@ -359,6 +384,21 @@ function listReport(report) {
         ...(details||[]).filter(d=>!["answer","tool","tool result"].includes(d.type)).map(d=>d.snapshot?(d.snapshot.kind==="uml"?"Recorded UML":"Recorded metrics"):d.type==="Model request and context"?"Request and context":d.type)], lazy: true })) })) };
 }
 
+/* Where the chat is working now, in the shape the log records. Session Logs opens on that place, so one
+   folder's conversations are separated from another folder's and from a SAP system's without choosing
+   anything. Derived the way chat.js derives it for the log itself, so the two cannot drift apart. */
+function currentPlace(vscode) {
+  try {
+    const mode = vscode.workspace.getConfiguration("vertex.ai").get("contextMode", "auto");
+    const folders = vscode.workspace.workspaceFolders || [];
+    const folder = mode === "sap" ? "" : require("./chat").workingFolder(vscode, "")
+      || (mode === "folder" && folders.length === 1 ? folders[0].uri.fsPath : "");
+    if (folder) return { mode: "folder", folder };
+    const [, , system, client] = JSON.parse(require("./topic-routing").scopeOf(vscode, "sap", ""));
+    return system ? { mode: "sap", system, ...(client ? { client } : {}) } : null;
+  } catch (_) { return null; }
+}
+
 let panel;
 function open(vscode, options = {}) {
   if (panel) { panel.reveal(vscode.ViewColumn.Beside, false); return panel; }
@@ -379,7 +419,7 @@ function open(vscode, options = {}) {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
       full = readSessions(root);
       promptIndex = new Map(full.sessions.flatMap(session => session.prompts).map(prompt => [prompt.key,prompt]));
-      return panel?.webview.postMessage({ action: "data", report: listReport(full) });
+      return panel?.webview.postMessage({ action: "data", report: { ...listReport(full), current: currentPlace(vscode) } });
     } catch (error) { return panel?.webview.postMessage({ action: "error", error: error.message }); }
   };
   panel.webview.onDidReceiveMessage(async message => {
@@ -459,4 +499,4 @@ function register(vscode, context, options) {
   context.subscriptions.push(vscode.commands.registerCommand("vertex.showLogs", () => open(vscode, options)));
 }
 
-module.exports = { listReport, tagTopics, parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns, conversationList };
+module.exports = { listReport, tagTopics, parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns, conversationList, currentPlace, placeKey };

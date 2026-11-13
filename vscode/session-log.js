@@ -46,6 +46,9 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
     // A random tail: two conversations started within one second must not share a file.
     + String(session || stamp(new Date()) + "_" + require("crypto").randomBytes(3).toString("hex")).replace(/[^\w.-]/g, "_") + ".jsonl");
   let sequence = 0, discarded = false, screenshotCount = 0;
+  // Where the conversation was held: the local folder, or the SAP system and client. Session Logs filters by it,
+  // and nothing else in the log records it - a conversation without it cannot be placed afterwards.
+  let context = null;
   // Every file of one VS Code conversation carries its id: a conversation that changes provider writes one file per
   // provider, and Session Logs puts them back together by it.
   const conversation = scope?.conversation || conversationId, branch = scope ? "main" : branchId, parent = scope ? null : branchParent;
@@ -54,7 +57,8 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
     if (discarded) return;
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch,
-      ...(scope?.relatedConversation ? { vertex_related_conversation: scope.relatedConversation } : {}), ...(parent ? { vertex_parent: parent } : {}) }, protection.protect(entry))) + "\n", "utf8");
+      ...(scope?.relatedConversation ? { vertex_related_conversation: scope.relatedConversation } : {}), ...(parent ? { vertex_parent: parent } : {}),
+      ...(context ? { vertex_context: context } : {}) }, protection.protect(entry))) + "\n", "utf8");
   };
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
   return {
@@ -64,6 +68,14 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       if (on.questions) write({ type: "vertex_decision", input: JSON.parse(JSON.stringify(input)) });
     },
     setOperation(value){operation=String(value||"Chat");},
+    /** Folder mode: {mode:"folder",folder}. SAP mode: {mode:"sap",system,client}. Anything else is refused. */
+    setContext(value){
+      if (!value || typeof value !== "object") { context = null; return; }
+      const text = key => typeof value[key] === "string" ? sanitizeText(value[key]).slice(0, 400) : "";
+      if (value.mode === "folder" && text("folder")) { context = { mode: "folder", folder: text("folder") }; return; }
+      if (value.mode === "sap" && text("system")) { context = { mode: "sap", system: text("system"), ...(text("client") ? { client: text("client") } : {}) }; return; }
+      context = null;
+    },
     discard() { discarded = true; },
     /* A question; screenshots pasted with it are part of it: with the questions option each is saved as a file in
        the conversation's folder beside the log (<log name>/screenshot-<n>.<ext>), without it only counted. */

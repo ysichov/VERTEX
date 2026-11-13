@@ -193,6 +193,15 @@ test("closed log conversations and prompts do not render their bodies; search an
   const selectedPrompt=all.find(child=>child.cls==='prompt');
   selectedPrompt.open=true;selectedPrompt.ontoggle();
   assert.equal(rendered,1);
+  // An answer is not a table column: its body is a row of its own spanning every column.
+  const inner=[];const walkInner=i=>{inner.push(i);(i.children||[]).forEach(walkInner);};walkInner(body);
+  const detailRow=inner.find(i=>i.cls==='prompt-detail');
+  assert.ok(detailRow,'the prompt body has its own row');
+  assert.equal(detailRow.hidden,false,'and it is shown while the prompt is open');
+  const spanned=detailRow.children[0];
+  assert.equal(spanned.cls,'conversation-body');
+  assert.ok(spanned.colSpan>1,'spanning every column, not squeezed into the first: '+spanned.colSpan);
+  assert.equal(inner.find(i=>i.cls==='prompt-cell').children.some(c=>c.cls==='conversation'),false,'nothing of it is left in the first cell');
   selectedPrompt.open=false;selectedPrompt.ontoggle();selectedPrompt.open=true;selectedPrompt.ontoggle();
   assert.equal(rendered,1,'reopening reuses the previously rendered body');
   record.toggle();record.toggle();
@@ -202,7 +211,11 @@ test("closed log conversations and prompts do not render their bodies; search an
   const tools=content.children.find(child=>child.cls==='list-tools'),search=tools.children[0],hide=tools.children[1].children[0];
   search.value='question 2';search.events.input();
   assert.equal(record.rows[0].hidden,false);assert.equal(technical.rows[0].hidden,true);
-  assert.match(tools.children[1].children[1].text,/Topic tagging \(1\)/);search.value='';search.events.input();hide.checked=false;hide.events.change();
+  // The filter names its kind; its count stays in the hover, so nine filters fit on one row.
+  assert.match(tools.children[1].children[1].text,/Topic tagging/);
+  assert.doesNotMatch(tools.children[1].children[1].text,/\(/);
+  assert.match(tools.children[1].title,/Show the 1 technical conversation/);
+  search.value='';search.events.input();hide.checked=false;hide.events.change();
   assert.equal(record.rows[0].hidden,false);assert.equal(technical.rows[0].hidden,true);
   assert.match(context.status.textContent,/^1 of 2 conversations/);
 });
@@ -246,4 +259,80 @@ test('the report list excludes review diff bodies while the host retains the ful
  assert.equal(list.sessions[0].prompts[0].text,'Check real bugs');
  assert.equal(source.sessions[0].prompts[0].text,text);
  assert.doesNotMatch(JSON.stringify(list),/PRIVATE_SOURCE/);
+});
+
+test('conversations can be filtered by the folder or SAP system they were held in',()=>{
+  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+  const node=(tag,cls='',text='')=>({tag,cls,text,value:'',children:[],events:{},style:{},classList:{toggle(){},add(){},remove(){}},
+    appendChild(child){this.children.push(child);return child;},setAttribute(){},removeAttribute(){},addEventListener(name,fn){this.events[name]=fn;}});
+  const content=node('main');
+  const context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{},context:''},
+    document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,costText:()=>'',promptTime:String,
+    usageText:()=>'',promptPreview:prompts=>prompts[0]?.text||'',conversation(){return node('div','conversation');}};
+  vm.createContext(context);
+  vm.runInContext(page.slice(page.indexOf('  var waitingDetail'),page.indexOf('  function section('))+page.slice(page.indexOf('  function sortableHead('),page.indexOf('  var lastReport = null'))+page.slice(page.indexOf('  function render(report)'),page.indexOf('  window.addEventListener("message"')),context);
+  const prompt=i=>({key:'p'+i,time:i,text:'Question '+i,usage:{},operation:'Chat'});
+  const records=context.render({configured:true,folder:'logs',sessions:[
+    {id:'a',provider:'claude',start:1,end:2,models:[],usage:{},context:{mode:'folder',folder:'C:\\soft\\GitHub\\AVE'},prompts:[prompt(1)]},
+    {id:'b',provider:'claude',start:3,end:4,models:[],usage:{},context:{mode:'sap',system:'A4H',client:'100'},prompts:[prompt(2)]},
+    {id:'c',provider:'claude',start:5,end:6,models:[],usage:{},prompts:[prompt(3)]}]});
+  const tools=content.children.find(child=>child.cls==='list-tools');
+  const select=tools.children.find(child=>child.cls==='log-context');
+  assert.ok(select,'a choice of folders and systems is offered');
+  // The folder shows by its own name, the system with its client, and the unplaced logs stay reachable.
+  assert.deepEqual(select.children.map(option=>option.text),
+    ['All folders and systems','AVE (1)','A4H 100 (1)','Without context (1)']);
+  select.value='folder:C:\\soft\\GitHub\\AVE';select.events.change();
+  assert.equal(records.find(r=>r.item.id==='a').rows[0].hidden,false);
+  assert.equal(records.find(r=>r.item.id==='b').rows[0].hidden,true);
+  assert.equal(records.find(r=>r.item.id==='c').rows[0].hidden,true);
+  select.value='none';select.events.change();
+  assert.equal(records.find(r=>r.item.id==='c').rows[0].hidden,false);
+  assert.equal(records.find(r=>r.item.id==='a').rows[0].hidden,true);
+  select.value='';select.events.change();
+  assert.equal(records.every(r=>r.rows[0].hidden===false),true,'all folders and systems shows every conversation');
+  // Without a filter the list mixes places, so each row says where it was held.
+  const placeOf=id=>{const all=[];const walk=i=>{all.push(i);(i.children||[]).forEach(walk);};walk(records.find(r=>r.item.id===id).rows[0]);
+    const found=all.find(i=>i.cls==='conversation-place');return found&&found.text;};
+  assert.equal(placeOf('a'),'AVE');
+  assert.equal(placeOf('b'),'A4H 100');
+  assert.equal(placeOf('c'),undefined,'a conversation without a place shows no line');
+});
+
+test("the chat's own list offers only the conversations held where it is working; Session Logs keeps all of them", () => {
+  const logs = require('../log-report');
+  const here = { mode: 'folder', folder: 'C:' + String.fromCharCode(92) + 'soft' + String.fromCharCode(92) + 'VERTEX' };
+  const there = { mode: 'sap', system: 'A4H', client: '100' };
+  const prompt = (i, text) => ({ key: 'p' + i, time: i, text, usage: {}, operation: 'Chat' });
+  const report = { configured: true, folder: 'logs', sessions: [
+    { id: 'a', provider: 'claude', conversation: 'c1', context: here, prompts: [prompt(1, 'about VERTEX')] },
+    { id: 'b', provider: 'claude', conversation: 'c2', context: there, prompts: [prompt(2, 'about A4H')] },
+    { id: 'c', provider: 'claude', conversation: 'c3', prompts: [prompt(3, 'an old conversation')] }] };
+
+  assert.deepEqual(logs.conversationList(report, logs.placeKey(here)).map(item => item.title), ['about VERTEX']);
+  assert.deepEqual(logs.conversationList(report, logs.placeKey(there)).map(item => item.title), ['about A4H']);
+  // A conversation logged before the place was recorded belongs to no place, so no chat list offers it.
+  assert.deepEqual(logs.conversationList(report, 'folder:C:' + String.fromCharCode(92) + 'elsewhere'), []);
+  // Session Logs asks for every one.
+  assert.deepEqual(logs.conversationList(report).map(item => item.title).sort(),
+    ['a old conversation'.replace('a ', 'an '), 'about A4H', 'about VERTEX'].sort());
+  assert.equal(logs.placeKey(null), '');
+  assert.equal(logs.placeKey(there), 'sap:A4H/100');
+});
+
+test('continuing an older conversation without a place gives the whole conversation the place it continues in', () => {
+  const logs = require('../log-report');
+  const here = { mode: 'folder', folder: 'C:' + String.fromCharCode(92) + 'soft' + String.fromCharCode(92) + 'VERTEX' };
+  const prompt = (i, text) => ({ key: 'p' + i, time: i, text, usage: {}, operation: 'Chat' });
+  // One conversation in two files: the old one recorded no place, the continuation does.
+  const report = { configured: true, folder: 'logs', sessions: [
+    { id: 'new', provider: 'claude', conversation: 'c1', context: here, prompts: [prompt(2, 'and now this')] },
+    { id: 'old', provider: 'claude', conversation: 'c1', prompts: [prompt(1, 'the original question')] }] };
+  const items = logs.conversationList(report, logs.placeKey(here));
+  assert.equal(items.length, 1);
+  assert.equal(items[0].title, 'the original question', 'its earlier questions are kept, not cut off');
+  assert.equal(items[0].lastQuestion, 'and now this');
+  assert.equal(items[0].count, 2);
+  // And it is no longer offered as a conversation of nowhere.
+  assert.deepEqual(logs.conversationList(report, 'sap:A4H/100'), []);
 });

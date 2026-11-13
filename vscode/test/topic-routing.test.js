@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');const routi
 const scope='project-a';const topic=(id,label)=>({id,label,scope});const h=[{role:'user',content:'Explain ZDEMO_CODE mapping',topic:topic('topic_0001','Code')},{role:'assistant',content:'CODE_ANSWER',topic:topic('topic_0001','Code')},{role:'user',content:'Language pair English French',topic:topic('topic_0002','Languages')},{role:'assistant',content:'LANGUAGE_ANSWER',topic:topic('topic_0002','Languages')}];
 test('stable topic selection keeps chosen history and explicit dependencies without deleting archive',()=>{const topics=routing.catalog(h,scope);assert(topics[0].entities.includes('ZDEMO_CODE'));const a={route:{choice:'topic_0001'},need_topic_0001:{choice:'keep'},need_topic_0002:{choice:'skip'}};const r=routing.apply('Code followup',h,scope,topics,a);assert.deepEqual(r.history,h.slice(0,2));assert.equal(h.length,4);assert.equal(r.topic.id,'topic_0001');a.need_topic_0002.choice='keep';assert.deepEqual(routing.apply('With target language',h,scope,topics,a).history,h);});
 test('untagged legacy history remains; a topic of another mode is a topic like any other',()=>{const all=[{role:'user',content:'Legacy requirement'},{role:'assistant',content:'Legacy answer'},...h,{role:'user',content:'Other scope',topic:{...topic('topic_0003','Other'),scope:'project-b'}}];const r=routing.apply('New topic',all,scope,routing.catalog(all,scope),{route:{choice:'new'},need_topic_0001:{choice:'skip'},need_topic_0002:{choice:'skip'},need_topic_0003:{choice:'skip'}});assert.equal(r.topic.id,'topic_0004');assert.deepEqual(r.history,all.slice(0,2));const other=routing.apply('More on it',all,scope,routing.catalog(all,scope),{route:{choice:'topic_0003'},need_topic_0001:{choice:'skip'},need_topic_0002:{choice:'skip'},need_topic_0003:{choice:'skip'}});assert.equal(other.topic.id,'topic_0003');assert.deepEqual(other.history,[...all.slice(0,2),all.at(-1)]);});
-test('router receives compact previous exchange; new topic and ambiguous route are distinct',()=>{const topics=routing.catalog(h,scope),p=routing.input('and that?',h,topics);assert.equal(p.state.previous.answer,'LANGUAGE_ANSWER');assert(!p.state.topics.some(t=>'answer' in t));assert.throws(()=>routing.apply('and that?',h,scope,topics,{route:{choice:'clarify'}}),/uncertain/);assert.equal(p.questions.route.criteria.new,'New topic');});
+test('router receives compact previous exchange; new topic and ambiguous route are distinct',()=>{const topics=routing.catalog(h,scope),p=routing.input('and that?',h,topics);assert.equal(p.state.previous.answer,'LANGUAGE_ANSWER');assert(!p.state.topics.some(t=>'answer' in t));assert.throws(()=>routing.apply('and that?',h,scope,topics,{route:{choice:'clarify'}}),/dependency/);assert.equal(p.questions.route.criteria.new,'New topic');});
 test('Jev accounting, cancellation, fallback, and bounded request',async t=>{let audits=0;const review=require('../review-jev'),jev=require('../jev'),accounting=require('../ai-accounting');t.mock.method(review,'connection',async()=>({key:'fixture',model:'jev-test'}));t.mock.method(accounting,'begin',()=>{audits++;return{callbacks:{},decision(){},finish(){},fail(){}};});t.mock.method(jev,'evaluate',async(_p,_k,_m,_s,qs)=>({model:'jev-test',usage:{input_tokens:12},answers:Object.fromEntries(Object.keys(qs).map(k=>[k,{choice:k==='route'?'topic_0001':'skip'}]))}));const r=await routing.route({},'Explain code',h,scope);assert.equal(r.topic.id,'topic_0001');assert.equal(r.report.usage.input_tokens,12);assert.equal(audits,1);const oversized=await routing.route({},'x'.repeat(30000),h,scope);assert.equal(oversized.history,h);assert.match(oversized.report.reason,/bounded/);assert.equal(audits,1);});
 test('topic metadata validates IDs and bounds dependencies before restore',()=>{assert.equal(routing.topicOf({id:'<script>',label:'bad',scope}),null);const a={...topic('topic_0001','A'),dependencies:['topic_0002','bad']};assert.deepEqual(routing.topicOf(a).dependencies,['topic_0002']);});
 
@@ -99,4 +99,19 @@ test('a follow-up can establish the topic of an unassigned previous exchange wit
  assert.equal(routing.input('First request',[],[]).questions.route.criteria.previous,undefined);
  assert.throws(()=>routing.apply('First request',[],scope,[],{route:{choice:'previous'}}),/Invalid previous/);
  assert.equal(routing.input('Follow-up',h,routing.catalog(h,scope)).questions.route.criteria.previous,undefined);
+});
+
+test('a question Jev cannot place still leaves out the topics it ruled out', () => {
+  const topics = routing.catalog(h, scope);
+  // The route is uncertain, but the verdict on each topic is not: only what was skipped is dropped.
+  const pruned = routing.apply('and that?', h, scope, topics,
+    { route: { choice: 'clarify' }, need_topic_0001: { choice: 'skip' }, need_topic_0002: { choice: 'keep' } });
+  assert.equal(pruned.topic, null, 'a topic nobody is sure of is not invented');
+  assert.equal(pruned.unplaced, true);
+  assert.deepEqual(pruned.keptIndices, [2, 3]);
+  assert.deepEqual(pruned.history.map(m => m.content), ['Language pair English French', 'LANGUAGE_ANSWER']);
+  // Uncertainty about a topic still keeps it: only a confident skip removes anything.
+  const unsure = routing.apply('and that?', h, scope, topics,
+    { route: { choice: 'clarify' }, need_topic_0001: { choice: 'clarify' }, need_topic_0002: { choice: 'keep' } });
+  assert.deepEqual(unsure.keptIndices, [0, 1, 2, 3]);
 });

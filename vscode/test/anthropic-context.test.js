@@ -49,7 +49,7 @@ test("sidebar line-count question sends the published method in one bounded Anth
 
 test("oversized Anthropic payload is rejected before any network request", async t => {
   const network = t.mock.method(https, "request", () => { throw new Error("Must not contact API"); });
-  await assert.rejects(anthropic.ask({ apiKey: "fake", prompt: "x".repeat(70000), instructions: "", schema: {}, tools: [] }), /nothing was sent/);
+  await assert.rejects(anthropic.ask({ apiKey: "fake", prompt: "x".repeat(130000), instructions: "", schema: {}, tools: [] }), /nothing was sent/);
   assert.equal(network.mock.callCount(), 0);
 });
 

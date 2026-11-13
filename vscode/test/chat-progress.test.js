@@ -18,3 +18,14 @@ test("Codex steps are counted from the endpoint, Claude Code's from its own stre
   assert.match(source, /if \(id !== "claude" && !compatible\.PROVIDERS\[id\] && id !== "anthropic-api" && id !== "copilot"\) \{\s*unlisten = require\("\.\/chat-progress"\)\.listen/);
   assert.match(require("node:fs").readFileSync(require.resolve("../extension"), "utf8"), /require\("\.\/chat-progress"\)\.report\(toolName\)/);
 });
+
+test("a search by pattern says what it looks for; reading a named file says nothing", () => {
+  const progress = require("../chat-progress");
+  assert.equal(progress.subject("Grep", { pattern: "AI logging", path: "vscode" }), "AI logging");
+  assert.equal(progress.subject("mcp__vertex__Glob", { pattern: "**/*.ts" }), "**/*.ts");
+  assert.equal(progress.subject("Read", { file_path: "C:/x/chat.js" }), "", "a file name is not a pattern");
+  assert.equal(progress.subject("Bash", { command: "git log" }), "");
+  assert.equal(progress.subject("Grep", null), "");
+  assert.equal(progress.subject("Grep", { pattern: "  spaced   out  " }), "spaced out");
+  assert.equal(progress.subject("Grep", { pattern: "y".repeat(50) }), "y".repeat(27) + "\u2026");
+});
