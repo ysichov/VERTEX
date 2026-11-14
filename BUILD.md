@@ -175,7 +175,8 @@ sibling plugin when running from a checkout. One source of truth, one copy made 
 nothing to decide at run time. `vscode/resources/` is in `.gitignore` for the same reason.
 
 The wrapper rejects an archive without `abap-adt-api` or the required pages; do
-not upload a hand-built `.vsix`.
+not upload a hand-built `.vsix`. The short build procedure, including the command for
+macOS/Linux without PowerShell, is in [`vsix.md`](vsix.md).
 
 The tests need Node and nothing else — no SAP system, no editor. Run them from the repository root
 before packaging:
