@@ -685,3 +685,57 @@ test("macOS NVM discovery sorts versions numerically and ignores unusable node i
   const paths = assistant.nodeEnv({ PATH: "/usr/bin:/bin", NVM_DIR: root }, "darwin").PATH.split(":").filter(p => p.startsWith(root));
   assert.deepEqual(paths.map(p => path.basename(path.dirname(p))), ["v26.13.0", "v26.2.0", "v9.9.0"]);
 });
+
+
+test("CodeMie empty catalog reports profile login rather than a default model, then recovers after login", async () => {
+  let loggedIn = false;
+  const spawn = spawner(call => {
+    const overlay = JSON.parse(fs.readFileSync(path.join(call.options.cwd, ".codemie", "codemie-cli.config.json"), "utf8"));
+    assert.equal(overlay.activeProfile, "work");
+    if (call.args.includes("models")) call.child.stdout.emit("data", loggedIn
+      ? "ID   NAME   TYPE\n" + "─".repeat(20) + "\nreal-model   Real model   model\n"
+      : "No models found for provider 'ai-run-sso'.");
+    else { assert.deepEqual(call.args.slice(-2), ["profile", "status"]);call.child.stdout.emit("data", "No SSO credentials found. Authentication required. Run: codemie profile login --url https://codemie.lab.epam.com/code-assistant-api"); }
+    call.child.emit("close", 0);
+  });
+  const opts = { assistant: "codemie", executable: process.platform === "win32" ? "C:\\cli\\codemie-claude.js" : "/cli/codemie-claude", profile: "work", spawn };
+  await assert.rejects(assistant.models(opts), error => {
+    assert.match(error.message, /authentication is required/);
+    assert.match(error.message, /codemie profile login --url https:\/\/codemie.lab.epam.com\/code-assistant-api/);
+    assert.match(error.message, /Profile: work/); assert.doesNotMatch(error.message, /CodeMie default/);return true;
+  });
+  assert.equal(fs.existsSync(spawn.calls[0].options.cwd), false);
+  loggedIn = true;
+  assert.deepEqual((await assistant.models(opts)).map(m => m.id), ["", "real-model"]);
+});
+
+test("CodeMie empty authorized catalog and network failures do not claim missing authentication", async () => {
+  for (const failure of [false, true]) {
+    const spawn = spawner(call => {
+      if (call.args.includes("models")) {call.child.stdout.emit("data", failure ? "Network connection refused" : "No models found for provider 'ai-run-sso'.");call.child.emit("close", failure ? 1 : 0);}
+      else {call.child.stdout.emit("data", "Authenticated successfully");call.child.emit("close", 0);}
+    });
+    await assert.rejects(assistant.models({ assistant: "codemie", executable: "/cli/codemie-claude", spawn }), error => {
+      assert.doesNotMatch(error.message, /authentication is required|CodeMie default/);
+      assert.match(error.message, failure ? /Network connection refused/ : /no usable models/);return true;
+    });
+    assert.equal(spawn.calls.length, failure ? 1 : 2);
+  }
+});
+
+test('streamed tool intent does not claim an edit when tools are controlled by the host',async()=>{
+ for(const localTools of [false,true]){
+  const updates=[],steps=[];
+  const spawn=spawner(call=>{
+   const send=event=>call.child.stdout.emit('data',JSON.stringify(event)+'\n');
+   send({type:'stream_event',event:{type:'content_block_start',index:0,content_block:{type:'tool_use',id:'announced-write',name:'mcp__vertex__Write',input:{}}}});
+   send({type:'stream_event',event:{type:'content_block_start',index:1,content_block:{type:'tool_use',id:'next-command',name:'mcp__vertex__Bash',input:{command:'read logs'}}}});
+   if(localTools)send({type:'assistant',message:{content:[{type:'tool_use',id:'unexecuted-native-write',name:'Write',input:{file_path:'history.md',content:'announced only'}}]}});
+   send({type:'result',subtype:'success',is_error:false,structured_output:PLAN,modelUsage:{}});call.child.emit('close',0);
+  });
+  await assistant.ask(common(spawn,'claude',{localTools,onProgress:update=>updates.push(update),onStep:step=>steps.push(step)}));
+  assert.equal(steps.length,0,'an announced stream block did not execute a host tool');
+  const kinds=updates.filter(update=>Object.hasOwn(update,'kind')).map(update=>update.kind);
+  assert.deepEqual(kinds,localTools?[]:['edit',null]);
+ }
+});

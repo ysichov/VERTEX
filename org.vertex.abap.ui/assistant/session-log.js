@@ -240,7 +240,7 @@ function stepInput(name, input, objects, localCode) {
   if (name === "Write") return { file_path: local(input.file_path), lines: lineCount(input.content), characters: String(input.content || "").length,
     ...(localCode ? { content: String(input.content || "") } : {}) };
   if (name === "Read") return { file_path: local(input.file_path), ...(input.offset ? { offset: input.offset } : {}), ...(input.limit ? { limit: input.limit } : {}) };
-  if (name === "Bash") return { command: String(input.command || ""), ...(input.description ? { description: String(input.description) } : {}) };
+  if (name === "Bash") return { command: String(input.command || ""), ...Object.fromEntries(["purpose", "target", "cwd", "directory"].filter(key => typeof input[key] === "string").map(key => [key, input[key]])), ...(input.description ? { description: String(input.description) } : {}) };
   return sanitize(input, objects);
 }
 /* What came back: a command's output, a search's matches, an error or a refusal in words; a file's text only counted. */

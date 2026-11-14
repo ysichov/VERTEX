@@ -83,7 +83,7 @@ test("the review offers the proposed build once something was applied, and runs 
   const page = { posted: [], send: null };
   const vscode = { window: { createWebviewPanel: () => ({ webview: { set html(v) { page.html = v; }, onDidReceiveMessage: fn => { page.send = fn; },
     postMessage: async m => { page.posted.push(m); } }, onDidDispose() {} }), showErrorMessage() {} }, ViewColumn: { Beside: 2 }, commands: { executeCommand: async () => {} } };
-  const copy = { apply: async () => {}, keep: async () => {}, revert: async () => {} };
+  const copy = { folder: "C:/p", apply: async () => {}, keep: async () => {}, revert: async () => {} };
   const change = { file: "a.js", path: "C:/p/a.js", status: "changed", before: "a\n", after: "b\n", conflict: false };
   const ran = [];
   reviewer.open(vscode, copy, [change], () => {}, { build: { command: "npm test" }, onBuild: async (command, remember) => { ran.push([command, remember]); return { code: 0 }; } });
@@ -93,4 +93,11 @@ test("the review offers the proposed build once something was applied, and runs 
   await page.send({ action: "build", remember: true });
   assert.deepEqual(ran, [["npm test", true]]);
   assert.equal(page.posted.pop().message, "Build passed.");
+});
+
+test('a task-specific package command overrides remembered tests without changing the saved preference',()=>{
+ assert.deepEqual(buildRunner.select('npm test','node vscode/package.js'),{command:'node vscode/package.js',automatic:false});
+ assert.deepEqual(buildRunner.select('npm test',''),{command:'npm test',automatic:true});
+ assert.deepEqual(buildRunner.select('npm test','npm test'),{command:'npm test',automatic:true});
+ assert.deepEqual(buildRunner.select('','node vscode/package.js'),{command:'node vscode/package.js',automatic:false});
 });

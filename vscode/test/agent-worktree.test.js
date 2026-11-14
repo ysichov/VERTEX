@@ -156,3 +156,59 @@ test("refresh: a change still waiting for review is merged with the user's, and 
     assert.equal(fs.readFileSync(path.join(copy.dir, "a.txt"), "utf8"), "ONE\ntwo\nthree\nfour\nFIVE\n", "the copy is left as it was");
   } finally { await copy.remove(); }
 });
+
+
+test("snapshot uses a private index even while the source index is locked; stages and stash stay untouched", async () => {
+  const dir = repo(), run = args => execFileSync("git", args, { cwd: dir, encoding: "utf8" });
+  fs.writeFileSync(path.join(dir, "a.txt"), "staged\n"); run(["add", "a.txt"]);
+  fs.writeFileSync(path.join(dir, "a.txt"), "working\n");
+  fs.mkdirSync(path.join(dir, "build"));
+  fs.writeFileSync(path.join(dir, "build", "tracked.txt"), "staged ignored\n"); run(["add", "-f", "build/tracked.txt"]);
+  fs.writeFileSync(path.join(dir, "build", "tracked.txt"), "current ignored\n");
+  fs.writeFileSync(path.join(dir, "build", "ignored.txt"), "excluded\n");
+  fs.writeFileSync(path.join(dir, "new.txt"), "untracked\n");
+  const index = fs.readFileSync(path.join(dir, ".git", "index")), head = run(["rev-parse", "HEAD"]);
+  const refs = run(["show-ref"]);
+  fs.writeFileSync(path.join(dir, ".git", "index.lock"), "owned by another process");
+  const copy = await worktree.open(dir);
+  try {
+    assert.equal(fs.readFileSync(path.join(copy.dir, "a.txt"), "utf8"), "working\n");
+    assert.equal(fs.readFileSync(path.join(copy.dir, "build", "tracked.txt"), "utf8"), "current ignored\n");
+    assert.equal(fs.existsSync(path.join(copy.dir, "build", "ignored.txt")), false);
+    assert.equal(fs.readFileSync(path.join(copy.dir, "new.txt"), "utf8"), "untracked\n");
+    assert.deepEqual(fs.readFileSync(path.join(dir, ".git", "index")), index);
+    assert.equal(run(["rev-parse", "HEAD"]), head); assert.equal(run(["show-ref"]), refs);
+    assert.equal(fs.readFileSync(path.join(dir, ".git", "index.lock"), "utf8"), "owned by another process");
+    assert.deepEqual(await copy.changes(), []);
+  } finally { await copy.remove(); }
+});
+
+test("snapshot preserves tracked deletions, renames and symlinks", async () => {
+  const dir = repo(), run = args => execFileSync("git", args, { cwd: dir, encoding: "utf8" });
+  fs.writeFileSync(path.join(dir, "remove.txt"), "remove\n");run(["add", "remove.txt"]);
+  run(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "deletion fixture"]);
+  fs.unlinkSync(path.join(dir, "remove.txt"));fs.renameSync(path.join(dir, "a.txt"), path.join(dir, "renamed.txt"));
+  if (process.platform !== "win32") fs.symlinkSync("renamed.txt", path.join(dir, "link"));
+  const copy = await worktree.open(dir);
+  try {
+    assert.equal(fs.existsSync(path.join(copy.dir, "remove.txt")), false);
+    assert.equal(fs.existsSync(path.join(copy.dir, "a.txt")), false);
+    assert.equal(fs.readFileSync(path.join(copy.dir, "renamed.txt"), "utf8"), "one\n");
+    if (process.platform !== "win32") assert.equal(fs.readlinkSync(path.join(copy.dir, "link")), "renamed.txt");
+    assert.deepEqual(await copy.changes(), []);
+  } finally { await copy.remove(); }
+});
+
+
+test("unresolved merge conflicts are reported before creating a snapshot", async () => {
+  const dir = repo(), run = args => execFileSync("git", args, { cwd: dir, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+  const branch = run(["branch", "--show-current"]).trim();
+  run(["checkout", "-qb", "other"]);fs.writeFileSync(path.join(dir, "a.txt"), "other\n");
+  run(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "other"]);
+  run(["checkout", branch]);fs.writeFileSync(path.join(dir, "a.txt"), "main\n");
+  run(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "main"]);
+  assert.throws(() => run(["merge", "other"]));
+  const index = fs.readFileSync(path.join(dir, ".git", "index"));
+  await assert.rejects(worktree.open(dir), /Resolve the Git merge conflicts/);
+  assert.deepEqual(fs.readFileSync(path.join(dir, ".git", "index")), index);
+});

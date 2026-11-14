@@ -36,3 +36,8 @@ test("a step's paths into the working copy become the folder's, in either slash 
   assert.equal(step.input.file_path, String.raw`C:\soft\P\src\a.js`);
   assert.equal(step.input.command, "cat C:/soft/P/b.md");
 });
+
+test("command execution paths and output remain literal in the log instead of being relabeled as project paths",()=>{
+ const {inFolder}=require('../chat'),copy={dir:'/tmp/copy',top:'/project'};
+ for(const step of [{name:'Bash',kind:'use',input:{purpose:'build',target:'working_copy',cwd:'/tmp/copy',command:'package /tmp/copy'}},{name:'Bash',kind:'result',content:'Verified package: /tmp/copy/example.zip'},{name:'mcp__vertex__Bash',input:{cwd:'/tmp/copy'}}])assert.deepEqual(inFolder(step,copy),step);
+});

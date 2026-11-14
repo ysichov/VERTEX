@@ -30,7 +30,7 @@ function run(vscode, folder, command, spawnFn = spawn) {
     };
     let child;
     try {
-      child = spawnFn(command, [], { cwd: folder, shell: process.platform === "win32" ? "powershell.exe" : true, windowsHide: true });
+      child = spawnFn(command, [], { cwd: folder, shell: process.platform === "win32" ? "powershell.exe" : true, env: require("./assistant").nodeEnv(), windowsHide: true });
     } catch (error) {
       out.appendLine("Could not start: " + error.message);
       resolve({ code: -1, tail: error.message });
@@ -60,4 +60,10 @@ async function remember(vscode, folder, command) {
   await vscode.workspace.getConfiguration("vertex.ai", uri).update("buildCommand", command, target);
 }
 
-module.exports = { run, remembered, remember };
+// A current task may request packaging without the tests saved for the folder.
+// A different proposal is offered on the existing review page, never replaced by the saved command.
+function select(saved, proposed) {
+  saved = String(saved || "").trim(); proposed = String(proposed || "").trim();
+  return { command: proposed || saved, automatic: !!saved && (!proposed || proposed === saved) };
+}
+module.exports = { run, remembered, remember, select };

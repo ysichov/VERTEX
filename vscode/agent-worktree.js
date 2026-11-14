@@ -14,10 +14,11 @@ const path = require("path");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 
-function git(cwd, args, buffer) {
+function git(cwd, args, buffer, env) {
   return new Promise((resolve, reject) => execFile("git", args, { cwd, windowsHide: true, maxBuffer: 512 * 1024 * 1024,
-    encoding: buffer ? "buffer" : "utf8" }, (error, out, err) => error
-      ? reject(new Error("git " + args.filter(a => !/^-c$|=/.test(a))[0] + " failed: " + String(err || error.message).trim()))
+    encoding: buffer ? "buffer" : "utf8", ...(env ? { env: { ...process.env, ...env } } : {}) }, (error, out, err) => error
+      ? reject(new Error("git " + args.find(a => !a.startsWith("-") && !a.includes("=")) + " failed (" + (error.code ?? error.signal ?? "unknown") + "): "
+        + String(err || out || error.message).trim().slice(-4000)))
       : resolve(out)));
 }
 
@@ -34,17 +35,32 @@ async function open(folder, options = {}) {
   if (!top) return null;
   const head = (await git(top, ["rev-parse", "--verify", "-q", "HEAD"]).catch(() => "")).trim();
   if (!head) throw new Error("The repository at " + top + " has no commit yet, so no working copy can be made for review.");
+  if ((await git(top, ["ls-files", "--unmerged", "-z"])).length) {
+    throw new Error("Resolve the Git merge conflicts in " + top + " before starting the assistant working copy.");
+  }
   await git(top, ["worktree", "prune"]);
-  // The folder's tracked state, uncommitted changes included; HEAD when there are none.
-  const base = (await git(top, ["stash", "create"])).trim() || head;
+  // Use a private index: stash create refreshes/locks the user's index, even for a read-only request.
+  // Snapshot the actual files (rather than the staged versions), including new non-ignored files.
+  const snapshot = fs.mkdtempSync(path.join(options.tmp || os.tmpdir(), "vertex-snapshot-"));
+  const env = { GIT_INDEX_FILE: path.join(snapshot, "index") };
+  let base;
+  try {
+    await git(top, ["read-tree", head], false, env);
+    await git(top, ["add", "-A"], false, env);
+    // A newly staged file can be ignored by the current rules; it is still part of the user's project.
+    const ignored = (await git(top, ["ls-files", "--cached", "--ignored", "--exclude-standard", "-z"])).split("\0")
+      .filter(file => { if (!file) return false; try { fs.lstatSync(path.join(top, file)); return true; } catch (error) { if (error.code === "ENOENT") return false; throw error; } });
+    if (ignored.length) {
+      const files = path.join(snapshot, "paths");
+      fs.writeFileSync(files, ignored.join("\0") + "\0");
+      await git(top, ["--literal-pathspecs", "add", "--force", "--pathspec-from-file=" + files, "--pathspec-file-nul"], false, env);
+    }
+    const tree = (await git(top, ["write-tree"], false, env)).trim();
+    base = (await git(top, COMMIT.concat(["commit-tree", tree, "-p", head, "-m", "VERTEX review snapshot"]), false, env)).trim();
+  } finally { fs.rmSync(snapshot, { recursive: true, force: true }); }
   const dir = path.join(options.tmp || os.tmpdir(), "vertex-wt-" + crypto.randomBytes(5).toString("hex"));
   await git(top, ["worktree", "add", "--detach", dir, base]);
   try {
-    const untracked = (await git(top, ["ls-files", "--others", "--exclude-standard", "-z"])).split("\0").filter(Boolean);
-    for (const file of untracked) {
-      fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
-      fs.copyFileSync(path.join(top, file), path.join(dir, file));
-    }
     await git(dir, ["add", "-A"]);
     await git(dir, COMMIT.concat(["commit", "-q", "--no-verify", "--allow-empty", "-m", "VERTEX review baseline"]));
   } catch (error) {

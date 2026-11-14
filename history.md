@@ -1,3 +1,16 @@
+## 2026-11-14 — Logs & Cost, build targets and project rules for the assistant
+
+**Session Logs and Usage & Cost are one window, Logs & Cost**, in VS Code and Eclipse. A **Logs | Usage & Cost** switch and one date range serve both views: Today by default, calendar inputs, week/month/year or a custom range, and previous/next period. Dates and provider filters survive switching views. Conversation rows show Model and Jev costs separately; CodeMie CLI totals are marked as estimates (≈), not the service bill or project budget spending. Claude subscription estimates are excluded from recorded USD totals. The chat's log button in Eclipse has a new icon and title. Usage & Cost tables support sorting by any column and display USD amounts to at most six decimal places.
+
+**Assistant, local folder work.**
+- Bash takes an explicit purpose (`command`, `build`, `artifact`) and target (working copy, real project, or a folder you name). Builds default to the real project and warn that unapplied changes are not included; the log records the folder actually used.
+- A build you ask for in the current task (for example without tests) overrides the saved build command for that review.
+- The assistant receives the complete AGENTS.md/CLAUDE.md rules and the real log locations with each request, and does not claim a rule is missing from a partial read.
+- The working copy is snapshotted through a private Git index: your index, stash and branches are untouched, and unresolved merge conflicts are reported first.
+- CodeMie with an empty model catalog now tells you to run `codemie profile login` instead of offering a default model.
+- The changes review has **Files** and **Wrap** toggles (file tree, long-line wrapping).
+- The editing animation now follows host-controlled file operations rather than an announced CLI tool call. It clears when Edit/Write finishes or a shell command starts, so reading logs does not keep a stale editing spiral.
+
 ## 2026-11-14 — Run an MCP tool from the Tools window
 
 The VERTEX Tools window now offers **MCP** as an object type. The name field lists the

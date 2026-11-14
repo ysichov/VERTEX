@@ -28,7 +28,9 @@ const lf = text => String(text).replace(/\r\n/g, "\n");
 
 function describe(name, input) {
   const args = input || {};
-  if (name === "Bash") return "Run command:\n\n" + String(args.command || "");
+  if (name === "Bash") return "Run command" + (args.purpose ? " (" + args.purpose + ")" : "") + ":\n\n" + String(args.command || "")
+    + (args.cwd ? "\n\nFolder: " + args.cwd + (args.target ? " [" + args.target + "]" : "") : "")
+    + (args.warning ? "\n\n" + args.warning + "\n" + (args.unapplied_changes || []).join("\n") : "");
   return name + ":\n\n" + JSON.stringify(args, null, 2);
 }
 

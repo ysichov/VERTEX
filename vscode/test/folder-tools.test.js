@@ -6,16 +6,16 @@ const tools = require("../folder-tools");
 
 function fixture(t, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-local-tools-"));
-  const page = {};
+  const page = {}, asked = [];
   const vscode = { ViewColumn: { Beside: 2 }, window: {
-    showWarningMessage: async () => options.allow ? "Allow" : undefined,
+    showWarningMessage: async text => { asked.push(text); return options.allow ? "Allow" : undefined; },
     createWebviewPanel: () => ({ webview: { html: "", onDidReceiveMessage: fn => { page.send = fn; }, postMessage: async () => {} },
       onDidDispose: fn => { page.close = fn; }, dispose: () => page.close(), reveal() {} }) } };
   const steps = [];
   const agent = tools.create(vscode, { cwd: root, reviewAfter: true, onStep: step => steps.push(step), ...options });
   t.after(() => { agent.dispose(); fs.rmSync(root, { recursive: true, force: true }); });
   fs.writeFileSync(path.join(root, "a.txt"), "one\ntwo\n");
-  return { root, agent, page, steps };
+  return { root, agent, page, steps, asked };
 }
 test("a Glob pattern ending in / lists folders, not files", async t => {
   const { agent, root } = fixture(t);
@@ -130,4 +130,57 @@ test('environment identifies the executing host and separates bundled runtime fr
  assert.match(data.dependencyStatus,/not verified/);assert.match(data.dependencyStatus,/does not imply node is on PATH/);
  assert.equal(tools.environment('').includes('"workingDirectory":null'),true);
  assert.equal(text.includes(process.env.PATH||'impossible env value'),false);
+});
+
+test('commands default to the copy, builds default to the real project, and explicit targets report their actual cwd',async t=>{
+ const project=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-real-project-'));
+ const elsewhere=fs.mkdtempSync(path.join(os.tmpdir(),'vertex requested folder '));
+ t.after(()=>{fs.rmSync(project,{recursive:true,force:true});fs.rmSync(elsewhere,{recursive:true,force:true});});
+ const {agent,root,asked,steps}=fixture(t,{projectFolder:project,shellWithoutAsking:true,allow:true,pendingChanges:async()=>[{file:'unapplied.txt'}]});
+ const command=process.platform==='win32'?'(Get-Location).Path':'pwd';
+ const diagnostic=await agent.call('Bash',{command,purpose:'command'});
+ assert.equal(diagnostic.cwd,fs.realpathSync(root));assert.equal(diagnostic.target,'working_copy');assert.equal(asked.length,0);
+ const build=await agent.call('Bash',{command,purpose:'build'});
+ assert.equal(build.cwd,fs.realpathSync(project));assert.equal(build.target,'project');assert.equal(fs.realpathSync(build.stdout.trim()),build.cwd);
+ assert.deepEqual(build.unapplied_changes,['unapplied.txt']);assert.match(build.warning,/unapplied/);
+ assert.match(asked[0],/Folder:/);assert.ok(asked[0].includes(build.cwd));assert.match(asked[0],/unapplied.txt/);
+ const copyBuild=await agent.call('Bash',{command,purpose:'build',target:'working_copy'});
+ assert.equal(copyBuild.cwd,diagnostic.cwd);assert.equal(asked.length,1);
+ const custom=await agent.call('Bash',{command,purpose:'build',target:'directory',directory:elsewhere});
+ assert.equal(custom.cwd,fs.realpathSync(elsewhere));assert.equal(fs.realpathSync(custom.stdout.trim()),custom.cwd);assert.equal(custom.target,'directory');assert.equal(asked.length,2);
+ assert.equal(steps.filter(step=>step.kind==='use').at(-1).input.cwd,custom.cwd);
+ fs.writeFileSync(path.join(project,'source.txt'),'real source');
+ await assert.rejects(agent.call('Read',{file_path:path.join(project,'source.txt')}),/outside/);
+ for(const args of [{target:'unknown'},{target:'directory'},{target:'directory',directory:'relative'},{target:'project',directory:elsewhere},{purpose:'unknown'}])await assert.rejects(agent.call('Bash',{command,...args}),/target|purpose|directory/);
+});
+
+test('a build denied in the real project never executes even when copy shell approval is disabled',async t=>{
+ const project=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-build-denied-'));
+ t.after(()=>fs.rmSync(project,{recursive:true,force:true}));
+ const {agent,asked}=fixture(t,{projectFolder:project,shellWithoutAsking:true,allow:false});
+ await assert.rejects(agent.call('Bash',{command:'exit 0',purpose:'build'}),/denied/);
+ assert.equal(asked.length,1);assert.ok(asked[0].includes(fs.realpathSync(project)));
+});
+
+test('an ignored binary build output can be transferred to the project without source review',async t=>{
+ const project=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-artifact-target-'));
+ t.after(()=>fs.rmSync(project,{recursive:true,force:true}));
+ const {agent,root}=fixture(t,{projectFolder:project,allow:true});
+ fs.writeFileSync(path.join(root,'example.zip'),Buffer.from([0,1,2,255]));
+ fs.writeFileSync(path.join(project,'copy-artifact.js'),"require('fs').copyFileSync(process.argv[2],'example.zip');");
+ const prefix=process.platform==='win32'?'& ':'';
+ const result=await agent.call('Bash',{purpose:'artifact',command:prefix+'"'+process.execPath+'" copy-artifact.js "'+path.join(root,'example.zip')+'"'});
+ assert.equal(result.code,0,result.stderr);assert.equal(result.target,'project');
+ assert.deepEqual(fs.readFileSync(path.join(project,'example.zip')),fs.readFileSync(path.join(root,'example.zip')));
+});
+
+test('project rules are supplied in full with inherited rules before nearer rules; incomplete reads are explicit',t=>{
+ const {root}=fixture(t),sub=path.join(root,'src');fs.mkdirSync(sub);
+ const text=Array.from({length:620},(_,i)=>'rule '+i).join('\n');
+ fs.writeFileSync(path.join(root,'AGENTS.md'),text);fs.writeFileSync(path.join(sub,'CLAUDE.md'),'Nested rule');
+ const rules=tools.projectRules(sub,root);
+ assert.equal(rules.length,2);assert.equal(rules[0].text,text);assert.equal(rules[0].complete,true);assert.equal(rules[1].text,'Nested rule');
+ fs.writeFileSync(path.join(root,'AGENTS.md'),'x'.repeat(65537));
+ const large=tools.projectRules(sub,root)[0];assert.equal(large.complete,false);assert.equal(large.text,undefined);assert.match(large.error,/complete file in pages/);
+ assert.throws(()=>tools.projectRules(path.dirname(root),root),/outside/);
 });

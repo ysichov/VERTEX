@@ -936,11 +936,12 @@ const progressItems = new Map();
 const taskVisuals=${JSON.stringify(["review", "commit", "search", "mcp", "edit", "recognize"].reduce((all, kind) =>
   Object.assign(all, { [kind]: require(require("path").join(__dirname, "task-visual")).html(kind, true) }), {}))};
 function paintTaskScene(item,update){
+      if(update.kind===null){item.dataset.taskKind='';item.dataset.taskSubject='';}
       if(['review','commit','search','mcp','edit','recognize'].includes(update.kind))item.dataset.taskKind=update.kind;
       // What a search is looking for travels with the step, so its band can spell the pattern out.
       if(typeof update.subject==='string')item.dataset.taskSubject=update.subject;
       let scene=item.querySelector('.task-scene');
-      if(update.done){if(scene)scene.remove();}
+      if(update.done||update.kind===null){if(scene)scene.remove();}
       else if(taskVisuals[item.dataset.taskKind]){if(!scene){scene=document.createElement('span');scene.className='task-scene';scene.setAttribute('aria-hidden','true');item.appendChild(scene);}const want=item.dataset.taskKind,said=item.dataset.taskSubject||'';
         if(scene.dataset.kind!==want||scene.dataset.said!==said){scene.dataset.kind=want;scene.dataset.said=said;
         scene.innerHTML=want==='search'&&said&&typeof window!=='undefined'&&window.vertexTaskVisual?window.vertexTaskVisual.html('search',false,said):taskVisuals[want];

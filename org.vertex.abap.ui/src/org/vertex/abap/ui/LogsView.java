@@ -61,7 +61,7 @@ public class LogsView extends PageView {
 
 	@Override
 	protected String title(String object) {
-		return "VERTEX: Session Logs";
+		return "VERTEX: Logs & Cost";
 	}
 
 	@Override

@@ -30,3 +30,13 @@ test("Session Logs read a log and draw its snapshot in a browser context, the no
   assert.ok(asked > 0);
   assert.equal(logs.objectReference({ review_object: "ZCL_A=====CM001", review_type: "METH" }).object_type, "CLAS");
 });
+
+ test("Eclipse computes the same CodeMie and Jev costs from host-read files",()=>{
+ const window={crypto:{getRandomValues:bytes=>bytes.fill(1)}};vm.runInNewContext(bundle(root),{window});
+ const text=[{type:"user",message:{content:"Question"}},{type:"vertex_provider_response",provider:"codemie",scope:"model_response",response:{id:"one",model:"m",usage:{input_tokens:2}}},{type:"vertex_provider_response",provider:"codemie",scope:"cli_run",response:{total_cost_usd:0.25,modelUsage:{m:{costUSD:0.25}}}}].map(record=>JSON.stringify({timestamp:"2026-11-14T12:00:00Z",...record})).join("\n");
+ const files=[{name:"codemie_20261114_120000.jsonl",text}];
+ const expected=require("../vscode/usage-report").parseUsage(files),actual=window.vertexLogs.parseUsage(files);
+ assert.deepEqual(JSON.parse(JSON.stringify(actual)),expected);
+ assert.equal(window.vertexLogs.aggregate(actual).costs.model.cost,0.25);
+ assert.equal(window.vertexLogs.aggregate(actual).total.calls,1);
+ });

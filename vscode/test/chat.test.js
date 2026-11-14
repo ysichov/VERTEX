@@ -943,3 +943,78 @@ test('A stage exceeding six actions is cancelled and summarized as blocked inste
  });
  const ask=chat.create(fakeVscode({provider:'openai-api',model:'test'}),tools,null,{});const result=await ask('Investigate changes');assert.equal(actions,6);assert.equal(selections,1);assert.match(result.answer,/action limit/);ask.dispose();
 });
+
+test('an explicit build without tests runs through Bash without requiring source edits',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-build-request-'));
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(root,'AGENTS.md'),'Project rule: update change history for features.\nEND_OF_RULES');
+ fs.writeFileSync(path.join(root,'build.js'),"require('fs').writeFileSync('example.vsix','packaged');");
+ const copyDir=path.join(root,'working-copy');fs.mkdirSync(copyDir);fs.copyFileSync(path.join(root,'AGENTS.md'),path.join(copyDir,'AGENTS.md'));
+ const copy={folder:root,top:root,cwd:copyDir,refresh:async()=>[],changes:async()=>[],remove:async()=>{}};
+ t.mock.method(require('../agent-worktree'),'open',async()=>copy);
+ t.mock.method(compatible,'models',async()=>[{id:'build-model',capabilities:{tools:true}}]);
+ let received;
+ t.mock.method(compatible,'ask',async options=>{
+  received=options;
+  const result=await options.callTool('Bash',{command:(process.platform==='win32'?'& ':'')+'"'+process.execPath+'" build.js',purpose:'build',description:'Package without tests',timeout:300000});
+  assert.equal(result.cwd,fs.realpathSync(root));assert.equal(result.target,'project');
+  assert.equal(result.code,0,result.stderr);
+  return {model:'build-model',plan:{answer:'Built example.vsix; tests skipped as requested.',navigation:null,build_command:''}};
+ });
+ const vscode=fakeVscode({provider:'vercel-api',model:'build-model',shellWithoutAsking:true,logPath:path.join(root,'actual-logs')});
+ vscode.window.showWarningMessage=async()=>"Allow";
+ vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];
+ const ask=chat.create(vscode,{schemas:[],instructions:'',editorContext:()=>null},null,{get:async()=>null});
+ const result=await ask('Build the VSIX now without tests',{contextMode:'folder'});
+ assert.match(result.answer,/Built example/);
+ assert.equal(fs.readFileSync(path.join(root,'example.vsix'),'utf8'),'packaged');
+ assert.match(received.instructions,/purpose=build: it defaults to the real project folder/);
+ assert.match(received.instructions,/skip optional test suites/);
+ assert.match(received.instructions,/regardless of its language or build system/);
+ assert.match(received.instructions,/do not assume Node, PowerShell, VSIX or any particular project/);
+ assert.doesNotMatch(received.instructions,/do not run them in the working copy/);
+ assert.ok(received.prompt.includes('END_OF_RULES'));
+ assert.ok(received.prompt.includes(path.join(root,'actual-logs','claude_compatible')));
+ assert.match(received.prompt,/current_file/);assert.match(received.prompt,/configured_root/);
+ assert.match(received.instructions,/Never claim a rule is absent from a partial read/);
+ assert.match(received.instructions,/Explicit user instructions and later corrections override project defaults/);
+ assert.match(received.schema.properties.build_command.description,/standalone build request with no edits/);
+});
+
+test('CLI assistants use the same host-controlled command targets instead of a separate native shell',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-native-targets-')),copyDir=path.join(root,'copy');fs.mkdirSync(copyDir);
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ t.mock.method(require('../agent-worktree'),'open',async()=>({folder:root,top:root,cwd:copyDir,refresh:async()=>[],changes:async()=>[],remove:async()=>{}}));
+ let endpoint,seen=[];
+ const server={token:'test',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:options=>{endpoint=options;return {route:'/targets',dispose(){}};}};
+ t.mock.method(assistant,'ask',async options=>{
+  seen.push(options.assistant);assert.equal(options.localTools,true);
+  const result=JSON.parse((await endpoint.call(null,'Bash',{purpose:'build',command:process.platform==='win32'?'(Get-Location).Path':'pwd'})).content[0].text);
+  assert.equal(result.target,'project');assert.equal(result.cwd,fs.realpathSync(root));assert.equal(result.code,0);
+  return {model:'test',plan:{answer:'Built',navigation:null,build_command:''}};
+ });
+ for(const provider of ['claude','codemie','codex']){
+  const vscode=fakeVscode({provider:provider==='claude'?'claude-subscription':provider==='codex'?'codex-subscription':provider,model:'test'});vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];vscode.window.showWarningMessage=async()=> 'Allow';
+  await chat.create(vscode,{schemas:[],instructions:'',editorContext:()=>null},server)('Build in my project',{contextMode:'folder'});
+ }
+ assert.deepEqual(seen,['claude','codemie','codex']);
+});
+
+test('host edit completion and a subsequent Bash command clear the edit scene',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-scene-host-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(root,'a.txt'),'before');
+ t.mock.method(require('../agent-worktree'),'open',async()=>({folder:root,top:root,cwd:root,refresh:async()=>[],changes:async()=>[],remove:async()=>{}}));
+ t.mock.method(compatible,'models',async()=>[{id:'model',capabilities:{tools:true}}]);
+ t.mock.method(compatible,'ask',async options=>{
+  await options.callTool('Read',{file_path:'a.txt'});
+  await options.callTool('Edit',{file_path:'a.txt',old_string:'before',new_string:'after'});
+  await options.callTool('Bash',{command:'exit 0',purpose:'command'});
+  return {model:'model',plan:{answer:'done',navigation:null,build_command:''}};
+ });
+ const vscode=fakeVscode({provider:'vercel-api',model:'model',shellWithoutAsking:true});vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];
+ const updates=[];await chat.create(vscode,{schemas:[],instructions:'',editorContext:()=>null},null,{get:async()=>null})('Edit then inspect',{contextMode:'folder',onProgress:update=>updates.push(update)});
+ const edit=updates.findIndex(update=>update.kind==='edit');assert.ok(edit>=0);
+ assert.equal(updates[edit+1].kind,null,'edit result clears the helix');
+ assert.equal(updates.find(update=>/— Bash/.test(update.status||'')).kind,null,'Bash explicitly clears prior scene');
+ assert.equal(fs.readFileSync(path.join(root,'a.txt'),'utf8'),'after');
+});

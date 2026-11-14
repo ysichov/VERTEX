@@ -12,11 +12,12 @@ test("chat review scene survives progress updates and is removed on completion o
  const dirname=path.join(__dirname,".."),sandbox={module:{exports:{}},require,__dirname:dirname};vm.runInNewContext(fs.readFileSync(path.join(dirname,"sidebar.js"),"utf8")+"\nmodule.exports.render=html;",sandbox);
  const script=sandbox.module.exports.render("test").match(/<script nonce="test">([\s\S]*?)<\/script>/)[1],start=script.indexOf("function paintTaskScene("),end=script.indexOf("\n}\n",start)+2;
  const item={dataset:{},children:[],setAttribute(name,value){this[name]=value;},querySelector(){return this.children[0];},appendChild(child){this.children.push(child);}};
- const context={taskVisuals:{review:visual.html("review"),commit:visual.html("commit")},document:{createElement(){return {dataset:{},setAttribute(){},remove(){item.children=[];}};}}};vm.runInNewContext(script.slice(script.indexOf("function operationStatus("),script.indexOf("document.querySelectorAll('#status')"))+script.slice(start,end),context);
+ const context={window:{},taskVisuals:{review:visual.html("review"),commit:visual.html("commit"),edit:visual.html("edit")},document:{createElement(){return {dataset:{},setAttribute(){},remove(){item.children=[];}};}}};vm.runInNewContext(script.slice(start,end),context);
  context.paintTaskScene(item,{kind:"review"});const first=item.children[0];assert.match(first.innerHTML,/review-lens/);assert.equal(item['aria-busy'],"true");
  context.paintTaskScene(item,{status:"Model request"});assert.equal(item.children[0],first);
  context.paintTaskScene(item,{done:true,answer:"Request failed"});assert.equal(item.children.length,0);assert.equal(item['aria-busy'],"false");
  context.paintTaskScene(item,{kind:"commit"});assert.match(item.children[0].innerHTML,/commit-link/);context.paintTaskScene(item,{done:true});assert.equal(item.children.length,0);
+ context.paintTaskScene(item,{kind:"edit"});assert.match(item.children[0].innerHTML,/hx-/);context.paintTaskScene(item,{kind:null,status:"Bash"});assert.equal(item.children.length,0);assert.equal(item.dataset.taskKind,"");context.paintTaskScene(item,{thinking:"Reading logs"});assert.equal(item.children.length,0);
 });
 
 test("commit waiting visual covers generation and commit, and stops after success or failure",()=>{

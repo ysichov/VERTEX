@@ -27,8 +27,12 @@ const schemas = [
     { file_path: str("File path."), old_string: str("Exact existing text."), new_string: str("Replacement text."), replace_all: { type: "boolean" } }, ["file_path", "old_string", "new_string"]),
   schema("Write", "Create a UTF-8 file or replace a previously read file. Changes are reviewed by the user.",
     { file_path: str("File path."), content: str("Complete file contents.") }, ["file_path", "content"]),
-  schema("Bash", "Run a project command in the working folder (Windows PowerShell 5.1 on Windows, sh elsewhere). The working folder is already cwd: use git log -1 --oneline directly. On Windows do not use &&, /c/... paths, or Unix commands; use one command per call. Glob excludes .git by design, so an empty .git glob does not mean there is no repository. VERTEX requests approval unless shellWithoutAsking is enabled for a Git copy. Do not use this to edit files. Propose post-review builds in build_command instead.",
-    { command: str("Command to run."), description: str("Purpose of the command."), timeout: integer("Timeout in milliseconds, at most 120000.") }, ["command"])
+  schema("Bash", "Run a command with an explicit purpose and execution target. purpose=command defaults to working_copy; purpose=build or artifact defaults to project (the real project folder). Use target=directory with an absolute directory only when the user names another folder; use target=working_copy when the user explicitly requests a build in the copy. Never use shell commands to edit source files; generated build outputs and requested artifact copies are allowed. A project build does not include unapplied changes from the copy. On Windows this runs in PowerShell 5.1: one command per call, no && or ||. Elsewhere use POSIX sh. A working_copy command may use shellWithoutAsking; commands outside the copy use the existing command approval. The result reports the actual cwd and target. Respect requests to skip optional tests; keep packaging integrity checks.",
+    { command: str("Command to run."), purpose: { type: "string", enum: ["command", "build", "artifact"], description: "command for diagnostics or other work; build for building, packaging or build prerequisites; artifact for copying a completed package." },
+      target: { type: "string", enum: ["working_copy", "project", "directory"], description: "Optional execution target. Defaults to project for build/artifact, working_copy otherwise." },
+      directory: str("Absolute existing directory; required only with target=directory, as requested by the user. Do not use cd to conceal a different target."),
+      description: str("Purpose of the command."), timeout: integer("Timeout in milliseconds, default 120000, at most 900000 (15 minutes) for builds.") }, ["command", "purpose"])
+
 ];
 
 function glob(pattern) {
@@ -49,6 +53,18 @@ function glob(pattern) {
 
 function create(vscode, options) {
   const root = fs.realpathSync(options.cwd);
+  const project = fs.realpathSync(options.projectFolder || options.cwd);
+  function commandLocation(args) {
+    const purpose = args.purpose || "command";
+    if (!["command", "build", "artifact"].includes(purpose)) throw new Error("Unknown command purpose.");
+    const target = args.target || (purpose === "command" ? "working_copy" : "project");
+    if (!["working_copy", "project", "directory"].includes(target)) throw new Error("Unknown command target.");
+    if (target !== "directory" && args.directory) throw new Error("directory is only valid with target=directory.");
+    if (target === "directory" && (typeof args.directory !== "string" || args.directory.includes("\0") || !path.isAbsolute(args.directory))) throw new Error("target=directory requires an absolute existing directory requested by the user.");
+    const cwd = target === "directory" ? fs.realpathSync(args.directory) : target === "project" ? project : root;
+    if (!fs.statSync(cwd).isDirectory()) throw new Error("Command target is not a directory.");
+    return { purpose, target, cwd };
+  }
   const approve = approval.set(vscode);
   const seen = new Map();
   const controller = new AbortController();
@@ -174,14 +190,17 @@ function create(vscode, options) {
     }
     if (name === "Bash") {
       if (typeof args.command !== "string" || !args.command.trim()) throw new Error("A command is required.");
-      if (!options.reviewAfter || !options.shellWithoutAsking) await permission(name, args);
+      const location = commandLocation(args);
+      const unapplied = location.cwd !== root && options.pendingChanges ? (await options.pendingChanges()).map(change => change.file) : [];
+      const details = { ...args, ...location, ...(unapplied.length ? { unapplied_changes: unapplied, warning: "This command runs outside the working copy and does not include its unapplied changes." } : {}) };
+      if (location.cwd !== root || !options.reviewAfter || !options.shellWithoutAsking) await permission(name, details);
       active();
       const win = process.platform === "win32";
       return new Promise(resolveCommand => execFile(win ? "powershell.exe" : "/bin/sh",
         win ? ["-NoProfile", "-NonInteractive", "-Command", "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding; $OutputEncoding = [Console]::OutputEncoding; " + args.command] : ["-lc", args.command],
-        { cwd: root, windowsHide: true, timeout: Math.min(120000, Math.max(1000, Number(args.timeout) || 120000)),
+        { cwd: location.cwd, env: require("./assistant").nodeEnv(), windowsHide: true, timeout: Math.min(900000, Math.max(1000, Number(args.timeout) || 120000)),
           maxBuffer: 128 * 1024, signal: controller.signal },
-        (error, stdout, stderr) => resolveCommand({ code: error ? error.code || -1 : 0,
+        (error, stdout, stderr) => resolveCommand({ ...location, ...(unapplied.length ? { unapplied_changes: unapplied, warning: details.warning } : {}), code: error ? error.code || -1 : 0,
           stdout: String(stdout).slice(-8000), stderr: String(stderr).slice(-4000),
           ...(error ? { error: error.message.slice(0, 2000) } : {}),
           ...(win && /InvalidEndOfLine/.test(String(stderr)) ? { hint: "Windows PowerShell 5.1 does not support && or ||. The project folder is already cwd; retry the single command directly, e.g. git log -1 --oneline. Git did not run. Do not substitute a changelog for Git output." } : {}) })));
@@ -195,7 +214,7 @@ function create(vscode, options) {
       const run = serial.then(async () => {
         active();
         const id = "local_" + crypto.randomBytes(8).toString("hex");
-        const input = { ...args };
+        const input = { ...args, ...(name === "Bash" ? commandLocation(args) : {}) };
         for (const key of ["file_path", "path"]) if (input[key]) input[key] = resolve(input[key]);
         if (options.onStep) options.onStep({ kind: "use", id, name, input, provider: "local" });
         try {
@@ -214,6 +233,26 @@ function create(vscode, options) {
 }
 
 
+// Reuse the selected source tree: inherited root rules come before nearer directory rules.
+// Oversized/unreadable rules are explicit, never silently presented as fully read.
+function projectRules(cwd, boundary = cwd) {
+  const root = path.resolve(boundary), current = path.resolve(cwd), relative = path.relative(root, current);
+  if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) throw new Error("Rule directory is outside the source tree.");
+  const directories = [root];
+  for (const part of relative.split(path.sep).filter(Boolean)) directories.push(path.join(directories.at(-1), part));
+  const rules = [];
+  for (const directory of directories) for (const name of ["AGENTS.md", "CLAUDE.md"]) {
+    const file = path.join(directory, name);
+    try {
+      const stat = fs.lstatSync(file);
+      if (!stat.isFile() || stat.isSymbolicLink()) { rules.push({ path: file, complete: false, error: "Not a regular rule file; inspect before editing." }); continue; }
+      if (stat.size > 65536) { rules.push({ path: file, complete: false, bytes: stat.size, error: "Read the complete file in pages before editing; it was not embedded." }); continue; }
+      rules.push({ path: file, complete: true, text: fs.readFileSync(file, "utf8") });
+    } catch (error) { if (error.code !== "ENOENT") rules.push({ path: file, complete: false, error: error.message }); }
+  }
+  return rules;
+}
+
 // Report the extension host, which also executes VERTEX local tools (including remote VS Code hosts).
 function environment(cwd) {
   const os = require("node:os");
@@ -229,4 +268,4 @@ function environment(cwd) {
   }) + "\n\n";
 }
 
-module.exports = { schemas, create, environment };
+module.exports = { schemas, create, environment, projectRules };

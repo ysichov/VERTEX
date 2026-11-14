@@ -314,7 +314,7 @@
       },
       {
         "command": "vertex.showUsage",
-        "title": "VERTEX: Usage & Cost",
+        "title": "VERTEX: Logs & Cost",
         "icon": {
           "light": "images/dollar-light.svg",
           "dark": "images/dollar-dark.svg"
@@ -1469,11 +1469,6 @@
           "command": "vertex.showUsage",
           "when": "view == vertex.launcher",
           "group": "navigation@2.5"
-        },
-        {
-          "command": "vertex.showLogs",
-          "when": "view == vertex.launcher",
-          "group": "navigation@3"
         },
         {
           "command": "vertex.openSapDebugRuns",

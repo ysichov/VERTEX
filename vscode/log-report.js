@@ -89,6 +89,7 @@ function parseSession(text, file) {
   const session = { id: name, provider, conversation: null, context: null, start: null, end: null, usage: emptyUsage(), prompts: [], models: [] };
   const seen = new Set();
   const toolCalls = new Map();
+  const nativeCosts = new Map(), reportedCosts = new Set();
   let current;
   for (const line of text.split(/\r?\n/)) {
     if (!line.trim()) continue;
@@ -117,6 +118,13 @@ function parseSession(text, file) {
     }
     const content = record.message?.content;
     if (record.type === "vertex_provider_response") {
+      if(current && record.scope === "cli_run") {
+        const estimates = require("./usage-report").cliEstimates(record.provider || provider, record.response);
+        if(estimates.length) {
+          if(!nativeCosts.has(current))nativeCosts.set(current,new Map());
+          nativeCosts.get(current).set(record.response?.id || JSON.stringify(record.response), estimates.reduce((sum,item)=>sum+item.cost,0));
+        }
+      }
       if (current && record.scope === "request_error") current.failed = true;
       // A model call within the run is a step of the timeline: the events Claude Code sends for one message (its
       // text, then a tool call) share the message id and are one step. The run's total stays a detail of its own.
@@ -196,6 +204,7 @@ function parseSession(text, file) {
     if (message.id && seen.has(message.id)) continue;
     if (message.id) seen.add(message.id);
     if (message.usage) {
+      if(current && Number.isFinite(message.usage.cost_usd))reportedCosts.add(current);
       if (current && Object.prototype.hasOwnProperty.call(message.usage, "cost_usd")) {
         const last = current.timeline.filter(entry => entry.kind === "model").pop();
         if (last && (!message.usage.generation_id || last.id === message.usage.generation_id)) last.usage = message.usage;
@@ -221,6 +230,16 @@ function parseSession(text, file) {
       }
     }
   }
+  // Apply run estimates as cost only: the assistant records already carry the run's tokens.
+  for(const [prompt,costs] of nativeCosts) {
+    if(reportedCosts.has(prompt))continue;
+    const cost=[...costs.values()].reduce((sum,value)=>sum+value,0);
+    session.usage.cost=(session.usage.cost||0)-(prompt.usage.cost||0)+cost;
+    session.usage.costEstimated=(session.usage.costEstimated||0)-(prompt.usage.costEstimated||0)+costs.size;
+    if(prompt.usage.costMissing)session.usage.costMissing=Math.max(0,(session.usage.costMissing||0)-prompt.usage.costMissing);
+    prompt.usage.cost=cost;prompt.usage.costEstimated=costs.size;delete prompt.usage.costMissing;
+  }
+  for(const prompt of session.prompts)prompt.costKind=require("./usage-report").costKind(prompt.operation,provider,prompt.model);
   // Claude Code streams its answer as plain text before the structured one, so the last "note" of a run is often
   // the answer itself: a note the answer contains is not shown twice.
   const flat = text => String(text || "").replace(/\s+/g, " ").trim();
@@ -446,13 +465,13 @@ function currentPlace(vscode) {
 let panel;
 function open(vscode, options = {}) {
   if (panel) { panel.reveal(vscode.ViewColumn.Beside, false); return panel; }
-  panel = vscode.window.createWebviewPanel("vertex.logReport", "VERTEX: Session Logs", vscode.ViewColumn.Beside,
+  panel = vscode.window.createWebviewPanel("vertex.logReport", "VERTEX: Logs & Cost", vscode.ViewColumn.Beside,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
   const nonce = crypto.randomBytes(16).toString("hex");
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
     .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
-    .replace("</head>", () => '<script nonce="' + nonce + '">window.vertexCanContinue = true;window.vertexCanReadVersions = ' + Boolean(options.readVersion) + ';window.vertexCanTagTopics = ' + require("./review-jev").enabled(vscode) + ';</script></head>')
+    .replace("</head>", () => '<script nonce="' + nonce + '">' + require("./usage-report").browserEngine() + 'window.vertexCanContinue = true;window.vertexCanReadVersions = ' + Boolean(options.readVersion) + ';window.vertexCanTagTopics = ' + require("./review-jev").enabled(vscode) + ';</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
     .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
   // The page gets the list only - each prompt without its details, steps and Jev input - and asks for one prompt's
@@ -463,7 +482,7 @@ function open(vscode, options = {}) {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
       full = readSessions(root);
       promptIndex = new Map(full.sessions.flatMap(session => session.prompts).map(prompt => [prompt.key,prompt]));
-      return panel?.webview.postMessage({ action: "data", report: { ...listReport(full), current: currentPlace(vscode) } });
+      return panel?.webview.postMessage({ action: "data", usageRows: require("./usage-report").readUsage(root).rows, report: { ...listReport(full), current: currentPlace(vscode) } });
     } catch (error) { return panel?.webview.postMessage({ action: "error", error: error.message }); }
   };
   panel.webview.onDidReceiveMessage(async message => {

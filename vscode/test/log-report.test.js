@@ -17,7 +17,7 @@ test('Codex turn totals are marked separately from individual API model response
 test('historical version links retain the exact revision URI and tool result identity',()=>{
  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
  const el=(tag,cls='',text='')=>({tag,cls,text,children:[],appendChild(child){this.children.push(child);return child;}});
- const messages=[],context={el,window:{vertexCanReadVersions:true},document:{createTextNode:text=>({text})},vscode:{postMessage:message=>messages.push(message)}};vm.createContext(context);
+ const messages=[],context={el,window:{vertexCanReadVersions:true},document:{getElementById:()=>({value:'',textContent:''}),createTextNode:text=>({text})},vscode:{postMessage:message=>messages.push(message)}};vm.createContext(context);
  vm.runInContext(page.slice(page.indexOf('  function line('),page.indexOf('  function drawStep(')),context);
  const target=el('div'),uri='/sap/bc/adt/programs/programs/Z_OLD/source/main/versions/20261023/00001/content';
  context.fields(target,{object:{name:'Z_OLD'},revisions:[{id:'00001',uri,author:'AUTHOR'}]},'prompt:1','tool-1');
@@ -38,7 +38,7 @@ test('old clipped serialized query responses retain only complete rows and an ex
 test('SQL arguments use the existing link style and send the full statement with its prompt key',()=>{
  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
  const el=(tag,cls='',text='')=>({tag,cls,text,children:[],appendChild(child){this.children.push(child);return child;}});
- const messages=[],context={el,document:{createTextNode:text=>({text})},vscode:{postMessage:message=>messages.push(message)}};vm.createContext(context);
+ const messages=[],context={el,document:{getElementById:()=>({value:'',textContent:''}),createTextNode:text=>({text})},vscode:{postMessage:message=>messages.push(message)}};vm.createContext(context);
  vm.runInContext(page.slice(page.indexOf('  function line('),page.indexOf('  function diffBlock(')),context);
  const target=el('div'),sql='SELECT * FROM e070 WHERE trkorr = '+"'ALCK900781'";
  context.line(target,'sql',sql,'prompt:1');const link=target.children[0].children[1];
@@ -70,7 +70,7 @@ test('SAP tool headings show operation, object, part and SQL source tables',()=>
 test('tabular tool results render ordered text-only cells and retain metadata',()=>{
  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
  const el=(tag,cls='',text='')=>({tag,cls,text,children:[],appendChild(child){this.children.push(child);return child;}});
- const context={el,document:{createTextNode:text=>({text})}};vm.createContext(context);
+ const context={el,document:{getElementById:()=>({value:'',textContent:''}),createTextNode:text=>({text})}};vm.createContext(context);
  vm.runInContext(page.slice(page.indexOf('  function line('),page.indexOf('  function drawStep(')),context);
  const target=el('div');
  assert.equal(context.fields(target,JSON.stringify({totalRows:1502,rowsReturned:2,columns:JSON.stringify(['NAME','VALUE']),rows:[{VALUE:42,NAME:'<script>bad()</script>'},{NAME:'Second\nline',VALUE:null}]})),true);
@@ -107,26 +107,32 @@ test("session report reads provider logs without treating tool results as prompt
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test("the panel's scroll title action opens the theme-aware report from the configured log folder", async () => {
+test("one dollar title action opens the unified theme-aware report from the configured log folder", async () => {
   const commands = new Map(), posted = [], executed = [], created = [], revealed = [];
   let receive;
   const panel = { webview: { postMessage: message => posted.push(message), onDidReceiveMessage: callback => { receive = callback; }, html: "" },
     onDidDispose() {}, reveal: (...args) => revealed.push(args) };
   const vscode = { ViewColumn: { Active: 1, Beside: 2 }, workspace: { getConfiguration: () => ({ get: () => "" }) },
     commands: { registerCommand: (name, callback) => { commands.set(name, callback); return { dispose() {} }; },
-      executeCommand: async (...args) => { executed.push(args); } },
+      executeCommand: async (...args) => { if (commands.has(args[0])) return commands.get(args[0])(); executed.push(args); } },
     window: { createWebviewPanel: (...args) => { created.push(args); return panel; } } };
   report.register(vscode, { subscriptions: [] });
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../package.json"), "utf8"));
-  assert.ok(manifest.contributes.menus["view/title"].some(item => item.command === "vertex.showLogs" && item.when === "view == vertex.launcher"));
-  assert.match(JSON.stringify(manifest.contributes.commands.find(c => c.command === "vertex.showLogs").icon), /scroll-light\.svg/);
-  commands.get("vertex.showLogs")();
+  assert.ok(manifest.contributes.menus["view/title"].some(item => item.command === "vertex.showUsage" && item.when === "view == vertex.launcher"));
+  assert.match(JSON.stringify(manifest.contributes.commands.find(c => c.command === "vertex.showUsage").icon), /dollar-light\.svg/);
+  assert.ok(!manifest.contributes.menus["view/title"].some(item => item.command === "vertex.showLogs"));
+  require("../usage-report").register(vscode, { subscriptions: [] });
+  await commands.get("vertex.showUsage")();
   assert.equal(created[0][2], vscode.ViewColumn.Beside);
   commands.get("vertex.showLogs")();
   assert.deepEqual(revealed[0], [vscode.ViewColumn.Beside, false]);
   await receive({ action: "ready" });
   await receive({ action: "settings" });
   assert.equal(posted[0].report.configured, false);
+  assert.deepEqual(posted[0].usageRows, []);
+  assert.equal(created.length, 1);
+  assert.match(panel.webview.html, /vertex-segment-toggle/);
+  assert.match(panel.webview.html, /window.vertexUsage=/);
   assert.deepEqual(executed[0], ["workbench.action.openSettings", "vertex.ai.log"]);
   await receive({ action: "openRecording", recording: { kind: "transpiler", id: "run-1" } });
   await receive({ action: "openRecording", recording: { kind: "sap", id: "sap-1" } });
@@ -249,7 +255,7 @@ test("closed log conversations and prompts do not render their bodies; search an
     appendChild(child){this.children.push(child);return child;},setAttribute(){},removeAttribute(){},addEventListener(name,fn){this.events[name]=fn;}});
   const content=node('main');let rendered=0;
   const context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{}},
-    document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,
+    document:{getElementById:()=>({value:'',textContent:''}),createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,
     usageText:()=>'',promptPreview:prompts=>prompts[0]?.text||'',conversation(){rendered++;return node('div','conversation');}};
   vm.createContext(context);
   vm.runInContext(page.slice(page.indexOf('  var waitingDetail'),page.indexOf('  function section('))+page.slice(page.indexOf('  function sortableHead('),page.indexOf('  var lastReport = null'))+page.slice(page.indexOf('  function render(report)'),page.indexOf('  window.addEventListener("message"')),context);
@@ -340,7 +346,7 @@ test('conversations can be filtered by the folder or SAP system they were held i
     appendChild(child){this.children.push(child);return child;},setAttribute(){},removeAttribute(){},addEventListener(name,fn){this.events[name]=fn;}});
   const content=node('main');
   const context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{},context:''},
-    document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,
+    document:{getElementById:()=>({value:'',textContent:''}),createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,
     usageText:()=>'',promptPreview:prompts=>prompts[0]?.text||'',conversation(){return node('div','conversation');}};
   vm.createContext(context);
   vm.runInContext(page.slice(page.indexOf('  var waitingDetail'),page.indexOf('  function section('))+page.slice(page.indexOf('  function sortableHead('),page.indexOf('  var lastReport = null'))+page.slice(page.indexOf('  function render(report)'),page.indexOf('  window.addEventListener("message"')),context);
@@ -413,7 +419,7 @@ test('continuing an older conversation without a place gives the whole conversat
 test('internal routing, tagging and recognition join their parent with totals, files and lazy details intact',()=>{
  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
  const node=(tag,cls='',text='')=>({tag,cls,text,value:'',children:[],events:{},style:{},classList:{toggle(){},add(){},remove(){}},appendChild(c){this.children.push(c);return c;},setAttribute(){},removeAttribute(){},addEventListener(n,f){this.events[n]=f;}});
- const content=node('main'),context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{}},document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,usageText:()=>'',promptPreview:p=>p.find(x=>x.operation==='Chat')?.text||p[0]?.text||'',conversation:()=>node('div')};
+ const content=node('main'),context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{}},document:{getElementById:()=>({value:'',textContent:''}),createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,usageText:()=>'',promptPreview:p=>p.find(x=>x.operation==='Chat')?.text||p[0]?.text||'',conversation:()=>node('div')};
  vm.createContext(context);vm.runInContext(page.slice(page.indexOf('  var waitingDetail'),page.indexOf('  function section('))+page.slice(page.indexOf('  function sortableHead('),page.indexOf('  var lastReport = null'))+page.slice(page.indexOf('  function render(report)'),page.indexOf('  window.addEventListener("message"')),context);
  const session=(id,operation,related)=>({id,conversation:id,relatedConversation:related,provider:id,start:1,end:3,usage:{input:10,cost:0.01},prompts:[{key:id+':0',operation,text:id,time:1,usage:{input:10,cost:0.01}}]});
  const parent=session('parent','Chat');parent.context={mode:'folder',folder:'C:/project'};

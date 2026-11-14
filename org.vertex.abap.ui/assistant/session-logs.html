@@ -11,6 +11,10 @@
 :root {
   --vscode-font-family: "Segoe UI", system-ui, sans-serif;
   --vscode-font-size: 13px;
+  --vscode-foreground: var(--vscode-editor-foreground);
+  --vscode-input-foreground: var(--vscode-editor-foreground);
+  --vscode-input-background: var(--vscode-editorWidget-background);
+  --vscode-input-border: var(--vscode-panel-border);
   --vscode-editor-font-family: Consolas, "Courier New", monospace;
   --vscode-editor-background: #ffffff;
   --vscode-editor-foreground: #1f1f1f;
@@ -68,7 +72,7 @@ iframe { flex: 1; width: 100%; border: 0; background: var(--vscode-editor-backgr
 <body>
 <div id="status" hidden></div>
 <div id="bar" hidden><button type="button" id="back">Back to the logs</button></div>
-<iframe id="report" title="Session Logs"></iframe>
+<iframe id="report" title="Logs &amp; Cost"></iframe>
 <iframe id="snapshot" title="Recorded context" hidden></iframe>
 <script>/*LOGS_ENGINE*/</script>
 <script>
@@ -133,7 +137,7 @@ async function refresh() {
   var read = JSON.parse(await call("sdeLogsRead"));
   sessions = read.files.map(function (file) { return vertexLogs.parseSession(file.text, file.name); })
     .filter(Boolean).sort(function (a, b) { return b.start - a.start; });
-  tell({ action: "data", report: { configured: read.configured, folder: read.folder, sessions: sessions } });
+  tell({ action: "data", usageRows: vertexLogs.parseUsage(read.files), report: { configured: read.configured, folder: read.folder, sessions: sessions } });
 }
 async function handle(message) {
   if (message.action === "openSelect") {

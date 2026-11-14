@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{{NONCE}}';">
-<title>VERTEX Session Logs</title>
+<title>VERTEX Logs &amp; Cost</title>
 <style>
   /* Every surface follows the active VS Code theme. */
   body {
@@ -146,7 +146,8 @@
 </head>
 <body>
 <header>
-  <h1>Session Logs</h1>
+  <h1>Logs &amp; Cost</h1>
+  <div class="vertex-segment-toggle" role="group" aria-label="Report"><button id="view-logs" class="active" aria-pressed="true">Logs</button><button id="view-costs" aria-pressed="false">Usage &amp; Cost</button></div>
   <button id="folder">Choose Folder…</button>
   <button id="settings">Log Settings</button>
   <button id="refresh" title="Refresh session logs" aria-label="Refresh session logs">↻</button>
@@ -154,13 +155,82 @@
 </header>
 <div id="status" class="muted">Loading…</div>
 <div class="muted">Enable <code>vertex.ai.log.request</code> to see VERTEX instructions and context for new prompts.</div>
+<div id="date-range" class="list-tools" aria-label="Date range">
+<button data-date="previous" title="Previous period" aria-label="Previous period">←</button>
+<label>Period <select data-date="period" class="log-context"><option value="all">All dates</option><option value="day" selected>Today</option><option value="week">Week</option><option value="month">Month</option><option value="year">Year</option><option value="custom">Custom range</option></select></label>
+<button data-date="next" title="Next period" aria-label="Next period">→</button>
+<label>From <input type="date" data-date="from" id="from" class="log-context"></label>
+<label>To <input type="date" data-date="to" id="to" class="log-context"></label>
+</div>
+<div id="date-error" class="error" role="alert"></div>
 <div id="content"></div>
+<div id="usage-content" hidden></div>
+<script id="vertex-date-range" nonce="{{NONCE}}">
+function vertexDateRange(root, changed) {
+  var from = root.querySelector('[data-date="from"]'), to = root.querySelector('[data-date="to"]');
+  var period = root.querySelector('[data-date="period"]'), previous = root.querySelector('[data-date="previous"]'), next = root.querySelector('[data-date="next"]');
+  function date(value) { var a = value.split('-').map(Number); return new Date(a[0], a[1]-1, a[2], 12); }
+  function iso(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function controls() { previous.disabled = next.disabled = period.value === 'all'; }
+  function apply(anchor) {
+    var start = new Date(anchor), end;
+    if (period.value === 'all') { from.value = to.value = ''; }
+    else {
+      if (period.value === 'week') start.setDate(start.getDate() - (start.getDay()+6)%7);
+      if (period.value === 'month') start.setDate(1);
+      if (period.value === 'year') { start.setMonth(0,1); }
+      end = new Date(start);
+      if (period.value === 'week') end.setDate(end.getDate()+6);
+      if (period.value === 'month') end.setMonth(end.getMonth()+1,0);
+      if (period.value === 'year') end.setFullYear(end.getFullYear()+1,0,0);
+      from.value = iso(start); to.value = iso(end);
+    }
+    controls(); changed();
+  }
+  period.onchange = function () { if (period.value !== 'custom') apply(new Date()); else { controls(); changed(); } };
+  [from,to].forEach(function (input) { input.onchange = function () { period.value = 'custom'; controls(); changed(); }; });
+  function move(direction) {
+    var start = from.value ? date(from.value) : new Date(), end = to.value ? date(to.value) : new Date(start);
+    if (period.value === 'custom') {
+      var days = Math.max(1, Math.round((Date.UTC(end.getFullYear(),end.getMonth(),end.getDate())-Date.UTC(start.getFullYear(),start.getMonth(),start.getDate()))/86400000)+1);
+      start.setDate(start.getDate()+direction*days); end.setDate(end.getDate()+direction*days);
+      from.value=iso(start); to.value=iso(end); changed(); return;
+    }
+    if (period.value === 'month') start.setMonth(start.getMonth()+direction);
+    else if (period.value === 'year') start.setFullYear(start.getFullYear()+direction);
+    else start.setDate(start.getDate()+direction*(period.value === 'week' ? 7 : 1));
+    apply(start);
+  }
+  previous.onclick = function () { move(-1); }; next.onclick = function () { move(1); };
+  // Today is the default period; set its dates now without re-rendering (nothing is loaded yet).
+  if (period.value === 'day' && !from.value && !to.value) { from.value = to.value = iso(new Date()); }
+  controls();
+}
+</script>
 <script nonce="{{NONCE}}">
 (function () {
   "use strict";
   var vscode = acquireVsCodeApi();
   var status = document.getElementById("status");
   var content = document.getElementById("content");
+  var usageRoot = document.getElementById("usage-content"), usageRows = [], reportMode = "logs";
+  var usageEngine = window.vertexUsage || (window.parent && window.parent.vertexLogs);
+  function renderCosts() {
+    if (!usageEngine) return;
+    var from = document.getElementById("from").value, to = document.getElementById("to").value;
+    if (from && to && from > to) return;
+    usageEngine.renderUsage(usageRoot, usageRows, { from: from, to: to }, usageEngine.aggregate);
+  }
+  function setMode(mode) {
+    reportMode = mode;
+    content.hidden = mode !== "logs"; usageRoot.hidden = mode !== "costs";
+    ["view-logs","view-costs"].forEach(function (id) { var active = id === "view-" + mode, button = document.getElementById(id); button.classList.toggle("active", active); button.setAttribute("aria-pressed", String(active)); });
+    clear.hidden = mode !== "logs";
+    if (mode === "costs") renderCosts();
+    selectionChanged();
+  }
+  document.getElementById("view-logs").onclick = function () { setMode("logs"); };
+  document.getElementById("view-costs").onclick = function () { setMode("costs"); };
   var selected = new Set();
   var clear = document.getElementById("clear-conversations");
   clear.onclick = function () { vscode.postMessage({ action: "clearConversations", ids: Array.from(selected) }); };
@@ -266,7 +336,7 @@ function markdown(text, target) {
     return Number(u.input || 0) + Number(u.cacheWrite || 0);
   }
   function usageText(u) {
-    return "in " + n(u.input) + " · out " + n(u.output) + " · cache read " + n(u.cacheRead) + " · cache write " + n(u.cacheWrite) + (u.cost != null ? " - cost " + costText(u) : u.costMissing ? " - cost unavailable" : "");
+    return "in " + n(u.input) + " · out " + n(u.output) + " · cache read " + n(u.cacheRead) + " · cache write " + n(u.cacheWrite) + (u.cost != null ? " - cost " + costText(u) + (u.costEstimated ? " (estimate, not service billing)" : "") : u.costMissing ? " - cost unavailable" : "");
   }
   // A row shows the start of its question: a review prompt can be hundreds of thousands of characters, and a row
   // holding all of them makes every layout - a filter, a splitter move - lay that text out again. Search reads the
@@ -789,7 +859,13 @@ function markdown(text, target) {
   // Session Logs shows every conversation by default; the place is a filter the reader chooses. The chat's
   // own Continue a chat list is the opposite: it offers only the place the chat is working in.
   var lastReport = null, listState = { query: "", hiddenKinds: {}, context: "" };
+  vertexDateRange(document.getElementById("date-range"), function () { if (lastReport) render(lastReport); if (reportMode === "costs") renderCosts(); });
   function render(report) {
+    var from = document.getElementById("from").value, to = document.getElementById("to").value;
+    document.getElementById("date-error").textContent = from && to && from > to ? "From date must be on or before To date." : "";
+    if (from && to && from > to) return;
+    var localDay = function (time) { var d = new Date(time); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+    report = Object.assign({}, report, { sessions: report.sessions.filter(function (s) { return (!from || localDay(s.end) >= from) && (!to || localDay(s.start) <= to); }) });
     selected.clear(); selectionChanged();
     content.textContent = "";
     if (!report.configured) { status.className = "muted"; status.textContent = "No log folder is set. Choose a folder to read session logs from."; return; }
@@ -811,7 +887,7 @@ function markdown(text, target) {
       var key = conversationId ? "conversation:" + conversationId : "file:" + source.id;
       var group = groups.get(key);
       if (!group) {
-        group = { id: source.id, start: source.start, end: source.end, fileIds: [], providers: [], models: [], prompts: [], usage: {}, context: null };
+        group = { id: source.id, start: source.start, end: source.end, fileIds: [], providers: [], models: [], prompts: [], usage: {}, costs: { model: {}, jev: {} }, context: null };
         groups.set(key, group);
       }
       // One conversation is held in one place, whichever of its files records it first.
@@ -823,6 +899,11 @@ function markdown(text, target) {
       group.prompts.push.apply(group.prompts, source.prompts.map(function (p, index) {
         return Object.assign({}, p, { provider: source.provider, key: p.key || source.id + ":" + index });
       }));
+      source.prompts.forEach(function (prompt) {
+        var part = group.costs[prompt.costKind === "jev" ? "jev" : "model"], usage = prompt.usage || {};
+        ["cost", "costMissing", "costEstimated"].forEach(function (k) { if (usage[k] != null) part[k] = (part[k] || 0) + usage[k]; });
+        if (usage.cost == null && !usage.costMissing) part.costMissing = (part.costMissing || 0) + 1;
+      });
       ["input", "output", "cacheRead", "cacheWrite", "cost", "costMissing", "costEstimated"].forEach(function (k) {
         if (source.usage[k] != null) group.usage[k] = (group.usage[k] || 0) + source.usage[k];
       });
@@ -832,14 +913,19 @@ function markdown(text, target) {
       g.prompts.sort(function (a, b) { return a.time - b.time || a.key.localeCompare(b.key); });
       return g;
     }).sort(function (a, b) { return b.end - a.end; }) });
+    var totalCosts = { model: {}, jev: {} };
+    var partCost = function (part) { return part.cost != null ? costText(part) : part.costMissing ? "unavailable" : "—"; };
     var total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     report.sessions.forEach(function (s) { ["input", "output", "cacheRead", "cacheWrite"].forEach(function(k){total[k] += s.usage[k] || 0;});
       if (s.usage.cost != null) total.cost = (total.cost || 0) + s.usage.cost;
       if (s.usage.costMissing) total.costMissing = (total.costMissing || 0) + s.usage.costMissing;
       if (s.usage.costEstimated) total.costEstimated = (total.costEstimated || 0) + s.usage.costEstimated; });
+    report.sessions.forEach(function (session) { ["model", "jev"].forEach(function (kind) {
+      ["cost", "costMissing", "costEstimated"].forEach(function (key) { if (session.costs[kind][key] != null) totalCosts[kind][key] = (totalCosts[kind][key] || 0) + session.costs[kind][key]; });
+    }); });
     status.className = "muted";
     status.textContent = report.sessions.length + " conversations in " + report.folder;
-    content.appendChild(el("div", "totals", "Total: " + usageText(total)));
+    content.appendChild(el("div", "totals", "Total: " + usageText(total) + " · Models: " + partCost(totalCosts.model) + " · Jev: " + partCost(totalCosts.jev)));
 
     // One row per conversation; Search and Hide technical filter them, the headings sort, the edges widen.
     var tools = el("div", "list-tools");
@@ -902,7 +988,7 @@ function markdown(text, target) {
       { name: "New in", cls: "num", width: 75, num: true, value: function (s) { return newInput(s.usage); } },
       { name: "Out", cls: "num", width: 70, num: true, value: function (s) { return s.usage.output || 0; } },
       { name: "Cache read", cls: "num", width: 90, num: true, value: function (s) { return s.usage.cacheRead || 0; } },
-      { name: "Cost USD", cls: "num", width: 80, num: true, value: function (s) { return s.usage.cost || 0; } },
+      { name: "Cost USD", cls: "num", width: 140, num: true, value: function (s) { return s.usage.cost || 0; } },
       { name: "Duration", cls: "time", width: 75, num: true, value: function (s) { return (s.end || 0) - (s.start || 0); } },
       { name: "Time", cls: "time", width: 125, num: true, value: function (s) { return s.end || 0; } }];
     if (!anyCost) columns = columns.filter(function (column) { return column.name !== "Cost USD"; });
@@ -948,7 +1034,13 @@ function markdown(text, target) {
       main.appendChild(el("td", "num", n(newInput(s.usage))));
       main.appendChild(el("td", "num", n(s.usage.output)));
       main.appendChild(el("td", "num", n(s.usage.cacheRead)));
-      if (anyCost) main.appendChild(el("td", "num", s.usage.cost != null ? costText(s.usage) : s.usage.costMissing ? "unavailable" : "-"));
+      if (anyCost) {
+        var costCell = el("td", "num");
+        costCell.appendChild(el("div", "", "Models: " + partCost(s.costs.model)));
+        costCell.appendChild(el("div", "", "Jev: " + partCost(s.costs.jev)));
+        costCell.title = "Model and Jev costs are separate. ≈ marks estimates, not the service bill.";
+        main.appendChild(costCell);
+      }
       main.appendChild(el("td", "time", span(s.start, s.end) || "—"));
       main.appendChild(el("td", "time", time(s.end)));
       // Continue this conversation in the VERTEX chat, with all the files it wrote (one per provider it used).
@@ -1138,7 +1230,7 @@ function markdown(text, target) {
 
   window.addEventListener("message", function (event) {
     var m = event.data || {};
-    if (m.action === "data") { lastReport = m.report; render(m.report); }
+    if (m.action === "data") { lastReport = m.report; usageRows = m.usageRows || []; render(m.report); if (reportMode === "costs") renderCosts(); }
     if (m.action === "promptDetail") { var waiting = waitingDetail[m.key] || []; delete waitingDetail[m.key]; waiting.forEach(function (done) { done(m); }); }
     if (m.action === "error") { status.className = "error"; status.textContent = m.error; }
   });

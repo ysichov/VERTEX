@@ -318,3 +318,12 @@ test('prepared context size is recorded without logging private request text and
   assert.equal(legacy.prompts[0].contextSize,undefined);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('command target and actual execution folder survive log argument sanitization',t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-command-log-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const input={command:'package',purpose:'build',target:'directory',directory:'/requested',cwd:'/requested',description:'Build here'};
+ const log=sessionLog.create(root,'test','command',{tools:true});log.step({kind:'use',id:'command',name:'Bash',input});
+ const rows=fs.readFileSync(log.file,'utf8').trim().split('\n').map(JSON.parse);
+ const call=rows.flatMap(row=>Array.isArray(row.message?.content)?row.message.content:[]).find(item=>item.type==='tool_use');
+ assert.deepEqual(call.input,input);
+});

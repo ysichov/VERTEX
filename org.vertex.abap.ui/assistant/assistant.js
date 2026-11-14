@@ -296,7 +296,7 @@ async function models(options) {
     // models list has no --profile: it takes the activeProfile of a .codemie configuration in the
     // folder it runs in, which may name a global profile.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-codemie-"));
-    let result;
+    let result, status;
     try {
       if (options.profile) {
         fs.mkdirSync(path.join(dir, ".codemie"));
@@ -305,13 +305,29 @@ async function models(options) {
       }
       result = await collect(options.spawn, lister, ["models", "list"],
                              { cwd: dir, timeout: 60000, input: "", env: codemieEnv(file) });
+      if (!result.timedOut && result.code === 0 && !codemieModels(result.stdout).length) {
+        status = await collect(options.spawn, lister, ["profile", "status"],
+          { cwd: dir, timeout: 15000, input: "", env: codemieEnv(file) });
+      }
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    const detail = (String(status?.stdout || "") + "\n" + String(status?.stderr || "") + "\n" + String(result.stderr || "") + "\n" + String(result.stdout || "")).replace(/\u001b\[[0-9;]*m/g, "");
+    const login = detail.match(/codemie profile login --url (https?:\/\/[^\s<>"']+)/);
+    const command = login ? login[0] : "codemie profile login";
+    const next = " Run in a terminal: " + command + "\nAfter signing in, refresh the model list in LLM Providers.";
+    if (!result.timedOut && /no SSO credentials|authentication required|not authenticated|credentials.*expired/i.test(detail)) {
+      throw new Error("CodeMie authentication is required." + (options.profile ? " Profile: " + options.profile + "." : "") + next);
+    }
     if (result.timedOut || result.code !== 0) {
       throw new Error("CodeMie did not list its models: "
                       + (result.timedOut ? "no answer within a minute." : tail(result.stderr || result.stdout))
                       + (options.profile ? " Profile: " + options.profile + "." : "") + " Run codemie setup in a terminal.");
     }
-    return [{ id: "", label: "CodeMie default" }].concat(codemieModels(result.stdout));
+    const listed = codemieModels(result.stdout);
+    if (!listed.length) {
+      throw new Error("CodeMie returned no usable models." + (options.profile ? " Profile: " + options.profile + "." : "")
+        + " CLI: " + tail(result.stdout || result.stderr) + " Check the profile, account access and model catalog." + next);
+    }
+    return [{ id: "", label: "CodeMie default" }].concat(listed);
   }
 
   const file = options.executable || locate(id, options.extensionPath);
@@ -451,6 +467,8 @@ async function ask(options) {
       }
     };
     const toolStatus = block => {
+      // With host-controlled tools the stream only announces intent; the host reports execution.
+      if (options.localTools) return;
       let args = block.input;
       try { if (block.json) args = JSON.parse(block.json); } catch (_) { /* Wait for the complete arguments. */ }
       const name = String(block.name || "").replace(/^mcp__vertex__/, "");
@@ -463,7 +481,7 @@ async function ask(options) {
       const scene = require("./chat-progress").scene(name);
       if (status !== lastStatus) {
         lastStatus = status;
-        options.onProgress({ status, ...(scene ? { kind: scene } : {}) });
+        options.onProgress({ status, kind: scene });
       }
     };
     const onData = streaming ? function (chunk) {
@@ -492,7 +510,7 @@ async function ask(options) {
               if (text) options.onStep({ kind: "note", id: String(event.message.id || "") + ":" + index, note: "text", text });
               continue;
             }
-            if (block && block.type === "tool_use" && !/^mcp__vertex|^StructuredOutput$/.test(String(block.name || ""))) {
+            if (!options.localTools && block && block.type === "tool_use" && !/^mcp__vertex|^StructuredOutput$/.test(String(block.name || ""))) {
               steps.set(block.id, block.name);
               options.onStep({ kind: "use", id: block.id, name: block.name, input: block.input || {} });
             } else if (block && block.type === "tool_result" && steps.has(block.tool_use_id)) {
@@ -724,7 +742,7 @@ function readClaude(result) {
                           + (answer.result ? ": " + answer.result : ".")), model);
   }
   const read = { plan: answer.structured_output, model: model, usage: totalUsage(answer) };
-  // What Claude Code reckons the run cost, from the models' prices; CodeMie bills its project by it.
+  // Claude Code's list-price estimate; this is not the CodeMie project's billed cost.
   if (typeof answer.total_cost_usd === "number" && isFinite(answer.total_cost_usd)) { read.cost = answer.total_cost_usd; }
   return read;
 }
