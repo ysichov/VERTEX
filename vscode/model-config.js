@@ -571,7 +571,7 @@ const checkStatus = {}, checkErrors = {};
 // Per provider: on, and its rows once read (null while loading or when it could not be read).
 const state = {};
 INIT.providers.forEach(p => { state[p.id] = { label: p.label, on: p.on, rows: null, profiles: null,
-  source: null, hideUnavailable: true, filter: "available", grouped: false, collapsedGroups: new Set(), groupSorts: new Map(), expanded: p.id === INIT.use }; });
+  source: null, hideUnavailable: true, grouped: false, collapsedGroups: new Set(), groupSorts: new Map(), expanded: p.id === INIT.use }; });
 const $ = id => document.getElementById(id);
 function say(text, kind) { $("said").textContent = text || ""; $("said").className = kind || "note"; }
 function el(tag, props) { return Object.assign(document.createElement(tag), props || {}); }
@@ -642,7 +642,7 @@ function build() {
       title: "Test only this provider’s models with short requests; normal provider usage applies." });
     check.addEventListener("click", () => {
       scanning = true; scanningProvider = p.id; checkErrors[p.id] = ""; checkStatus[p.id] = "Reading model list…";
-      api.postMessage({ action: "detect", provider: p.id, ...(["openrouter-api","opencode-api"].includes(p.id)?{filter:s.filter}:{}) });
+      api.postMessage({ action: "detect", provider: p.id });
       build(); $("save").disabled = true; $("stop-detection").hidden = false;
       say("Checking " + p.label + "…");
     });
@@ -745,8 +745,8 @@ function fill(id) {
     }
     return;
   }
-  const visibleRows = s.rows.filter(row=>["openrouter-api","opencode-api"].includes(id) ? s.filter==="all" || row.available!==false && (s.filter!=="free" || row.free===true) : !s.hideUnavailable || row.available!==false);
-  const targets = ["openrouter-api","opencode-api"].includes(id) ? visibleRows : s.rows;
+  const visibleRows = s.rows.filter(row => !s.hideUnavailable || row.available !== false);
+  const targets = s.rows;
   const count = el("span", { className: "note", role: "status", ariaLive: "polite" });
   const bulk = el("button", { type: "button" });
   const allSelected = () => {
@@ -768,17 +768,11 @@ function fill(id) {
   });
   updateBulk();
   const toolbar = el("div", { className: "row" }); toolbar.appendChild(bulk);
-  if(["openrouter-api","opencode-api"].includes(id)){
-    const filters=el("span",{className:"vertex-segment-toggle"});filters.setAttribute("role","group");filters.setAttribute("aria-label",s.label+" model filter");
-    [["all","All"],["available","Available"],["free","Free"]].forEach(([value,label])=>{
-      const button=el("button",{type:"button",className:s.filter===value?"active":"",textContent:label,title:value==="free"?"Free models not marked unavailable":value==="available"?"Models not marked unavailable":"All models, including unavailable"});button.setAttribute("aria-pressed",String(s.filter===value));button.addEventListener("click",()=>{s.filter=value;fill(id);});filters.appendChild(button);
-    });toolbar.appendChild(filters);
-  }else{
   const hideLabel = el("label", { className: "row" });
   const hide = el("input", { type: "checkbox", checked: !!s.hideUnavailable, title: "Hide unavailable models" });
   hide.addEventListener("change", () => { s.hideUnavailable = hide.checked; fill(id); });
   hideLabel.appendChild(hide); hideLabel.appendChild(document.createTextNode("Hide unavailable"));
-  toolbar.appendChild(hideLabel); } toolbar.appendChild(count);
+  toolbar.appendChild(hideLabel); toolbar.appendChild(count);
   if(["vercel-api","openrouter-api","opencode-api"].includes(id)){
     const modes=el("span",{className:"vertex-segment-toggle"});modes.setAttribute("role","group");modes.setAttribute("aria-label",s.label+" model view");
     [[false,"All models"],[true,"By provider"]].forEach(([grouped,label])=>{
@@ -833,7 +827,7 @@ function fill(id) {
     paint();th.appendChild(fold);th.appendChild(document.createTextNode(" "+group.label+" ("+group.models.length+")"));
     const checkGroup=el("button",{type:"button",className:"check-models",textContent:"Check models",disabled:scanning,title:"Check untested models in "+group.label});
     checkGroup.setAttribute("aria-label","Check models in "+group.label);
-    checkGroup.addEventListener("click",()=>{scanning=true;scanningProvider=id;checkErrors[id]="";checkStatus[id]="Checking "+group.label+"…";build();$("save").disabled=true;api.postMessage({action:"detect",provider:id,group:group.id,...(["openrouter-api","opencode-api"].includes(id)?{filter:s.filter}:{})});});th.appendChild(checkGroup);
+    checkGroup.addEventListener("click",()=>{scanning=true;scanningProvider=id;checkErrors[id]="";checkStatus[id]="Checking "+group.label+"…";build();$("save").disabled=true;api.postMessage({action:"detect",provider:id,group:group.id});});th.appendChild(checkGroup);
     if(["vercel-api","opencode-api"].includes(id)&&group.models.length>1){const controls=el("span",{className:"group-sort-controls"});controls.appendChild(document.createTextNode(" Sort "));
     const picker=el("select",{title:"Sort only "+group.label+"; Global order follows the table header"});picker.setAttribute("aria-label","Sort models in "+group.label);
     picker.appendChild(el("option",{value:"",textContent:"Global order"}));columns.forEach(column=>picker.appendChild(el("option",{value:column.key,textContent:column.title||column.label})));picker.value=ownSort?.key||"";

@@ -877,7 +877,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
     const config = vscode.workspace.getConfiguration("vertex.ai");
     const provider = config.get("provider", "codex-subscription");
     return { contextMode:["sap","folder"].includes(config.get("contextMode","auto"))?config.get("contextMode"):workingFolder(vscode,subscriptionProvider(vscode))?"folder":"sap", contextFolder:workingFolder(vscode,subscriptionProvider(vscode))||(vscode.workspace.workspaceFolders?.length===1?vscode.workspace.workspaceFolders[0].uri.fsPath:""), provider, short: modelConfig.shortLabel(provider), model: config.get("model", "") || "weakest model",
-             providers: modelConfig.offered(vscode).map(p => ({ setting: p.setting, short: p.short })) };
+             providers: modelConfig.offered(vscode, true).map(p => ({ setting: p.setting, short: p.short })) };
   };
   ask.setContextMode=async mode=>{if(!["sap","folder"].includes(mode))throw new Error("Unknown context mode.");if(activeRequest)throw new Error("Wait for the current request before switching context.");await vscode.workspace.getConfiguration("vertex.ai").update("contextMode",mode,vscode.ConfigurationTarget?.Global);return ask.state();};
   // A local server just picked: say at once whether it is installed, running and has models.
@@ -889,7 +889,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
     if (choice === "Download") vscode.env.openExternal(vscode.Uri.parse(found.site));
   }
   ask.selectProvider = async () => {
-    const values = modelConfig.offered(vscode).map(p => [p.label, p.setting]);
+    const values = modelConfig.offered(vscode, true).map(p => [p.label, p.setting]);
     const current = ask.state().provider;
     const picked = await vscode.window.showQuickPick(values.map(x => ({ label: x[0], id: x[1], picked: x[1] === current })), { title: "Select AI provider" });
     if (picked) {
@@ -921,7 +921,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
   ask.listModels = async (fresh = false) => {
     const id = subscriptionProvider(vscode);
     const list = await fullModels(id, fresh), model = vscode.workspace.getConfiguration("vertex.ai").get("model", "");
-    return { models: modelConfig.apply(vscode, id, list, id === "typesafe-api"), model, ...modelConfig.news(vscode, id, list, model) };
+    return { models: modelConfig.apply(vscode, id, list, true), model, ...modelConfig.news(vscode, id, list, model) };
   };
   ask.decisionModels = async () => {
     const groups = await Promise.all(["typesafe-api","gemini-api","opencode-api"].map(async provider => {
