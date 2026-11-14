@@ -13,7 +13,7 @@ function html(pages, initial) {
   const shared = read("vertex-page.js");
   // The waiting scenes are one file as well (the review build in Versions shows one).
   const scenes = read("vertex-task-visual.js");
-  for (const name of ["chat", "metrics", "versions", "table", "navigator"]) bundle[name] = read(name + ".html").replace("/*VERTEX_LENS*/", () => lens)
+  for (const name of ["chat", "metrics", "versions", "table", "navigator", "mcp"]) bundle[name] = read(name + ".html").replace("/*VERTEX_LENS*/", () => lens)
     .replace("/*VERTEX_PAGE*/", () => shared).replace("/*VERTEX_TASK_VISUAL*/", () => scenes)
     .replace("</head>", () => "<style>" + logo.fill(read("vertex-controls.css")) + "</style></head>");
   for (const name of Object.keys(bundle)) bundle[name] = motion.apply(bundle[name]);
@@ -153,6 +153,9 @@ function open(vscode, context, deps, initial) {
     window.sdeCancelWorkspace=lane=>host.postMessage({call:"cancelWorkspace",args:[lane||"main"]});
     window.sdeLocalFolder=clear=>host.postMessage({call:"localFolder",args:[clear===true]});
     window.sdeLocalGitHistory=folder=>host.postMessage({call:"localGitHistory",args:[String(folder||"")]});
+    // The MCP servers this host runs: their tools for the pickers, and one run of one tool. Eclipse defines neither.
+    window.sdeMcpServers=()=>host.postMessage({call:"mcpServers"});
+    window.sdeMcpRun=(id,server,tool,args)=>host.postMessage({call:"mcpRun",args:[String(id),String(server),String(tool),String(args||"{}")]});
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
     // The clipboard is the host's: a webview's own may be refused. Copy under a chat answer and the review's prompts.
     window.sdeCopyText=text=>{host.postMessage({call:"copyText",args:[String(text||"")]});return "";};
@@ -177,6 +180,8 @@ function open(vscode, context, deps, initial) {
       if(e.data.type==="assistant")sdeAssistant(e.data.payload);
       if(e.data.type==="promptFile"&&typeof sdePromptFileReady==="function")sdePromptFileReady(e.data.payload);
       if(e.data.type==="localFolder"&&typeof sdeLocalFolderReady==="function")sdeLocalFolderReady(e.data.payload);
+      if(e.data.type==="mcpServers"&&typeof sdeMcpServersReady==="function")sdeMcpServersReady(e.data.payload);
+      if(e.data.type==="mcpRun"&&typeof sdeMcpRunReady==="function")sdeMcpRunReady(e.data.payload);
     });
   <\/script>`;
   require("./review-jev").bind(vscode,panel,message=>message.context);
@@ -269,6 +274,23 @@ function open(vscode, context, deps, initial) {
         await panel.webview.postMessage({type:"result",payload:"{}"});return;
       }
       if(message.call === "copyText") { await vscode.env.clipboard.writeText(String(args[0] || "")); return; }
+      // Every configured MCP server with the tools kept from its last start - what the Tools window's pickers list.
+      if(message.call === "mcpServers") {
+        let payload;
+        try { payload = { servers: deps.mcp.overview().map(s => ({ name: s.name, description: s.description, version: s.version,
+          toolsets: (s.toolsets || []).map(t => ({ name: t.name, tools: t.tools })),
+          tools: (s.tools || []).map(t => ({ name: t.name, description: t.about || t.description || "", inputSchema: t.inputSchema || null, toolsets: t.toolsets || [] })) })) }; }
+        catch(error) { payload = { error: String(error && error.message || error) }; }
+        await panel.webview.postMessage({type:"mcpServers",payload:JSON.stringify(payload)});return;
+      }
+      // One run of one tool, asked for by the form in the MCP page. The server's own answer travels untouched.
+      if(message.call === "mcpRun") {
+        const id = String(args[0] || "");
+        let payload;
+        try { payload = { id, result: await deps.mcp.runTool(args[1], args[2], JSON.parse(String(args[3] || "{}"))) }; }
+        catch(error) { payload = { id, error: String(error && error.message || error) }; }
+        await panel.webview.postMessage({type:"mcpRun",payload:JSON.stringify(payload)});return;
+      }
       if(message.call === "promptFile") {
         const id=Number(args[3])||0;
         let answer;

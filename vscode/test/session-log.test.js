@@ -6,6 +6,18 @@ const os = require("node:os");
 const path = require("node:path");
 const sessionLog = require("../session-log");
 
+test('large serialized table results are logged as valid JSON with complete rows and redacted source',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-query-log-'));
+ try{
+  const log=sessionLog.create(root,'test','large',{questions:true,tools:true,toolResults:true});log.user('Query');
+  const id=log.toolUse('SAPQuery',{action:'sql',sql:'SELECT * FROM e070'});
+  const data={totalRows:1502,columns:['ID','TEXT'],rows:Array.from({length:500},(_,ID)=>({ID,TEXT:'x'.repeat(150),source:'REPORT secret.\nWRITE SECRET.'}))};
+  log.toolResult(id,{content:[{type:'text',text:JSON.stringify(JSON.stringify(data))}]});
+  const raw=fs.readFileSync(log.file,'utf8').trim().split('\n').map(JSON.parse),text=raw.at(-1).message.content[0].content,result=JSON.parse(text);
+  assert.ok(text.length<=20000);assert.ok(result.rows.length>0&&result.rows.length<500);assert.equal(result.log_truncated.rowsOmitted+result.rows.length,500);assert.doesNotMatch(text,/WRITE SECRET/);assert.equal(result.totalRows,1502);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
 async function session(include) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-log-"));
   const log = sessionLog.create(root, "claude", "20260916_120000", include);

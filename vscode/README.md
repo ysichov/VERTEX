@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.91**
+**Version: 0.9.92**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -103,6 +103,10 @@ Open Welcome with **VERTEX: Get Started** in the Command Palette.
 
 **Usage & Cost** (the **$** icon in the VERTEX title bar) shows tokens and USD cost by date, activity, provider and model. Anthropic API costs in the chat panel and Session Logs are calculated from actual tokens at published list prices, including caching; account discounts are not included. Existing logs are calculated when opened. Screenshot recognition and Jev topic routing/tagging appear inside their parent conversation in Session Logs; conversation totals include these calls, and ≈ marks totals that include estimated Jev costs.
 
+
+Session Logs numbers tool calls and shows query results as tables. Click a SELECT to reopen it in SelecTor with its joins and filters; this reads current SAP data. Click a revision link to read that historical source through the original SAPRead toolset and open it read-only. Codex turn totals are labelled separately from individual API model calls.
+
+`vertex.chat.queryMaxRows` controls query rows sent to the LLM (default **100**) and the default fetch size. A larger explicit fetch reports provider totals, fetched rows and rows sent to the model separately. Narrow WHERE clauses, necessary columns and server-side aggregates avoid transferring unnecessary data. This setting does not change interactive SelecTor.
 
 ## Local ABAP execution
 
@@ -804,6 +808,30 @@ Settings:
   `vertex.chat.mcpServers`, written by **Update**.
 - A server's `description` in `vertex.chat.mcpServers` is what the orchestrator's
   catalog and the MCP Servers window say about it.
+
+### Run one MCP tool yourself
+
+A tool does not have to go through the chat. In the VERTEX Tools window pick
+**MCP** as the object type: the name field lists the servers of
+`vertex.chat.mcpServers`, and the function picker lists the chosen server's
+tools, grouped by the toolsets it belongs to. The page that opens builds a form
+from the tool's own schema - its parameter names as the server writes them, the
+required ones first, lists where the schema gives a choice, a checkbox for an
+on/off option and the defaults filled in. **?** beside the tool name shows what
+the server says the tool does, and each parameter carries its own description.
+
+**Run** sends the call and shows what came back by the shape of the answer: a
+list of rows as a table, SQL and fenced code with their language, an image as an
+image, other JSON as its structure, and anything else as the server's own text.
+An answer that carries its rows under a key - `rows` beside `columns`, `totalRows`
+and the statement that ran, as a query answers - is the same table, in the column
+order the answer states, with those counts above it. **Table | Raw** switches
+between that view and the server's own text, so what a view made of the answer can
+always be checked against what arrived. Nothing here is specific to one server, so
+any tool of any configured server can be run this way.
+
+A server offers its tools here only once VERTEX has read them - after it has been
+used in the chat, or after **Read tools** in the MCP Servers window.
 
 ## Review transports with Copilot, Claude Code or Codex
 

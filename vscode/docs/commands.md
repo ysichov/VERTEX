@@ -34,6 +34,17 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   Versions column, AVE's layout, and opens on the same part. A part opens on its newest change: the
   latest version compared with the one before it; pick another version or pin a base with ◇ to change that.
 
+  **MCP** in the type picker is not an ABAP object: the name field lists the MCP servers of
+  `vertex.chat.mcpServers` and the function picker lists the chosen server's tools, grouped by the
+  toolsets they belong to. The page builds its form from the tool's own schema - required parameters
+  first, a list where the schema gives a choice, a checkbox for an on/off option, bounds and defaults
+  filled in - with **?** beside the tool name showing what the server says it does. **Run** shows the
+  answer by its shape: rows as a table, SQL and fenced code with their language, an image as an image,
+  other JSON as its structure, anything else as the server's own text. An answer carrying its rows under a
+  key, beside `columns` and its counts, is that table too, in the stated column order. **Table | Raw** switches
+  between the view and the server's own text. A server offers its tools here once VERTEX has read them, in the
+  chat or with **Read tools** in the MCP Servers window.
+
   Metrics for a class or program has a **Table / Visual** switch. In Visual, tile area scales with the selected indicator and every tile shows its method or unit name and value. CC and MI colours follow the table's risk grades; other indicators use a relative ranking within the object. Single-click a tile to select it; double-click or press Enter to open its source beside the view.
   Visual has a 2–300% scale control and a Fit button that fits the whole map into the pane. Fit and the ± buttons animate scale changes; Ctrl+wheel changes scale immediately, as in UML, while ordinary scrolling moves around the map. Zoom changes tile space and reveals more labels without enlarging text.
 

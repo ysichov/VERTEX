@@ -2203,6 +2203,11 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     })), { title: result.truncated ? "First 100 matches — refine the pattern for more" : "Open SAP source" });
     if (picked) { await showSource(repo, picked.object); }
   });
+  command("vertex.openLoggedSource", async ({ source, title }) => {
+    if (typeof source !== "string") throw new Error("The tool returned no version source.");
+    const document = await snapshot(source, String(title || "Historical version"));
+    return vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside, preview: true });
+  });
   command("vertex.readCode", async () => {
     const object_type = await vscode.window.showQuickPick(Object.keys(TYPES), { title: "SAP object type" });
     if (!object_type) { return; }
@@ -2463,7 +2468,16 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
   }
   // Run Select: the SELECT at the cursor through ADT's data preview. The editor's text is parsed, saved or not; what the
   // program would supply is left out as select-query.js decides, and every condition left out is shown above the rows.
-  command("vertex.runSelect", async () => {
+  command("vertex.runSelect", async (options = {}) => {
+    if (options.sql !== undefined) {
+      const text = require("./select-query").loggedSource(options.sql);
+      const api = (await repository(options.system ? { name: options.system } : undefined)).api;
+      const answer = await require("./select-query").run(api, text, text.indexOf("\n") + 1);
+      if (answer.open) return options.system && pin ? pin(options.system, () => vscode.commands.executeCommand("vertex.tools", answer.open)) : vscode.commands.executeCommand("vertex.tools", answer.open);
+      const panel = vscode.window.createWebviewPanel("vertex.runSelect", "Select · Session Logs", vscode.ViewColumn.Beside, {});
+      panel.webview.html = answer.html;
+      return;
+    }
     const editor = vscode.window.activeTextEditor, document = editor && editor.document, own = document && tabSource(document);
     const local = document?.uri?.scheme === "file" && /\.abap$/i.test(document.uri.fsPath || "");
     if (!own && !local) { throw new Error("Open a SAP or local ABAP source tab first."); }

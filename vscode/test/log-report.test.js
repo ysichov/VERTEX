@@ -8,6 +8,79 @@ const path = require("node:path");
 const vm = require("node:vm");
 const report = require("../log-report");
 
+test('Codex turn totals are marked separately from individual API model responses',()=>{
+ const records=[{type:'user',message:{content:'Inspect'}},{type:'vertex_provider_response',provider:'codex',scope:'model_response',response:{id:'turn:1',usage:{input_tokens:100}}}];
+ const session=report.parseSession(records.map(record=>JSON.stringify({timestamp:'2026-11-14T01:00:00Z',...record})).join('\n'),'codex_fixture.jsonl');
+ assert.equal(session.prompts[0].timeline[0].usageScope,'cli_turn');
+});
+
+test('historical version links retain the exact revision URI and tool result identity',()=>{
+ const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+ const el=(tag,cls='',text='')=>({tag,cls,text,children:[],appendChild(child){this.children.push(child);return child;}});
+ const messages=[],context={el,window:{vertexCanReadVersions:true},document:{createTextNode:text=>({text})},vscode:{postMessage:message=>messages.push(message)}};vm.createContext(context);
+ vm.runInContext(page.slice(page.indexOf('  function line('),page.indexOf('  function drawStep(')),context);
+ const target=el('div'),uri='/sap/bc/adt/programs/programs/Z_OLD/source/main/versions/20261023/00001/content';
+ context.fields(target,{object:{name:'Z_OLD'},revisions:[{id:'00001',uri,author:'AUTHOR'}]},'prompt:1','tool-1');
+ const link=target.children[0].children.find(node=>node.tag==='button');assert.ok(link);link.onclick();
+ assert.equal(messages[0].uri,uri);assert.equal(messages[0].toolId,'tool-1');assert.equal(messages[0].key,'prompt:1');
+});
+
+test('old clipped serialized query responses retain only complete rows and an explicit warning',()=>{
+ const data={totalRows:1502,columns:['ID','TEXT'],rows:[{ID:1,TEXT:'Quoted "value" with \\ path'},{ID:2,TEXT:'Second'},{ID:3,TEXT:'Incomplete'}]};
+ for(const source of [JSON.stringify(data),JSON.stringify(JSON.stringify(data))]){
+  const cut=source.indexOf('Incomplete')+3;
+  const result=JSON.parse(report.prettyJson(source.slice(0,cut)+'\n[139824 more characters not logged]'));
+  assert.deepEqual(result.rows,data.rows.slice(0,2));assert.equal(result.totalRows,1502);assert.match(result.log_truncated,/Only 2 complete rows/);
+ }
+ assert.equal(report.prettyJson('ordinary text\n[12 more characters not logged]'),'ordinary text\n[12 more characters not logged]');
+});
+
+test('SQL arguments use the existing link style and send the full statement with its prompt key',()=>{
+ const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+ const el=(tag,cls='',text='')=>({tag,cls,text,children:[],appendChild(child){this.children.push(child);return child;}});
+ const messages=[],context={el,document:{createTextNode:text=>({text})},vscode:{postMessage:message=>messages.push(message)}};vm.createContext(context);
+ vm.runInContext(page.slice(page.indexOf('  function line('),page.indexOf('  function diffBlock(')),context);
+ const target=el('div'),sql='SELECT * FROM e070 WHERE trkorr = '+"'ALCK900781'";
+ context.line(target,'sql',sql,'prompt:1');const link=target.children[0].children[1];
+ assert.equal(link.cls,'recording-link');link.onclick();assert.equal(messages[0].sql,sql);assert.equal(messages[0].key,'prompt:1');assert.equal(messages[0].action,'openSelect');
+});
+
+test('tool results decode serialized JSON layers and preserve ordinary text backslashes',()=>{
+ const result={columns:['NAME'],rows:[{NAME:'First\nSecond'}],rowsReturned:1};
+ const parse=content=>report.parseSession([
+  {type:'user',message:{content:'Read'}},
+  {type:'user',message:{content:[{type:'tool_result',content}]}}
+ ].map(record=>JSON.stringify({timestamp:'2026-11-14T01:00:00Z',...record})).join('\n'),'test.jsonl').prompts[0].details.find(d=>d.type==='tool result').text;
+ assert.deepEqual(JSON.parse(parse(JSON.stringify(JSON.stringify(result)))),result);
+ assert.equal(parse(JSON.stringify('First\nSecond')),'First\nSecond');
+ assert.equal(parse('C:\\new\\test'),'C:\\new\\test');
+});
+
+test('SAP tool headings show operation, object, part and SQL source tables',()=>{
+ const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+ const context={};vm.createContext(context);
+ vm.runInContext(page.slice(page.indexOf('  function fileName('),page.indexOf('  function line(')),context);
+ const title=(name,input)=>context.stepTitle({name,text:name+'\n'+JSON.stringify(input)});
+ assert.equal(title('SAPRead',{type:'VERSIONS',name:'ZCL_TR_TRANSLATE'}),'SAPRead: VERSIONS ZCL_TR_TRANSLATE');
+ assert.equal(title('SAPRead',{object_type:'CLAS',object_name:'ZCL_TEST',include:'testclasses'}),'SAPRead: CLAS ZCL_TEST testclasses');
+ assert.equal(title('SAPQuery',{action:'sql',sql:"SELECT 'FROM fake' AS label FROM e070 AS a INNER JOIN e071 AS b ON a~trkorr = b~trkorr"}),'SAPQuery: SELECT FROM e070 JOIN e071');
+ assert.equal(title('SAPQuery',{action:'sql',sql:'SELECT * FROM /vertex/table'}),'SAPQuery: SELECT FROM /vertex/table');
+});
+
+test('tabular tool results render ordered text-only cells and retain metadata',()=>{
+ const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+ const el=(tag,cls='',text='')=>({tag,cls,text,children:[],appendChild(child){this.children.push(child);return child;}});
+ const context={el,document:{createTextNode:text=>({text})}};vm.createContext(context);
+ vm.runInContext(page.slice(page.indexOf('  function line('),page.indexOf('  function drawStep(')),context);
+ const target=el('div');
+ assert.equal(context.fields(target,JSON.stringify({totalRows:1502,rowsReturned:2,columns:JSON.stringify(['NAME','VALUE']),rows:[{VALUE:42,NAME:'<script>bad()</script>'},{NAME:'Second\nline',VALUE:null}]})),true);
+ const nodes=[];const walk=n=>{nodes.push(n);n.children?.forEach(walk);};walk(target);
+ assert.deepEqual(nodes.filter(n=>n.tag==='th').map(n=>n.text),['NAME','VALUE']);
+ assert.deepEqual(nodes.filter(n=>n.tag==='td').map(n=>n.text),['<script>bad()</script>','42','Second\nline','—']);
+ assert.ok(nodes.some(n=>n.text==='1502'));assert.ok(nodes.some(n=>n.cls==='table-scroll'));
+ const empty=el('div');context.fields(empty,{columns:['NAME'],rows:[]});assert.equal(empty.children[1].children[0].children[1].children.length,0);
+});
+
 test("session report reads provider logs without treating tool results as prompts", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-log-report-"));
   try {

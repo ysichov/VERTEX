@@ -3,11 +3,24 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
 
+test('LLM query rows default to 100, preserve fetched totals and follow configured limits',async()=>{
+ const settings={},vscode={workspace:{getConfiguration:()=>({get:(key,fallback)=>settings[key]??fallback})}};
+ const manager=require('../mcp-external').create({vscode,active:()=>({error:'unused'}),password:async()=>'',storage:null});
+ const rows=Array.from({length:500},(_,id)=>({ID:id}));let args;
+ const tools=manager.wrap({schemas:[{name:'SAPQuery',inputSchema:{type:'object',properties:{maxRows:{type:'integer'}}}}],execute:async(_name,value)=>{args=value;return JSON.stringify({totalRows:10000,rowsReturned:500,columns:['ID'],rows});}});
+ let result=JSON.parse(await tools.execute('SAPQuery',{sql:'SELECT * FROM t'}));
+ assert.equal(args.maxRows,100);assert.equal(result.totalRows,10000);assert.equal(result.rowsReturned,500);assert.equal(result.rowsFetched,500);assert.equal(result.rowsSentToLlm,100);assert.equal(result.rows.length,100);assert.equal(result.rowsOmittedForLlm,400);
+ assert.equal(rows.length,500);assert.equal(tools.schemas[0].inputSchema.properties.maxRows.default,100);
+ settings.queryMaxRows=25;result=JSON.parse(await tools.execute('SAPQuery',{maxRows:500}));assert.equal(args.maxRows,500);assert.equal(result.rows.length,25);assert.equal(tools.schemas[0].inputSchema.properties.maxRows.default,25);
+ settings.queryMaxRows=0;result=JSON.parse(await tools.execute('SAPQuery',{}));assert.equal(result.rows.length,100);
+ manager.stop();
+});
+
 /* A Streamable HTTP MCP server in miniature: three tools, answers as JSON, the first call as an event stream. */
-function fakeServer() {
+function fakeServer(extraTools = [], source = null) {
   const calls = [];
   const tools = ["abap_objects_generator_list", "abap_business_service_list", "abap_object_read_file"]
-    .map(name => ({ name, description: name, inputSchema: { type: "object", properties: {} } }));
+    .map(name => ({ name, description: name, inputSchema: { type: "object", properties: {} } })).concat(extraTools);
   const server = http.createServer((req, res) => {
     let body = "";
     req.on("data", chunk => { body += chunk; });
@@ -17,7 +30,7 @@ function fakeServer() {
       if (message.id === undefined) { res.writeHead(202); res.end(); return; }
       const result = message.method === "initialize" ? { protocolVersion: "2025-06-18", capabilities: {}, instructions: "fake" }
         : message.method === "tools/list" ? { tools }
-        : (calls.push(message.params), { content: [{ type: "text", text: "ran " + message.params.name }] });
+        : (calls.push(message.params), { content: [{ type: "text", text: source === null ? "ran " + message.params.name : source }] });
       const answer = JSON.stringify({ jsonrpc: "2.0", id: message.id, result });
       if (message.method === "initialize") {
         res.writeHead(200, { "Content-Type": "text/event-stream", "Mcp-Session-Id": "s1" });
@@ -31,6 +44,21 @@ function fakeServer() {
   });
   return new Promise(resolve => server.listen(0, "127.0.0.1", () => resolve({ server, calls, port: server.address().port })));
 }
+
+test('historical source uses the original SAPRead VERSION_SOURCE tool and exact revision URI',async()=>{
+ const tool={name:'SAPRead',inputSchema:{type:'object',properties:{type:{enum:['VERSIONS','VERSION_SOURCE']}}}};
+ const fake=await fakeServer([tool],JSON.stringify("REPORT z_old.\nWRITE 'historical'."));
+ const settings={'mcpServers':[{name:'ARC-1',url:'http://127.0.0.1:'+fake.port+'/mcp',headers:{Authorization:'Bearer t0k'}}]};
+ const vscode={workspace:{getConfiguration:()=>({get:(key,fallback)=>settings[key]??fallback})}};
+ const manager=require('../mcp-external').create({vscode,active:()=>({error:'unused'}),password:async()=>'',storage:null});
+ try{
+  const uri='/sap/bc/adt/programs/programs/Z_OLD/source/main/versions/20261023130358/00001/content';
+  const source=await manager.readVersion({uri,name:'Z_OLD',toolset:'ARC-1'});
+  assert.equal(source,"REPORT z_old.\nWRITE 'historical'.");
+  assert.deepEqual(fake.calls,[{name:'SAPRead',arguments:{type:'VERSION_SOURCE',name:'Z_OLD',versionUri:uri}}]);
+  await assert.rejects(manager.readVersion({uri:'https://example.com/source',name:'Z_OLD'}),/Invalid/);
+ }finally{manager.stop();await new Promise(resolve=>fake.server.close(resolve));}
+});
 
 test("a toolset is offered by enable_toolset and its tools join only when enabled", async () => {
   const fake = await fakeServer();

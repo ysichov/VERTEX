@@ -6,6 +6,15 @@ const { prepare, DEFAULT_ROWS } = require("../select-query");
 const at = (text, line) => text.split("\n").slice(0, line - 1).join("\n").length + 3;
 const run = (statement) => { const text = "REPORT z.\n" + statement + "\n"; return prepare(text, at(text, 2)); };
 
+test('a logged join SELECT reuses the SelecTor parser with its ON and filters',()=>{
+ const {loggedSource}=require('../select-query');
+ const text=loggedSource("SELECT a~trkorr,b~obj_name FROM e070 AS a INNER JOIN e071 AS b ON a~trkorr = b~trkorr WHERE a~as4date >= '20261015'");
+ const result=prepare(text,text.indexOf('\n')+1);
+ assert.equal(result.selector.table,'E070');assert.deepEqual(result.selector.join,['E071']);assert.equal(result.selector.on.T1,'t0~trkorr = t1~trkorr');assert.equal(result.selector.filters[0].low,'20261015');
+ assert.throws(()=>loggedSource('DELETE FROM e070'),/SELECT/);
+ const executed=loggedSource('SELECT * FROM e070 INTO TABLE @DATA(lt_rows) UP TO 20 ROWS.');assert.equal((executed.match(/INTO TABLE/g)||[]).length,1);
+});
+
 test("a known condition stays, a program value is left out, INTO and FOR ALL ENTRIES go, UP TO is the row count", () => {
   const result = run("SELECT a~matnr, b~maktx FROM mara AS a INNER JOIN makt AS b ON b~matnr = a~matnr FOR ALL ENTRIES IN @lt_k "
     + "WHERE a~matnr = @lv_m AND b~spras = 'E' INTO TABLE @DATA(lt_r) UP TO 10 ROWS.");

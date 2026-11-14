@@ -48,7 +48,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
   let sequence = 0, discarded = false, screenshotCount = 0;
   // Where the conversation was held: the local folder, or the SAP system and client. Session Logs filters by it,
   // and nothing else in the log records it - a conversation without it cannot be placed afterwards.
-  let context = null;
+  let context = null, toolset = "";
   // Every file of one VS Code conversation carries its id: a conversation that changes provider writes one file per
   // provider, and Session Logs puts them back together by it.
   const conversation = scope?.conversation || conversationId, branch = scope ? "main" : branchId, parent = scope ? null : branchParent;
@@ -58,7 +58,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch,
       ...(scope?.relatedConversation ? { vertex_related_conversation: scope.relatedConversation } : {}), ...(parent ? { vertex_parent: parent } : {}),
-      ...(context ? { vertex_context: context } : {}) }, protection.protect(entry))) + "\n", "utf8");
+      ...(context ? { vertex_context: context } : {}), ...(toolset ? { vertex_toolset: toolset } : {}) }, protection.protect(entry))) + "\n", "utf8");
   };
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
   return {
@@ -68,6 +68,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       if (on.questions) write({ type: "vertex_decision", input: JSON.parse(JSON.stringify(input)) });
     },
     setOperation(value){operation=String(value||"Chat");},
+    setToolset(value){toolset=typeof value === "string" ? value.slice(0,200) : "";},
     /** Folder mode: {mode:"folder",folder}. SAP mode: {mode:"sap",system,client}. Anything else is refused. */
     setContext(value){
       if (!value || typeof value !== "object") { context = null; return; }
@@ -372,8 +373,20 @@ function summarize(result) {
 const RESULT_TEXT = 20000;
 function resultContent(result, objects) {
   const body = text(result);
-  let shown;
-  try { shown = JSON.stringify(sanitize(JSON.parse(body), objects)); } catch (_) { shown = sanitizeText(body, objects); }
+  let data = body;
+  for (let layer = 0; layer < 4 && typeof data === "string"; layer++) {
+    try { data = JSON.parse(data); } catch (_) { break; }
+  }
+  data = sanitize(data, objects);
+  let shown = typeof data === "string" ? data : JSON.stringify(data);
+  if (shown.length > RESULT_TEXT && data && typeof data === "object" && Array.isArray(data.rows) && data.columns) {
+    const rows = data.rows;
+    let low = 0, high = rows.length;
+    const limited = count => JSON.stringify({ ...data, rows: rows.slice(0, count), log_truncated: { rowsLogged: count, rowsOmitted: rows.length - count } });
+    while (low < high) { const middle = Math.ceil((low + high) / 2); if (limited(middle).length <= RESULT_TEXT) low = middle; else high = middle - 1; }
+    shown = limited(low);
+    if (shown.length <= RESULT_TEXT) return shown;
+  }
   return shown.length > RESULT_TEXT ? shown.slice(0, RESULT_TEXT) + "\n[" + (shown.length - RESULT_TEXT) + " more characters not logged]" : shown;
 }
 
@@ -408,7 +421,7 @@ async function assistantTool(log, name, args, call) {
 
 const shared = new Map();
 const newConversationId = () => stamp(new Date()) + "_" + require("crypto").randomBytes(4).toString("hex");
-function independentScope() { return { conversation: newConversationId(), relatedConversation: conversationId }; }
+function independentScope(related = true) { return { conversation: newConversationId(), ...(related ? { relatedConversation: conversationId } : {}) }; }
 let conversationId = newConversationId(), branchId = "main", branchParent = null;
 /** One log per folder, provider and choice for the life of the process: the VS Code chat is one conversation. */
 function current(root, provider, include) {

@@ -426,7 +426,10 @@ function markdown(text, target) {
     var name = d.name || d.text.split("\n")[0], input = d.input || {};
     if (!d.step) {
       var a = argsOf(d) || {};
-      var what = [a.object_type, a.object_name, a.method_name || a.include].filter(function (x) { return x && x !== "main"; }).join(" ") || a.query || a.pattern || "";
+      var sql = typeof a.sql === "string" ? a.sql.replace(/'(?:''|[^'])*'|\/\*[\s\S]*?\*\/|--[^\n]*/g, " ") : "";
+      var tables = /^\s*select\b/i.test(sql) ? sql.match(/\b(?:from|join)\s+[\w/.$"]+/gi) : null;
+      var what = tables ? "SELECT " + tables.map(function (part) { return part.replace(/^(from|join)/i, function (word) { return word.toUpperCase(); }); }).join(" ")
+        : [a.object_type || a.type, a.object_name || a.name, a.method_name || a.include || a.part].filter(function (x) { return x && x !== "main"; }).join(" ") || a.query || a.pattern || a.action || "";
       return what ? name + ": " + String(what).slice(0, 90) : name;
     }
     if (name === "Bash") return "Bash: " + (input.description || String(input.command || "").split("\n")[0]).slice(0, 90);
@@ -435,10 +438,15 @@ function markdown(text, target) {
     if (name === "Review") return "Review: " + (input.files || []).length + " file" + ((input.files || []).length === 1 ? "" : "s");
     return name;
   }
-  function line(target, label, value) {
+  function line(target, label, value, promptKey) {
     var row = el("div", "step-line");
     row.appendChild(el("span", "label", label));
-    row.appendChild(document.createTextNode(String(value)));
+    if (promptKey && /^(sql|executedQueryString)$/.test(label) && /^\s*SELECT\b/i.test(String(value))) {
+      var select = el("button", "recording-link", String(value)); select.type = "button";
+      select.title = "Open this SELECT in SelecTor";
+      select.onclick = function () { vscode.postMessage({ action: "openSelect", key: promptKey, sql: String(value) }); };
+      row.appendChild(select);
+    } else row.appendChild(document.createTextNode(String(value)));
     target.appendChild(row);
   }
   function diffBlock(target, removed, added) {
@@ -449,19 +457,55 @@ function markdown(text, target) {
   }
   /* An object's fields as "name: value" lines: a long text cut, a nested value compact, a JSON list kept in a string
      (a system's connection, say) read as its items. Null when the text is not a JSON object. */
-  function fields(target, value) {
+  function fields(target, value, promptKey, toolId) {
     var object = value;
     if (typeof value === "string") { try { object = JSON.parse(value); } catch (e) { return false; } }
     if (!object || typeof object !== "object" || Array.isArray(object)) return false;
+    var columns = object.columns, rows = object.rows;
+    try { if (typeof columns === "string") columns = JSON.parse(columns); if (typeof rows === "string") rows = JSON.parse(rows); } catch (e) { /* ordinary fields */ }
+    var tabular = Array.isArray(columns) && columns.length > 0 && columns.every(function (column) { return typeof column === "string"; })
+      && Array.isArray(rows) && rows.every(function (row) { return row && typeof row === "object"; });
     var box = el("div", "step-fields");
     Object.keys(object).forEach(function (key) {
+      if (tabular && (key === "columns" || key === "rows")) return;
       var v = object[key], shown;
+      if (key === "revisions" && promptKey && window.vertexCanReadVersions) {
+        var revisions = v;
+        try { if (typeof revisions === "string") revisions = JSON.parse(revisions); } catch (e) { /* ordinary field */ }
+        if (Array.isArray(revisions)) {
+          revisions.forEach(function (revision) {
+            if (!revision || typeof revision.uri !== "string") return;
+            var link = el("button", "recording-link", [revision.id, revision.timestamp, revision.author, revision.versionTitle].filter(Boolean).join(" · "));
+            link.type = "button"; link.title = "Read this historical version with SAPRead and open it read-only";
+            link.onclick = function () { vscode.postMessage({ action: "openVersion", key: promptKey, toolId: toolId, uri: revision.uri }); };
+            box.appendChild(link);
+          });
+          return;
+        }
+      }
       if (typeof v === "string" && /^\s*\[/.test(v)) { try { var list = JSON.parse(v); if (Array.isArray(list)) v = list.filter(function (x) { return x !== null && x !== ""; }).join(", "); } catch (e) { /* plain text */ } }
       shown = v === null || v === undefined ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v);
       if (shown.length > 300) shown = shown.slice(0, 300) + " … (" + shown.length + " characters)";
-      line(box, key, shown);
+      line(box, key, /^(sql|executedQueryString)$/.test(key) ? v : shown, promptKey);
     });
     target.appendChild(box);
+    if (tabular) {
+      // Reuse the report's table and scroll container, and SelecTor's text-only cells.
+      var table = el("table", "jev-table"), head = el("tr");
+      columns.forEach(function (column) { head.appendChild(el("th", "", column)); });
+      var thead = el("thead"); thead.appendChild(head); table.appendChild(thead);
+      var tbody = el("tbody");
+      rows.forEach(function (row) {
+        var tr = el("tr");
+        columns.forEach(function (column, index) {
+          var value = Array.isArray(row) ? row[index] : row[column];
+          tr.appendChild(el("td", typeof value === "number" ? "num" : "", value == null ? "—" : typeof value === "object" ? JSON.stringify(value) : String(value)));
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      var scroll = el("div", "table-scroll"); scroll.appendChild(table); target.appendChild(scroll);
+    }
     return true;
   }
   function drawStep(target, d) {
@@ -559,7 +603,11 @@ function markdown(text, target) {
       var calls = tools.filter(function (d) { return d.type === "tool"; });
       // One timeline when the log has the model's calls: each model step with its tokens, then the tools it called.
       var steps = modelSteps.length > 0;
-      var toolBox = section(steps ? "Steps (" + modelSteps.length + " model call" + (modelSteps.length === 1 ? "" : "s") + ", " + calls.length + " tool call" + (calls.length === 1 ? "" : "s") + ")"
+      var cliTurns = modelSteps.filter(function (step) { return step.usageScope === "cli_turn"; }).length;
+      var modelCount = modelSteps.length - cliTurns;
+      var counts = (modelCount ? modelCount + " model call" + (modelCount === 1 ? "" : "s") : "")
+        + (cliTurns ? (modelCount ? ", " : "") + cliTurns + " Codex turn" + (cliTurns === 1 ? "" : "s") + "; internal model calls unknown" : "");
+      var toolBox = section(steps ? "Steps (" + counts + ", " + calls.length + " tool call" + (calls.length === 1 ? "" : "s") + ")"
         : "Tools (" + calls.length + " calls)", "technical");
       var stepsLoaded=false;
       var entries = new Map();
@@ -574,7 +622,7 @@ function markdown(text, target) {
         }
         var text = d.type === "tool" ? d.text.slice(d.text.indexOf("\n") + 1) : d.text;
         // Fields as lines where the text is a JSON object; anything else as it is.
-        if (!fields(target, text)) target.appendChild(el("div", "detail", text));
+        if (!fields(target, text, p.key, d.tool_id)) target.appendChild(el("div", "detail", text));
         objectLinks(target, d.objects);
       }
       var byId = new Map(calls.map(function (d) { return [d.tool_id, d]; }));
@@ -591,7 +639,7 @@ function markdown(text, target) {
         if (entry.waiting) entry.waiting.push(d); else appendEntry(entry, d);
       }
       function addCall(d, into) {
-        var entry = section(stepTitle(d), "technical");
+        var entry = section((calls.indexOf(d) + 1) + ". " + stepTitle(d), "technical");
         if (d.tool_id) entries.set(d.tool_id, entry);
         later(entry, d);
         (into || toolBox).appendChild(entry);
@@ -607,7 +655,7 @@ function markdown(text, target) {
             var u = t.usage || {};
             group = el("div", "model-group");
             var head = el("div", "model-step");
-            head.appendChild(el("strong", "", "Model step " + (++k)));
+            head.appendChild(el("strong", "", (t.usageScope === "cli_turn" ? "Codex turn " : "Model step ") + (++k)));
             head.appendChild(document.createTextNode(" · in " + n(u.input_tokens) + " · out " + n(u.output_tokens)
               + " · cache read " + n(u.cache_read_input_tokens) + " · cache write " + n(u.cache_creation_input_tokens)
               + (u.web_search_calls != null ? " · web searches " + n(u.web_search_calls) : "")

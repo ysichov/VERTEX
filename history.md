@@ -1,3 +1,31 @@
+## 2026-11-14 — Run an MCP tool from the Tools window
+
+The VERTEX Tools window now offers **MCP** as an object type. The name field lists the
+servers of `vertex.chat.mcpServers`, and the function picker lists the chosen server's
+tools, grouped by the toolsets they belong to. The page that opens builds its form from
+the tool's own schema: parameter names as the server writes them, required ones first,
+a list where the schema offers a choice, a checkbox for an on/off option, numeric bounds
+and defaults filled in. The tool's description is behind **?** beside its name, and every
+parameter carries its own.
+
+**Run** calls the tool and shows the answer by its shape, not by the tool's name: rows as
+a table, SQL and fenced code with their language, an image as an image, other JSON as its
+structure, and anything else as the server's own text. A query answer carries its rows under
+a key, beside `columns`, `totalRows` and the statement that ran; that is the same table, in
+the column order the answer states, with the counts above it. **Table | Raw** switches between
+the view and the server's own text, so a view can always be checked against what arrived. Because nothing is tied to a
+particular tool, every tool of every configured server can be run this way, and a new
+server needs no further work.
+
+A server offers its tools here once VERTEX has read them - after it has been used in the
+chat, or after **Read tools** in the MCP Servers window; until then the window says so
+rather than starting the server behind your back. Eclipse runs no external MCP servers,
+so the type does not appear there.
+
+## 2026-11-14 — Release 0.9.92: readable tool results and independent Git drafts
+
+Commit and pull request drafts generated with an empty chat now appear as separate log entries. With chat history present, they retain the conversation link. Session Logs shows SAP operation, object and part in call headings, and SQL headings name the source tables. Serialized tool results display normalized text; columns/rows results display as tables with their metadata. Existing log files are read without modification. Tool calls are numbered. Codex turn totals are labelled separately from individual model API calls. SQL links reopen the query in SelecTor, including its joins and filters. Complete rows surviving older clipped JSON results are shown as a partial table; new table logs retain valid JSON when capped. In VS Code, revision links use the original SAPRead VERSION_SOURCE tool and open the result read-only. Chat query responses send up to 100 rows to the LLM by default, configurable with vertex.chat.queryMaxRows, and distinguish provider totals, fetched rows and sent rows; interactive SelecTor is unchanged.
+
 ## 2026-11-14 — VS Code 0.9.91: comparable input counts
 
 Session Logs now includes cache creation in New in for conversation and prompt rows, including sorting. Existing logs are recalculated when opened; the original usage counters and cache-write details are preserved. Eclipse version and build are unchanged.

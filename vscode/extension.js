@@ -986,6 +986,7 @@ function activate(context) {
       setContext: (panel, value) => toolsContextState.update(panel, value),
       enrichContext: state => withShownDiff(context, state),
       debugger: dbg,
+      mcp: chatMcp,
       chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext(), context.globalState) }, initial);
   // The normal source tab remains the sole code editor.  The debugger is a
   // docked panel, not another editor tab showing a second copy of that source.
@@ -1857,7 +1858,11 @@ function activate(context) {
     require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext(), context.globalState), systems,
     extra => withShownDiff(context, extra ? { ...(toolsContextState.current() || {}), ...extra } : toolsContextState.current()),
     { set: auth.setClient, onChange: auth.onClientChange }, chatMcp);
-  require("./log-report").register(vscode, context, { openObject: object => chatTools.execute("open_sap_object", object) });
+  require("./log-report").register(vscode, context, { openObject: object => chatTools.execute("open_sap_object", object),
+    readVersion: reference => pinTo(reference.system, async () => {
+      const source = await chatMcp.readVersion(reference);
+      return vscode.commands.executeCommand("vertex.openLoggedSource", { source, title: reference.name + " · version " + reference.version });
+    }, reference.client) });
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation
   // so a registered Codex/Claude connection also works after a window reload.

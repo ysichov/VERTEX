@@ -14,7 +14,7 @@ function host(savedState = {}, authOverride, repositoryRead) {
   const atcRuns = [], problems = new Map(), infos = [], usedAsks = [], docAsks = [], references = [], warnings = [];
   let usedResult = [];
   let atcResult = { variant: "DEFAULT", infos: [], findings: [] };
-  let selectedSystem = "DEV", mutateDuringConfirmation = false, fileProvider;
+  let selectedSystem = "DEV", mutateDuringConfirmation = false, fileProvider, textProvider;
   const api = { async execute(tool, args) {
     if (tool === "read_sap_object") {
       const klass = args.object_type === "CLAS", include = args.include || "main";
@@ -84,11 +84,11 @@ function host(savedState = {}, authOverride, repositoryRead) {
         edit.replaced.forEach(r => { documents.find(d => d.uri.toString() === r.uri.toString()).text = r.text; });
         return true;
       },
-      registerTextDocumentContentProvider: () => ({ dispose() {} }),
+      registerTextDocumentContentProvider: (_scheme, provider) => { textProvider = provider; return { dispose() {} }; },
       registerFileSystemProvider: (scheme, provider) => { fileProvider = provider; return { dispose() {} }; },
       onDidOpenTextDocument: () => ({ dispose() {} }), onDidCloseTextDocument: () => ({ dispose() {} }),
       async openTextDocument(value) {
-        const content = value.scheme === 'vertex-sap' ? (await fileProvider.readFile(value)).toString() : value.content || '';
+        const content = value.scheme === 'vertex-sap' ? (await fileProvider.readFile(value)).toString() : value.scheme === 'vertex-source' ? textProvider.provideTextDocumentContent(value) : value.content || '';
         const doc = { uri: value.content === undefined ? value : vscode.Uri.parse("untitled:" + documents.length),
           text: content, saved: content, getText() { return this.text; }, positionAt(offset) { const before = this.text.slice(0, offset).split("\n"); return { line: before.length - 1, character: before[before.length - 1].length }; }, version: 1, isClosed: false,
           get isDirty() { return this.text !== this.saved; },
@@ -142,6 +142,21 @@ function host(savedState = {}, authOverride, repositoryRead) {
     writeFile: (uri, source) => fileProvider.writeFile(uri, Buffer.from(source)),
     restoreDocument: uri => vscode.workspace.openTextDocument(uri) };
 }
+test('logged SELECT opens SelecTor without requiring an active source editor',async()=>{
+ const h=host();
+ await h.commands.get('vertex.runSelect')({sql:"SELECT a~trkorr,b~obj_name FROM e070 AS a INNER JOIN e071 AS b ON a~trkorr = b~trkorr WHERE a~as4date >= '20261015'",system:'DEV'});
+ const opened=h.diffs.find(args=>args[0]==='vertex.tools');
+ assert.ok(opened);assert.equal(opened[1].name,'E070');assert.deepEqual(Array.from(opened[1].selectorPlan.join),['E071']);assert.equal(opened[1].selectorPlan.filters[0].low,'20261015');assert.equal(h.errors.length,0);
+});
+
+test('historical tool source opens through the existing read-only content provider',async()=>{
+ const h=host();
+ await h.commands.get('vertex.openLoggedSource')({source:"REPORT z_old.\nWRITE 'historical'.",title:'Z_OLD version 00001'});
+ assert.equal(h.errors.length,0);
+ const document=h.documents.find(document=>document.uri.scheme==='vertex-source');
+ assert.ok(document);assert.equal(document.getText(),"REPORT z_old.\nWRITE 'historical'.");
+});
+
 test("read_sap_method exposes a bounded method instead of the whole class", async () => {
   const h = host();
   const result = await h.tools.execute("read_sap_method", { object_name: "ZTEST", method_name: "CALLER", limit: 3 });

@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>MCP tool</title>
+<style>
+:root{color-scheme:light dark}
+body{margin:0;background:var(--vscode-editor-background,Canvas);color:var(--vscode-editor-foreground,CanvasText);font:13px var(--vscode-font-family,"Segoe UI",sans-serif)}
+#head{padding:8px 10px;border-bottom:1px solid var(--vscode-panel-border,#8884)}
+#title{font-weight:600;font-family:var(--vscode-editor-font-family,Consolas,monospace)}
+#server{color:var(--vscode-descriptionForeground,GrayText);margin-left:8px}
+.about{margin:6px 0 0;padding:6px 8px;border:1px solid var(--vscode-panel-border,#8884);white-space:pre-wrap;
+  background:var(--vscode-textBlockQuote-background,transparent);max-height:40vh;overflow:auto}
+.about[hidden]{display:none}
+#form{padding:8px 10px;display:grid;gap:8px}
+fieldset{border:1px solid var(--vscode-panel-border,#8884);margin:0;padding:6px 8px}
+legend{padding:0 4px;color:var(--vscode-descriptionForeground,GrayText)}
+.field{display:grid;gap:3px;margin:0 0 8px}
+.field:last-child{margin-bottom:0}
+.field > label{display:flex;align-items:center;gap:6px}
+.name{font-family:var(--vscode-editor-font-family,Consolas,monospace)}
+.req{color:var(--vscode-editorWarning-foreground,inherit)}
+.flag{display:flex;align-items:center;gap:6px}
+input[type=text],input[type=number],textarea,select{width:100%;box-sizing:border-box;font:inherit;padding:3px 5px;
+  color:var(--vscode-input-foreground,inherit);background:var(--vscode-input-background,transparent);
+  border:1px solid var(--vscode-input-border,var(--vscode-panel-border,#8884))}
+textarea{font-family:var(--vscode-editor-font-family,Consolas,monospace);min-height:60px;resize:vertical}
+.hint{color:var(--vscode-descriptionForeground,GrayText);white-space:pre-wrap}
+.hint[hidden]{display:none}
+#run{justify-self:start}
+#status{padding:0 10px 8px;color:var(--vscode-descriptionForeground,GrayText)}#status:empty{display:none}
+#views{padding:0 10px 8px}#views[hidden]{display:none}
+.meta{color:var(--vscode-descriptionForeground,GrayText);margin:8px 0 3px;white-space:pre-wrap;
+  font-family:var(--vscode-editor-font-family,Consolas,monospace)}
+.error{color:var(--vscode-errorForeground,#d33)!important;white-space:pre-wrap}
+#out{padding:0 10px 14px}
+#out pre{margin:0;padding:6px 8px;border:1px solid var(--vscode-panel-border,#8884);overflow:auto;
+  font-family:var(--vscode-editor-font-family,Consolas,monospace);white-space:pre-wrap;word-break:break-word}
+#out table{border-collapse:collapse;width:100%}
+#out th,#out td{border:1px solid var(--vscode-panel-border,#8884);padding:2px 6px;text-align:left;vertical-align:top;
+  font-family:var(--vscode-editor-font-family,Consolas,monospace)}
+#out th{background:var(--vscode-keybindingTable-headerBackground,transparent);font-weight:600}
+#out img{max-width:100%}
+.kind{color:var(--vscode-descriptionForeground,GrayText);margin:8px 0 3px}
+.raw-note{color:var(--vscode-descriptionForeground,GrayText);margin:0 0 3px}
+details.tree{margin-left:12px}
+details.tree > summary{cursor:pointer;font-family:var(--vscode-editor-font-family,Consolas,monospace)}
+.leaf{margin-left:12px;font-family:var(--vscode-editor-font-family,Consolas,monospace);white-space:pre-wrap}
+</style></head><body>
+<div id="head"><span id="title"></span><span id="server"></span>
+<button id="about-toggle" type="button" hidden>?</button>
+<p id="about" class="about" hidden></p></div>
+<div id="form"></div>
+<div id="status" role="status"></div>
+<div id="views" hidden><span class="vertex-segment-toggle"><button id="view-shaped" type="button" class="active">Table</button><button id="view-raw" type="button">Raw</button></span></div>
+<div id="out"></div>
+<script>
+const init = /*INIT*/null/*INIT*/ || {};
+const tool = init.tool || {};
+const schema = tool.inputSchema && typeof tool.inputSchema === "object" ? tool.inputSchema : { type: "object", properties: {} };
+const required = Array.isArray(schema.required) ? schema.required : [];
+const status = document.getElementById("status"), out = document.getElementById("out");
+document.getElementById("title").textContent = tool.name || "";
+document.getElementById("server").textContent = init.server ? "on " + init.server : "";
+// The tool's own description, which a server may write in several paragraphs: shown on request, not in a tooltip.
+const about = document.getElementById("about"), aboutToggle = document.getElementById("about-toggle");
+if (tool.description) {
+  about.textContent = tool.description;
+  aboutToggle.hidden = false;
+  aboutToggle.title = "What this tool does";
+  aboutToggle.onclick = () => { about.hidden = !about.hidden; };
+}
+function sdeReady() {}
+/* One field per property of the tool's schema, named as the schema names it. Nothing is guessed about what a
+   field means: the type decides the control, the description is shown as the tool wrote it. */
+function control(name, property) {
+  const type = Array.isArray(property.type) ? property.type.find(t => t !== "null") || "string" : property.type || "string";
+  const enumerated = Array.isArray(property.enum) ? property.enum : null;
+  let box;
+  if (enumerated) {
+    box = document.createElement("select");
+    // An optional field may be left unanswered; a required one starts on its default or first value.
+    if (!required.includes(name)) box.add(new Option("", ""));
+    enumerated.forEach(value => box.add(new Option(String(value), String(value))));
+  } else if (type === "boolean") {
+    box = document.createElement("input");
+    box.type = "checkbox";
+    if (property.default === true) box.checked = true;
+  } else if (type === "integer" || type === "number") {
+    box = document.createElement("input");
+    box.type = "number";
+    if (type === "integer") box.step = "1";
+    if (typeof property.minimum === "number") box.min = String(property.minimum);
+    if (typeof property.maximum === "number") box.max = String(property.maximum);
+  } else if (type === "object" || type === "array") {
+    // A structured value is typed as JSON: the schema below it is the tool's, and it travels unchanged.
+    box = document.createElement("textarea");
+    box.placeholder = type === "array" ? "[]" : "{}";
+  } else {
+    box = document.createElement("input");
+    box.type = "text";
+  }
+  if (property.default !== undefined && type !== "boolean" && !enumerated) box.value = String(property.default);
+  else if (enumerated && property.default !== undefined) box.value = String(property.default);
+  box.dataset.field = name;
+  box.dataset.kind = enumerated ? "enum" : type;
+  return box;
+}
+function field(name, property) {
+  const wrap = document.createElement("div");
+  wrap.className = "field";
+  const box = control(name, property);
+  const label = document.createElement("label");
+  const caption = document.createElement("span");
+  caption.className = "name";
+  caption.textContent = name;
+  if (box.type === "checkbox") {
+    // A plain on/off option is a checkbox with its label, not a toggle: it is applied when the tool is run.
+    label.className = "flag";
+    label.append(box, caption);
+    wrap.append(label);
+  } else {
+    label.append(caption);
+    if (required.includes(name)) { const mark = document.createElement("span"); mark.className = "req"; mark.textContent = "*"; label.append(mark); }
+    wrap.append(label, box);
+  }
+  if (property.description) {
+    const hint = document.createElement("div");
+    hint.className = "hint";
+    hint.textContent = property.description;
+    wrap.append(hint);
+  }
+  return wrap;
+}
+const properties = schema.properties && typeof schema.properties === "object" ? schema.properties : {};
+const names = Object.keys(properties);
+const form = document.getElementById("form");
+function group(title, list) {
+  if (!list.length) return null;
+  const box = document.createElement("fieldset");
+  const caption = document.createElement("legend");
+  caption.textContent = title;
+  box.append(caption);
+  list.forEach(name => box.append(field(name, properties[name] || {})));
+  return box;
+}
+const must = names.filter(name => required.includes(name)), may = names.filter(name => !required.includes(name));
+const mustBox = group("Required", must), mayBox = group(must.length ? "Optional" : "Parameters", may);
+if (mustBox) form.append(mustBox);
+if (mayBox) {
+  if (must.length) { const fold = document.createElement("details"); fold.open = may.length <= 6;
+    const summary = document.createElement("summary"); summary.textContent = "Optional (" + may.length + ")";
+    const legend = mayBox.querySelector("legend"); if (legend) legend.remove();
+    fold.append(summary, mayBox); form.append(fold); }
+  else form.append(mayBox);
+}
+if (!names.length) { const none = document.createElement("div"); none.className = "hint"; none.hidden = false;
+  none.textContent = "This tool takes no parameters."; form.append(none); }
+const runButton = document.createElement("button");
+runButton.id = "run";
+runButton.type = "button";
+runButton.textContent = "Run";
+form.append(runButton);
+/* What the form holds, as the schema's own types: a value left empty is not sent at all. */
+function values() {
+  const args = {};
+  for (const box of form.querySelectorAll("[data-field]")) {
+    const name = box.dataset.field, kind = box.dataset.kind;
+    if (box.type === "checkbox") { if (box.checked) args[name] = true; else if (required.includes(name)) args[name] = false; continue; }
+    const text = String(box.value || "").trim();
+    if (!text) { if (required.includes(name)) throw new Error(name + " is required."); continue; }
+    if (kind === "integer" || kind === "number") {
+      const number = Number(text);
+      if (!Number.isFinite(number)) throw new Error(name + " is not a number.");
+      args[name] = number;
+    } else if (kind === "object" || kind === "array") {
+      try { args[name] = JSON.parse(text); }
+      catch (error) { throw new Error(name + " is not valid JSON: " + error.message); }
+    } else args[name] = text;
+  }
+  return args;
+}
+let running = false;
+runButton.onclick = () => {
+  if (running) return;
+  let args;
+  try { args = values(); } catch (error) { fail(error.message); return; }
+  if (typeof sdeMcpRun !== "function") { fail("This host does not run MCP tools."); return; }
+  out.replaceChildren();
+  status.classList.remove("error");
+  status.textContent = "Running " + tool.name + " on " + init.server + "...";
+  status.classList.add("vertex-busy");
+  running = true;
+  runButton.disabled = true;
+  sdeMcpRun(init.server, tool.name, JSON.stringify(args));
+};
+function fail(text) { status.classList.remove("vertex-busy"); status.classList.add("error"); status.textContent = text; }
+/* The server's answer. Nothing here knows the tool: what is shown follows the shape of what came back. */
+function sdeMcpResult(raw) {
+  running = false;
+  runButton.disabled = false;
+  status.classList.remove("vertex-busy");
+  let answer;
+  try { answer = JSON.parse(String(raw || "{}")); } catch (error) { fail("The answer could not be read: " + error.message); return; }
+  if (answer.error) { fail(answer.error); return; }
+  status.classList.remove("error");
+  status.textContent = "";
+  shown = answer.result || {};
+  views.hidden = false;
+  show(shown);
+}
+window.sdeMcpResult = sdeMcpResult;
+/* The answer, and which of the two views it is drawn in. Raw is always the server's own text, so what a view
+   made of it can always be checked against what came. */
+let shown = null, view = "shaped";
+const views = document.getElementById("views");
+const shapedButton = document.getElementById("view-shaped"), rawButton = document.getElementById("view-raw");
+function pickView(which) {
+  if (view === which) return;
+  view = which;
+  shapedButton.classList.toggle("active", which === "shaped");
+  rawButton.classList.toggle("active", which === "raw");
+  if (shown) show(shown);
+}
+shapedButton.onclick = () => pickView("shaped");
+rawButton.onclick = () => pickView("raw");
+function show(result) {
+  out.replaceChildren();
+  if (view === "raw") {
+    const content = Array.isArray(result.content) ? result.content : [];
+    if (!content.length) { out.append(raw(JSON.stringify(result, null, 2), "")); return; }
+    content.forEach(part => out.append(raw(typeof part.text === "string" ? part.text : JSON.stringify(part, null, 2), "")));
+    return;
+  }
+  if (result.isError) { const line = document.createElement("div"); line.className = "error";
+    line.textContent = "The tool reported an error."; out.append(line); }
+  const content = Array.isArray(result.content) ? result.content : [];
+  if (!content.length) { out.append(raw(JSON.stringify(result, null, 2), "The whole answer")); return; }
+  content.forEach(part => out.append(piece(part)));
+}
+function kind(text) { const line = document.createElement("div"); line.className = "kind"; line.textContent = text; return line; }
+function raw(text, why) {
+  const box = document.createElement("div");
+  if (why) { const note = document.createElement("div"); note.className = "raw-note"; note.textContent = why; box.append(note); }
+  const pre = document.createElement("pre");
+  pre.textContent = text;
+  box.append(pre);
+  return box;
+}
+function piece(part) {
+  if (!part || typeof part !== "object") return raw(String(part), "The server's answer as it came");
+  if (part.type === "image" && part.data) {
+    const image = document.createElement("img");
+    image.src = "data:" + (part.mimeType || "image/png") + ";base64," + part.data;
+    image.alt = "Image from " + tool.name;
+    return image;
+  }
+  if (part.type === "resource" && part.resource) {
+    const resource = part.resource;
+    if (typeof resource.blob === "string" && /^image\//.test(resource.mimeType || "")) {
+      const image = document.createElement("img");
+      image.src = "data:" + resource.mimeType + ";base64," + resource.blob;
+      image.alt = resource.uri || "Resource";
+      return image;
+    }
+    const box = document.createElement("div");
+    box.append(kind(resource.uri || "Resource"));
+    box.append(text(String(resource.text === undefined ? JSON.stringify(resource, null, 2) : resource.text)));
+    return box;
+  }
+  if (typeof part.text === "string") return text(part.text);
+  return raw(JSON.stringify(part, null, 2), "The server's answer as it came");
+}
+/* The probes, in order. The first that fits decides; what fits none is shown as it came, which is a view of its
+   own and not a failure. */
+function text(value) {
+  const trimmed = value.trim();
+  const data = asJson(trimmed);
+  if (data !== undefined) {
+    if (Array.isArray(data) && data.length && data.every(row => row && typeof row === "object" && !Array.isArray(row))) return rows(data);
+    // A query answer puts its rows under a key and its counts beside them - the shape SelecTor and the logs read.
+    const table = rowsUnderKey(data);
+    if (table) return table;
+    if (data && typeof data === "object") { const box = document.createElement("div"); box.append(tree(data, "")); return box; }
+  }
+  const fenced = trimmed.match(/^```([A-Za-z0-9_+-]*)\r?\n([\s\S]*?)\r?\n?```$/);
+  if (fenced) { const box = document.createElement("div"); box.append(kind(fenced[1] || "Code")); box.append(code(fenced[2])); return box; }
+  // The SELECT a log shows is a SELECT here too: the same anchored test, not a reading of the text.
+  if (/^\s*SELECT\b/i.test(trimmed)) { const box = document.createElement("div"); box.append(kind("SQL")); box.append(code(trimmed)); return box; }
+  return raw(value, "");
+}
+/* An object holding a list of rows: the rows become the table, the scalars beside them stay as what the server
+   said about the run. Nothing here is named after a tool - any answer of this shape reads the same way. */
+function rowsUnderKey(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const key = ["rows", "data", "items", "results", "records"].find(name =>
+    Array.isArray(data[name]) && data[name].length && data[name].every(row => row && typeof row === "object" && !Array.isArray(row)));
+  if (!key) return null;
+  const order = Array.isArray(data.columns) && data.columns.every(name => typeof name === "string") ? data.columns : null;
+  const box = document.createElement("div");
+  const about = Object.keys(data).filter(name => name !== key && name !== "columns" && (data[name] === null || typeof data[name] !== "object"));
+  if (about.length) {
+    const line = document.createElement("div");
+    line.className = "meta";
+    line.textContent = about.map(name => name + ": " + (data[name] === null ? "null" : String(data[name]))).join("\n");
+    box.append(line);
+  }
+  box.append(rows(data[key], order));
+  return box;
+}
+function asJson(value) {
+  if (!/^[[{]/.test(value)) return undefined;
+  try { return JSON.parse(value); } catch (error) { return undefined; }
+}
+function code(value) { const pre = document.createElement("pre"); pre.textContent = value; return pre; }
+/* An array of objects, as a table of the columns its rows actually have. */
+function rows(list, order) {
+  // The order the answer states comes first; a column only the rows have follows it, so nothing is dropped.
+  const columns = Array.isArray(order) ? order.slice() : [];
+  list.forEach(row => Object.keys(row).forEach(key => { if (!columns.includes(key)) columns.push(key); }));
+  const table = document.createElement("table");
+  const head = document.createElement("tr");
+  columns.forEach(name => { const cell = document.createElement("th"); cell.textContent = name; head.append(cell); });
+  table.append(head);
+  list.forEach(row => {
+    const line = document.createElement("tr");
+    columns.forEach(name => {
+      const cell = document.createElement("td");
+      const value = row[name];
+      cell.textContent = value === undefined ? "" : value === null ? "null" : typeof value === "object" ? JSON.stringify(value) : String(value);
+      line.append(cell);
+    });
+    table.append(line);
+  });
+  const box = document.createElement("div");
+  box.append(kind(list.length + (list.length === 1 ? " row" : " rows")));
+  box.append(table);
+  return box;
+}
+/* Anything else that parsed as JSON: its own shape, opened down to the values. */
+function tree(value, name) {
+  if (value === null || typeof value !== "object") {
+    const leaf = document.createElement("div");
+    leaf.className = "leaf";
+    leaf.textContent = (name ? name + ": " : "") + (value === null ? "null" : String(value));
+    return leaf;
+  }
+  const fold = document.createElement("details");
+  fold.className = "tree";
+  fold.open = true;
+  const summary = document.createElement("summary");
+  const keys = Array.isArray(value) ? value.map((_, index) => index) : Object.keys(value);
+  summary.textContent = (name ? name + " " : "") + (Array.isArray(value) ? "[" + keys.length + "]" : "{" + keys.length + "}");
+  fold.append(summary);
+  keys.forEach(key => fold.append(tree(value[key], String(key))));
+  return fold;
+}
+</script></body></html>

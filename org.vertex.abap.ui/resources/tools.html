@@ -137,7 +137,80 @@ document.getElementById("chat-split").addEventListener("mousedown",e=>{
 function notice(text,waiting){const box=document.getElementById("notice");box.textContent=text;box.classList.toggle("vertex-busy",!!waiting);}
 VertexObjects.objects.forEach(o=>typeBox.add(new Option(o[1],o[0])));
 if(typeof sdeLocalFolder==="function"&&!initial?.boundObject)typeBox.add(new Option("Local Folder","LOCAL_FOLDER"),typeBox.querySelector('option[value="TR"]'));
+/* MCP is this host's, like Local Folder: a server of vertex.chat.mcpServers in the name field and one of its tools
+   in the function picker. It is not a VertexObjects type - the assistant's navigation stays the ABAP objects. */
+const mcpHost=typeof sdeMcpServers==="function"&&!initial?.boundObject;
+if(mcpHost)typeBox.add(new Option("MCP","MCP"));
+let mcpServers=null,mcpAsked=false,mcpServer="",mcpTool="";
+function mcpOn(){return mcpHost&&typeBox.value==="MCP";}
+function mcpEntry(){return (mcpServers||[]).find(s=>s.name===mcpServer)||null;}
+function mcpToolOf(name){const s=mcpEntry();return s?(s.tools||[]).find(t=>t.name===name)||null:null;}
+/* The tools of the chosen server, grouped by the toolsets it declares; a tool in none of them follows under Other. */
+function mcpFillTools(){
+  actionBox.replaceChildren();
+  const server=mcpEntry();
+  if(!server)return;
+  if(!server.tools){actionBox.add(new Option("Tools not read yet",""));return;}
+  const groups=(server.toolsets||[]).filter(set=>set.tools&&set.tools.length);
+  const grouped=new Set(groups.flatMap(set=>set.tools));
+  groups.forEach(set=>{
+    const box=document.createElement("optgroup");box.label=set.name;
+    set.tools.forEach(name=>{const tool=server.tools.find(t=>t.name===name);if(tool)box.appendChild(new Option(tool.name,tool.name));});
+    if(box.childElementCount)actionBox.appendChild(box);
+  });
+  const rest=server.tools.filter(t=>!grouped.has(t.name));
+  if(rest.length&&groups.length){const box=document.createElement("optgroup");box.label="Other";
+    rest.forEach(t=>box.appendChild(new Option(t.name,t.name)));actionBox.appendChild(box);}
+  else rest.forEach(t=>actionBox.add(new Option(t.name,t.name)));
+  if(mcpTool&&[...actionBox.options].some(o=>o.value===mcpTool))actionBox.value=mcpTool;
+  else mcpTool=actionBox.value||"";
+}
+function mcpFields(){
+  nameBox.readOnly=false;nameBox.style.textTransform="none";nameBox.value=mcpServer;
+  nameBox.placeholder="MCP server";
+  document.getElementById("browse-local").hidden=true;document.getElementById("local-git-history").hidden=true;
+  findButton.style.display="none";
+  mcpFillTools();
+}
+/* The server list is asked for once per window and kept; nothing is started to read it. */
+function mcpAsk(){
+  if(mcpServers||mcpAsked)return;
+  mcpAsked=true;notice("Reading the MCP servers...",true);sdeMcpServers();
+}
+function sdeMcpServersReady(raw){
+  let answer;
+  try{answer=JSON.parse(String(raw||"{}"));}catch(e){notice("The MCP servers could not be read: "+e.message);return;}
+  if(answer.error){mcpAsked=false;notice("The MCP servers could not be read: "+answer.error);return;}
+  mcpServers=answer.servers||[];
+  notice(mcpServers.length?"":"No MCP server is configured in vertex.chat.mcpServers.");
+  if(mcpOn()){if(!mcpServer&&mcpServers.length===1)mcpServer=mcpServers[0].name;mcpFields();if(mcpServer&&mcpTool)run();}
+}
+/* The servers under the name field, as the object mask lists what matches. */
+function mcpMatches(){
+  const typed=nameBox.value.trim().toLowerCase();
+  const found=(mcpServers||[]).filter(s=>!typed||s.name.toLowerCase().includes(typed));
+  matchBox.replaceChildren(...found.map(s=>{const row=document.createElement("div");row.setAttribute("role","option");
+    row.textContent=s.name;const small=document.createElement("small");
+    small.textContent=s.description||(s.tools?s.tools.length+" tools":"tools not read yet");row.appendChild(small);
+    row.onmousedown=e=>{e.preventDefault();mcpPick(s.name);};return row;}));
+  matchAt=-1;matchBox.classList.toggle("on",found.length>0);
+}
+function mcpPick(name){
+  mcpServer=name;mcpTool="";closeMatches();nameBox.value=name;mcpFillTools();
+  const server=mcpEntry();
+  if(server&&!server.tools)notice("MCP server "+name+" has no tool list yet. Open VERTEX: MCP Servers and press Read tools.");
+  else{notice("");if(mcpTool)run();}
+}
+const mcpPending=new Map();let mcpRunSeq=0;
+function sdeMcpRunReady(raw){
+  let answer;
+  try{answer=JSON.parse(String(raw||"{}"));}catch(e){return;}
+  const child=mcpPending.get(answer.id);mcpPending.delete(answer.id);
+  if(child&&typeof child.sdeMcpResult==="function")child.sdeMcpResult(String(raw));
+}
 function fields(){
+  if(mcpOn()){mcpFields();return;}
+  if(mcpHost)nameBox.placeholder="Object name or mask: Z_VX*";
   typeBox.value=localFolderState?"LOCAL_FOLDER":current.type; nameBox.value=localFolderState?localFolderState.folder:current.name;
   nameBox.readOnly=!!localFolderState;nameBox.style.textTransform=localFolderState?"none":"";
   document.getElementById("browse-local").hidden=!localFolderState;document.getElementById("local-git-history").hidden=!localFolderState;actionBox.replaceChildren();
@@ -325,6 +398,14 @@ function loadParts(state,then){
 }
 
 function run(){
+  if(mcpOn()){
+    mcpServer=nameBox.value.trim();mcpTool=actionBox.value||"";
+    if(!mcpServer){notice("Pick an MCP server.");return;}
+    if(!mcpToolOf(mcpTool)){notice("Pick a tool of "+mcpServer+".");return;}
+    notice("");
+    mcpMount();
+    return;
+  }
   try{current=VertexObjects.normalize(localFolderState?{type:"DEVC",name:current.name,action:actionBox.value}:{type:typeBox.value,name:nameBox.value,action:actionBox.value});}
   catch(e){notice(e.message);return;}
   if(!current.name){notice("Enter an object name.");return;}
@@ -369,6 +450,21 @@ function findRequests(){
   mount("versions",current,()=>{const child=result&&result.contentWindow;
     if(!child||typeof child.sdeFindRequests!=="function")throw new Error("The Versions page has no request search.");
     child.sdeFindRequests(user,released);});
+}
+/* The MCP page: one frame per server and tool, built from the tool's own schema. */
+function mcpMount(){
+  const key="mcp:"+mcpServer+":"+mcpTool;
+  let frame=resultFrames.get(key);
+  if(frame){showFrame(frame);return;}
+  frame=document.createElement("iframe");frame.title="Function result";resultFrames.set(key,frame);results.appendChild(frame);
+  const generation=++sequence;
+  frame.dataset.generation=String(generation);frame.dataset.identity=key;
+  const server=mcpEntry();
+  const init={server:mcpServer,serverDescription:server?server.description||"":"",tool:mcpToolOf(mcpTool)};
+  const source=bundle.mcp.replace(["/*INIT*/","null","/*INIT*/"].join(""),()=>JSON.stringify(init).replace(/</g,"\\u003c"))
+    .replace("<script>","<script>parent.connect(window,\"mcp\","+generation+");<"+"/script><script>");
+  frame.srcdoc=source;
+  showFrame(frame);
 }
 function mount(service,state,afterLoad){
   const key=service+":"+state.action;
@@ -485,6 +581,9 @@ function connect(child,service,generation){
   child.sdeAnthropicApi=()=>typeof sdeAnthropicApi==="function"&&sdeAnthropicApi();
   child.sdeSelectObject=value=>navigate(value&&value.type==="TR"&&value.action==="diff"&&!current.name?Object.assign({},value,{action:findAction}):value);
   child.sdeBrowse=url=>sdeBrowse(url);
+  // The MCP page runs its tool through the host; the answer comes back to the frame that asked for it.
+  if(typeof sdeMcpRun==="function")child.sdeMcpRun=(server,tool,args)=>{const id=String(++mcpRunSeq);mcpPending.set(id,child);
+    sdeMcpRun(id,server,tool,typeof args==="string"?args:JSON.stringify(args||{}));return id;};
   // Metrics can show methods of many package objects without a bound editor.
   // Their source links still need the host bridge, using the selected object's name and type.
   const metricSourceLink=service==="metrics";
@@ -655,6 +754,7 @@ document.getElementById("local-git-history").onclick=()=>{
   else notice("Git History is not available yet.");
 };
 typeBox.onchange=()=>{
+  if(typeBox.value==="MCP"){closeMatches();mcpFields();mcpAsk();if(mcpServers&&mcpServers.length===1&&!mcpServer)mcpPick(mcpServers[0].name);return;}
   if(typeBox.value==="LOCAL_FOLDER"){sdeLocalFolder(false);return;}
   if(localFolderState){localFolderState=null;sdeLocalFolder(true);}
   current=VertexObjects.normalize({type:typeBox.value,name:""});fields();
@@ -695,7 +795,21 @@ function searchMask(exact){
 function moveMatch(step){const items=matchBox.children;if(!items.length)return;
   if(matchAt>=0)items[matchAt].classList.remove("sel");matchAt=(matchAt+step+items.length)%items.length;
   items[matchAt].classList.add("sel");items[matchAt].scrollIntoView({block:"nearest"});}
+nameBox.onfocus=()=>{if(mcpOn()){mcpAsk();if(mcpServers)mcpMatches();}};
+nameBox.oninput=()=>{if(mcpOn()&&mcpServers)mcpMatches();};
 nameBox.onkeydown=e=>{
+  if(mcpOn()){
+    if(matchBox.classList.contains("on")){
+      if(e.key==="ArrowDown"){e.preventDefault();moveMatch(1);return;}
+      if(e.key==="ArrowUp"){e.preventDefault();moveMatch(-1);return;}
+      if(e.key==="Escape"){closeMatches();return;}
+      if(e.key==="Enter"&&matchAt>=0){e.preventDefault();mcpPick(matchBox.children[matchAt].firstChild.textContent);return;}
+    }
+    if(e.key==="Enter"){e.preventDefault();closeMatches();
+      const named=(mcpServers||[]).find(s=>s.name.toLowerCase()===nameBox.value.trim().toLowerCase());
+      if(named)mcpPick(named.name);else notice("No MCP server is called "+nameBox.value.trim()+".");}
+    return;
+  }
   if(matchBox.classList.contains("on")){
     if(e.key==="ArrowDown"){e.preventDefault();moveMatch(1);return;}
     if(e.key==="ArrowUp"){e.preventDefault();moveMatch(-1);return;}
@@ -708,7 +822,7 @@ nameBox.onkeydown=e=>{
   else{closeMatches();run();}
 };
 nameBox.onblur=()=>setTimeout(closeMatches,150);
-actionBox.onchange=()=>{if(nameBox.value.trim())run();};
+actionBox.onchange=()=>{if(mcpOn()){if(actionBox.value)run();return;}if(nameBox.value.trim())run();};
 fields();
 if(sidebarChat){chat.remove();document.getElementById("chat-split").remove();chatToggle.remove();}
 else mountChat();

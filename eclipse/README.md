@@ -1,6 +1,6 @@
 # Built-in Eclipse Assistant
 
-**Version: 0.9.90**
+**Version: 0.9.92**
 
 **Looking for the standalone AI Code Agent for local Git projects in any programming language?** Use the [VS Code extension](../vscode/README.md): that workflow reads, searches and edits an isolated working copy, with review and Apply, without a SAP connection. This document describes the Eclipse ADT plugin and its SAP workflows.
 
@@ -83,6 +83,8 @@ conversations** deletes their log files after asking. Recorded transpiler runs a
 open in VS Code only. The **Duration** column shows the elapsed time from each prompt to its last recorded assistant response in minutes and seconds.
 The FLOW and Value Origin diagrams can render large graphs with more than 500 edges.
 Opened from the VERTEX submenu of an ADT editor, VERTEX Tools selects that object and follows the cursor; opened from Project Explorer or **Window → Show View → VERTEX → VERTEX Tools**, it shows object type and name fields (a mask such as `ZV*LAB` works) and the Parts list. A method in UML opens its class at that method; Ctrl+click opens it in a tab of its own. VERTEX windows open docked to the right of the editors. Conversation details are rendered when expanded. Offscreen session layout is deferred by the browser. The Conversation column prioritizes prompt text; Model is compact, with the full provider and model available on hover. Table columns retain stable sizing in narrow panels; scroll horizontally to see additional columns.
+
+Tool calls are numbered; tabular results appear as tables. Click a SELECT in the log to reopen its joins and filters in SelecTor and read current data. Older clipped results show only complete surviving rows with a partial-result warning.
 
 ## Versions and code review
 

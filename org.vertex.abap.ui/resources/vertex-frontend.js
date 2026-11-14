@@ -108059,6 +108059,13 @@ const { escapeHtml } = __vertexRequire(1558);
 
 const DEFAULT_ROWS = 100;
 
+function loggedSource(sql) {
+  if (typeof sql !== "string" || sql.length > 100000 || !/^\s*SELECT\b/i.test(sql)) throw new Error("The log does not contain a SELECT.");
+  const statement = sql.trim().replace(/\.\s*$/, "");
+  const tokens = statement.replace(/'(?:''|[^'])*'/g, "''");
+  return "REPORT vertex_log.\n" + statement + (/\bINTO\b/i.test(tokens) ? "" : " INTO TABLE @DATA(vertex_log_result)") + ".";
+}
+
 function prepare(text, offset) {
   const lint = __vertexRequire(24);
   const E = lint.Expressions;
@@ -108411,7 +108418,7 @@ function page(prepared, result) {
     + "<table><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></body></html>";
 }
 
-module.exports = { prepare, run, page, DEFAULT_ROWS };
+module.exports = { prepare, run, page, DEFAULT_ROWS, loggedSource };
 
 },
 function(module,exports,__vertexRequire){

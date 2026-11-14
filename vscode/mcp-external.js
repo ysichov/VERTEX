@@ -13,6 +13,20 @@ const crypto = require("crypto");
 const VERTEX = "VERTEX";
 /* Jev selects a task-specific subset of VERTEX and ARC-1 tools before execution. */
 const ORCHESTRATOR = "VERTEX Orchestrator";
+
+// A query can fetch more evidence than the model needs. Keep provider totals
+// intact and report the actual fetch separately from the rows sent to the LLM.
+function llmQueryResult(value, limit) {
+  let data = value;
+  for (let layer = 0; layer < 4 && typeof data === "string"; layer++) {
+    try { data = JSON.parse(data); } catch (_) { break; }
+  }
+  if (!data || typeof data !== "object" || !Array.isArray(data.rows) || !Array.isArray(data.columns) && typeof data.columns !== "string") return value;
+  const fetched = data.rows.length, sent = Math.min(fetched, limit);
+  const result = { ...data, rows: data.rows.slice(0, sent), rowsFetched: fetched, rowsSentToLlm: sent, llmRowLimit: limit,
+    ...(sent < fetched ? { rowsOmittedForLlm: fetched - sent, llmNote: "Only the first " + sent + " fetched rows were sent to the model. Report found/fetched/sent counts separately. Narrow WHERE and select only needed columns, or use COUNT/GROUP BY for complete statistics; do not infer totals from this sample." } : {}) };
+  return typeof value === "string" ? JSON.stringify(result) : result;
+}
 const ACCESS = {
   "read-only": { allowWrites: "false", allowTransportWrites: "false", allowedPackages: "$TMP", allowDataPreview: "false", allowFreeSql: "false", allowGitWrites: "false" },
   "write-tmp": { allowWrites: "true", allowTransportWrites: "false", allowedPackages: "$TMP", allowDataPreview: "false", allowFreeSql: "false", allowGitWrites: "false" },
@@ -284,8 +298,11 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
   const stored = () => { const value = catalog && catalog.get(); return value && typeof value === "object" ? value : {}; };
   async function remember(name, opened) {
     if (!catalog) return;
+    /* description stays the short line the catalog and the orchestrator read. The Tools window builds a form from
+       the tool's own schema and shows what the server wrote about it, so both are kept beside it, unshortened. */
     const tools = (opened.tools || []).map(t => ({ name: t.name, description: String(t.description || "").split(/\n\s*\n/)[0].slice(0, 400),
-      readOnly: !!(t.annotations && t.annotations.readOnlyHint) }));
+      readOnly: !!(t.annotations && t.annotations.readOnlyHint),
+      about: String(t.description || ""), inputSchema: t.inputSchema || null }));
     await catalog.update({ ...stored(), [name]: { version: opened.version || "", tools, savedAt: new Date().toISOString() } });
   }
 
@@ -381,6 +398,30 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
     return ensure(name);
   }
 
+  /* One tool of one server, run as the user asked for it in the Tools window - not through the chat: the server is
+     started if it is not up, and the server's own answer is handed back untouched for the page to show. */
+  async function runTool(name, tool, args) {
+    const started = await ensure(String(name || ""));
+    if (!started.tools.some(t => t.name === tool)) throw new Error("MCP server " + name + " has no tool " + tool + ".");
+    return started.client.call(tool, args && typeof args === "object" ? args : {});
+  }
+
+  async function readVersion(reference) {
+    if (typeof reference.uri !== "string" || !/^\/sap\/bc\/adt\/[\w/%.~-]+\/versions\/[\w.-]+\/[\w.-]+\/content$/.test(reference.uri)
+      || decodeURIComponent(reference.uri).split("/").some(part => part === ".." || part === ".")) throw new Error("Invalid historical version URI.");
+    const server = reference.toolset && ![VERTEX,ORCHESTRATOR].includes(reference.toolset) ? reference.toolset : "ARC-1";
+    const run = await ensure(server);
+    const tool = run.tools.find(tool => tool.name === "SAPRead");
+    if (!tool?.inputSchema?.properties?.type?.enum?.includes("VERSION_SOURCE")) throw new Error(server + " does not offer SAPRead VERSION_SOURCE.");
+    const response = await run.client.call("SAPRead", { type: "VERSION_SOURCE", name: reference.name, versionUri: reference.uri });
+    let source = (response?.content || []).filter(block => block.type === "text").map(block => block.text).join("\n");
+    if (response?.isError) throw new Error(source || "Version read failed.");
+    for (let layer = 0; layer < 4 && typeof source === "string"; layer++) { try { source = JSON.parse(source); } catch (_) { break; } }
+    if (source && typeof source === "object") source = source.source;
+    if (typeof source !== "string") throw new Error("The version tool returned no source text.");
+    return source;
+  }
+
   /* Toolsets: a few tools of another MCP server, offered to the model by one small enable_toolset tool and added
      only when it asks for them - so a question that needs none does not carry those servers' schemas. An
      enabled toolset stays for the rest of the session. */
@@ -411,8 +452,20 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
     // Kept beside any server: the debugger, the transpiler, and publishing a service binding, which no MCP server here does.
     const kept = tool => /^debug_/.test(tool.name) || /abap_transpiler/.test(tool.name) || tool.name === "publish_sap_service_binding";
     const current = () => { const run = runs.get(selected()); return run && run.client.alive() ? run : null; };
-    const asSchema = t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || { type: "object", properties: {} },
-      ...(t.annotations ? { annotations: t.annotations } : {}) });
+    const rowLimit = () => { const value = Number(config().get("queryMaxRows", 100)); return Number.isInteger(value) && value > 0 && value <= 10000 ? value : 100; };
+    const rowField = tool => ["maxRows", "max_rows"].find(key => tool?.inputSchema?.properties?.[key]) || (tool?.name === "SAPQuery" ? "maxRows" : null);
+    const defaultRows = tool => { const field = rowField(tool), property = tool?.inputSchema?.properties?.[field]; return Math.max(property?.minimum || 1, Math.min(property?.maximum || 10000, rowLimit())); };
+    const queryArgs = (tool, args) => {
+      if (tool?.name === "SAPRead" && !["TABLE_QUERY","TABLE_CONTENTS"].includes(args?.type)) return args;
+      const field = rowField(tool); return field && args?.[field] == null ? { ...args, [field]: defaultRows(tool) } : args;
+    };
+    const asSchema = t => {
+      const field = rowField(t), schema = t.inputSchema || { type: "object", properties: {} };
+      if (!field) return t;
+      return { name: t.name, description: (t.description || "") + (field ? " Query results sent to the LLM contain at most " + rowLimit() + " rows. Report found, fetched and sent counts separately. Prefer narrow WHERE clauses, necessary columns and server-side aggregates." : ""),
+        inputSchema: field && schema.properties?.[field] ? { ...schema, properties: { ...schema.properties, [field]: { ...schema.properties[field], default: defaultRows(t), description: "Rows to fetch; default " + defaultRows(t) + ". Prefer this limit or less. Larger fetches still send at most " + rowLimit() + " rows to the LLM; narrow the query instead when possible." } } } : schema,
+        ...(t.annotations ? { annotations: t.annotations } : {}) };
+    };
     const wrapped = Object.create(own);
     let orchestratorRun = null;
     defineOrchestratorTools();
@@ -425,7 +478,7 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
         orchestratorRun = run;
         const names = new Set(own.schemas.map(tool=>tool.name));
         if (run.tools.some(tool=>names.has(tool.name))) throw new Error("VERTEX and ARC-1 have conflicting tool names.");
-        return own.schemas.concat(run.tools.map(asSchema));
+        return own.schemas.concat(run.tools).map(asSchema);
       }});
     }
     const toolsetSchema = () => {
@@ -439,12 +492,12 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
           properties: { toolset: { type: "string", enum: sets.map(t => t.name) } } } }] : [];
     };
     Object.defineProperty(wrapped, "schemas", { get() {
-      if (selected() === ORCHESTRATOR) return own.schemas;
+      if (selected() === ORCHESTRATOR) return own.schemas.map(asSchema);
       const ext = current();
-      const base = ext ? own.schemas.filter(kept).concat(ext.tools.map(asSchema)) : own.schemas;
+      const base = ext ? own.schemas.filter(kept).concat(ext.tools) : own.schemas;
       const names = new Set(base.map(t => t.name));
-      const extra = enabledTools().map(e => e.tool).filter(t => !names.has(t.name) && names.add(t.name)).map(asSchema);
-      return base.concat(toolsetSchema(), extra);
+      const extra = enabledTools().map(e => e.tool).filter(t => !names.has(t.name) && names.add(t.name));
+      return base.concat(toolsetSchema(), extra).map(asSchema);
     } });
     Object.defineProperty(wrapped, "instructions", { get() {
       const ext = current();
@@ -466,22 +519,23 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
     define("execute", async (name, args) => {
       if (selected() === ORCHESTRATOR) {
         if (name === "enable_toolset") throw new Error("Toolset enabling is unavailable in Jev orchestration.");
-        if (own.schemas.some(tool=>tool.name===name)) return own.execute(name,args);
+        if (own.schemas.some(tool=>tool.name===name)) return llmQueryResult(await own.execute(name,queryArgs(own.schemas.find(tool=>tool.name===name),args)),rowLimit());
         if (!orchestratorRun?.client.alive() || !orchestratorRun.tools.some(tool=>tool.name===name)) throw new Error("Tool is unavailable in VERTEX Orchestrator: " + name);
-        const result=await orchestratorRun.client.call(name,args);
+        const result=await orchestratorRun.client.call(name,queryArgs(orchestratorRun.tools.find(tool=>tool.name===name),args));
         const text=(result?.content || []).map(c=>c.type === "text" ? c.text : JSON.stringify(c)).join("\n");
         if(result?.isError)throw new Error(text || name + " failed.");
-        return text;
+        return llmQueryResult(text,rowLimit());
       }
       if (name === "enable_toolset") return enableToolset(String(args && args.toolset || ""));
       const ext = current();
       const mine = !!(ext && ext.tools.some(t => t.name === name));
       const extra = !mine && fromToolset(name);
-      if (!mine && !extra) return own.execute(name, args);
-      const result = await (mine ? ext : extra.run).client.call(name, args);
+      if (!mine && !extra) return llmQueryResult(await own.execute(name, queryArgs(own.schemas.find(tool=>tool.name===name),args)),rowLimit());
+      const source = mine ? ext : extra.run;
+      const result = await source.client.call(name, queryArgs(source.tools.find(tool=>tool.name===name),args));
       const text = (result && result.content || []).map(c => c.type === "text" ? c.text : JSON.stringify(c)).join("\n");
       if (result && result.isError) throw new Error(text || name + " failed.");
-      return text;
+      return llmQueryResult(text,rowLimit());
     });
     return wrapped;
   }
@@ -573,8 +627,8 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
     await config().update(setting, value, vscode.ConfigurationTarget.Global);
   }
 
-  return { VERTEX, ORCHESTRATOR, choices, needsInstall, checkUpdates, onUpdates, update, refresh, overview, servers, selected, prepare, wrap, stop, toolsets, settingsQuery, writeOptions, setWriteOption, accessRemembered, isRunning,
+  return { VERTEX, ORCHESTRATOR, choices, needsInstall, checkUpdates, onUpdates, update, refresh, overview, servers, selected, prepare, runTool, readVersion, wrap, stop, toolsets, settingsQuery, writeOptions, setWriteOption, accessRemembered, isRunning,
     select: name => config().update("mcpServer", name, vscode.ConfigurationTarget.Global) };
 }
 
-module.exports = { create, startClient, startHttpClient, VERTEX, ORCHESTRATOR, ACCESS, ABAP_ADT_ACCESS, fill, npmSpec };
+module.exports = { create, startClient, startHttpClient, VERTEX, ORCHESTRATOR, ACCESS, ABAP_ADT_ACCESS, fill, npmSpec, llmQueryResult };

@@ -123,6 +123,29 @@ public class LogsView extends PageView {
 
 	@Override
 	protected void addFunctions() {
+		new BrowserFunction(this.browser, "sdeLogsSelect") {
+			@Override
+			public Object function(Object[] arguments) {
+				String json = arguments.length > 0 ? String.valueOf(arguments[0]) : "{}";
+				browser.getDisplay().asyncExec(() -> {
+					try {
+						JsonObject value = JsonParser.parseString(json).getAsJsonObject();
+						String text = value.get("text").getAsString();
+						if (text.length() > 101000 || !text.startsWith("REPORT vertex_log.\n")) throw new IllegalArgumentException("Invalid logged SELECT.");
+						String named = value.has("system") ? value.get("system").getAsString() : "";
+						IProject project = named.isEmpty() ? null : ResourcesPlugin.getWorkspace().getRoot().getProject(named);
+						system = project != null && project.exists() ? named : null;
+						project = abapProject();
+						if (project == null) return;
+						String id = "log-" + System.nanoTime();
+						RunSelectView.TARGETS.put(id, new RunSelectView.Target(project.getName(), text, text.indexOf('\n') + 1));
+						try { DetachedView.show(getSite().getPage(), RunSelectView.ID, id); }
+						catch (Exception e) { RunSelectView.TARGETS.remove(id); throw e; }
+					} catch (Exception e) { MessageDialog.openError(browser.getShell(), "VERTEX", describe(e)); }
+				});
+				return null;
+			}
+		};
 		new BrowserFunction(this.browser, "sdeLogsRead") {
 			@Override
 			public Object function(Object[] arguments) {

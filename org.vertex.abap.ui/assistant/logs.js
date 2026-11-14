@@ -30,7 +30,15 @@ var require=__vertexRequire;
 // What the Eclipse Session Logs page calls as window.vertexLogs: VS Code's log reading (log-report.js), its snapshot
 // page (log-snapshot.js) and its reading of a logged object (session-log.js). Java reads and deletes the files.
 module.exports = { parseSession: __vertexRequire(1).parseSession, snapshotHtml: __vertexRequire(6).html,
-  objectReference: __vertexRequire(3).objectReference };
+  objectReference: __vertexRequire(3).objectReference,
+  loggedSource: ((() => {function loggedSource(sql) {
+  if (typeof sql !== "string" || sql.length > 100000 || !/^\s*SELECT\b/i.test(sql)) throw new Error("The log does not contain a SELECT.");
+  const statement = sql.trim().replace(/\.\s*$/, "");
+  const tokens = statement.replace(/'(?:''|[^'])*'/g, "''");
+  return "REPORT vertex_log.\n" + statement + (/\bINTO\b/i.test(tokens) ? "" : " INTO TABLE @DATA(vertex_log_result)") + ".";
+}
+
+;return {loggedSource};})()).loggedSource };
 
 },
 function(module,exports,__vertexRequire){
@@ -57,10 +65,48 @@ const sumUsage = (into, usage) => {
   into.cacheWrite += Number(usage.cache_creation_input_tokens || 0);
 };
 
+// Old logs cut the serialized string, sometimes halfway through a row. Keep only
+// complete rows; never fill a missing value or pretend the response was complete.
+function partialTable(text) {
+  const marker = /\n\[(\d+) more characters not logged\]$/.exec(text);
+  if (!marker) return null;
+  let prefix = text.slice(0, marker.index);
+  for (let layer = 0; layer < 4 && prefix.trimStart().startsWith('"'); layer++) {
+    let decoded;
+    for (let cut = 0; cut <= 12 && cut < prefix.length; cut++) {
+      try { decoded = JSON.parse(prefix.slice(0, prefix.length - cut) + '"'); break; } catch (_) { /* incomplete escape */ }
+    }
+    if (typeof decoded !== "string") return null;
+    prefix = decoded;
+  }
+  const start = /"rows"\s*:\s*\[/.exec(prefix);
+  if (!start) return null;
+  const from = start.index + start[0].length;
+  let depth = 1, quoted = false, escaped = false, complete = from;
+  for (let i = from; i < prefix.length; i++) {
+    const c = prefix[i];
+    if (quoted) { if (escaped) escaped = false; else if (c === "\\") escaped = true; else if (c === '"') quoted = false; }
+    else if (c === '"') quoted = true;
+    else if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") { depth--; if (depth === 1) complete = i + 1; if (depth === 0) break; }
+  }
+  try {
+    const data = JSON.parse(prefix.slice(0, from) + prefix.slice(from, complete) + "]}");
+    const columns = typeof data.columns === "string" ? JSON.parse(data.columns) : data.columns;
+    if (!Array.isArray(columns) || !Array.isArray(data.rows)) return null;
+    data.log_truncated = "Only " + data.rows.length + " complete rows survived; " + marker[1] + " characters were not logged.";
+    return data;
+  } catch (_) { return null; }
+}
+
 function prettyJson(value) {
-  if (typeof value !== "string") return JSON.stringify(value, null, 2);
-  try { return JSON.stringify(JSON.parse(value), null, 2); }
-  catch (_) { return value; }
+  if (typeof value === "string") value = partialTable(value) || value;
+  // Some providers wrap an already serialized tool result in another JSON string.
+  // Decode valid JSON layers only: literal backslashes in ordinary text stay intact.
+  for (let depth = 0; depth < 4 && typeof value === "string"; depth++) {
+    try { value = JSON.parse(value); } catch (_) { break; }
+  }
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
 function prettyRequest(text) {
@@ -123,7 +169,7 @@ function parseSession(text, file) {
         const id = record.response?.id || "";
         const last = current.timeline.filter(entry => entry.kind === "model").pop();
         if (last && id && last.id === id) last.usage = record.response?.usage || last.usage;
-        else current.timeline.push({ kind: "model", id, usage: record.response?.usage || null, time: Number.isFinite(time) ? time : null });
+        else current.timeline.push({ kind: "model", id, ...(record.provider === "codex" ? { usageScope: "cli_turn" } : {}), usage: record.response?.usage || null, time: Number.isFinite(time) ? time : null });
       } else if (current) current.details.push({ type: record.scope === "request_error" ? "Request failed" + (record.response?.model_step ? " at model step " + record.response.model_step : "") : "Provider usage (" + record.scope + ")",
         ...(record.scope === "request_error" ? { failed: true } : {}),
         text: prettyJson({ provider: record.provider, response: record.response }) });
@@ -134,6 +180,7 @@ function parseSession(text, file) {
       continue;
     }
     // The report travels whole as well as prettified: the page reads Jev's answers as a table from it.
+    if(record.type==="vertex_orchestration"){if(current)current.details.push({type:record.report?.kind==="plan"?"Orchestrator JSON plan":record.report?.kind==="execution_mode"?"Orchestrator mode":"Orchestrator stage",text:prettyJson(record.report)});continue;}
     if(record.type==="vertex_tool_selection"){if(current)current.details.push({type:"Orchestrator tool selection",text:prettyJson(record.report)});continue;}
     if(record.type==="vertex_topic_routing"){if(current){current.topic=record.report?.topic||null;current.details.push({type:"Topic routing (Jev)",routing:record.report&&typeof record.report==="object"?record.report:null,text:prettyJson(record.report)});}continue;}
     if (record.type === "vertex_context_optimization") {
@@ -163,7 +210,7 @@ function parseSession(text, file) {
       const prompt = typeof content === "string" ? content : Array.isArray(content) && !content.some(block => block?.type === "tool_result")
         ? content.filter(block => block?.type === "text").map(block => block.text || "").join("\n") : "";
       if (prompt.trim()) {
-        current = { time: Number.isFinite(time) ? time : session.end, end: Number.isFinite(time) ? time : session.end,
+        current = { time: Number.isFinite(time) ? time : session.end, end: Number.isFinite(time) ? time : session.end, toolset: record.vertex_toolset || "",
           key: name + ":" + session.prompts.length, provider, branch: record.vertex_branch || "main", parent: record.vertex_parent || null,
           text: prompt.trim(), operation: String(record.vertex_operation || "Chat"), model: "", usage: emptyUsage(), details: [], objects: record.vertex_objects || [],
           screenshots: Array.isArray(record.vertex_screenshots) ? record.vertex_screenshots : [],
@@ -558,7 +605,7 @@ function open(vscode, options = {}) {
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
     .replace("</head>", () => "<style>" + __vertexRequire(5).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
-    .replace("</head>", () => '<script nonce="' + nonce + '">window.vertexCanContinue = true;window.vertexCanTagTopics = ' + (new Proxy({}, {get: () => () => {throw new Error('Decision provider selection belongs to the host');}})).enabled(vscode) + ';</script></head>')
+    .replace("</head>", () => '<script nonce="' + nonce + '">window.vertexCanContinue = true;window.vertexCanReadVersions = ' + Boolean(options.readVersion) + ';window.vertexCanTagTopics = ' + (new Proxy({}, {get: () => () => {throw new Error('Decision provider selection belongs to the host');}})).enabled(vscode) + ';</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
     .replace("</head>", () => "<style>" + __vertexRequire(5).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
   // The page gets the list only - each prompt without its details, steps and Jev input - and asks for one prompt's
@@ -627,6 +674,26 @@ function open(vscode, options = {}) {
           const document = await vscode.workspace.openTextDocument(vscode.Uri.file(object.path));
           await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside });
         } else if (object.object_name && options.openObject) await options.openObject(object);
+      } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }
+    if (message?.action === "openSelect") {
+      try {
+        const session = full.sessions.find(session => session.prompts.some(prompt => prompt.key === message.key));
+        if (!session) throw new Error("That prompt is no longer in the log folder.");
+        await vscode.commands.executeCommand("vertex.runSelect", { sql: message.sql, system: session.context?.mode === "sap" ? session.context.system : undefined });
+      } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }
+    if (message?.action === "openVersion") {
+      try {
+        const prompt = promptIndex.get(message.key);
+        const session = full.sessions.find(session => session.prompts.includes(prompt));
+        const detail = prompt?.details.find(detail => detail.type === "tool result" && detail.tool_id === message.toolId);
+        const data = detail && JSON.parse(prettyJson(detail.text));
+        const revisions = typeof data?.revisions === "string" ? JSON.parse(data.revisions) : data?.revisions;
+        const version = revisions?.find(version => version.uri === message.uri);
+        if (!version || !options.readVersion) throw new Error("That historical version is unavailable in this log.");
+        await options.readVersion({ uri: version.uri, name: data.object?.name || "", version: version.id, toolset: prompt.toolset,
+          system: session.context?.mode === "sap" ? session.context.system : "", client: session.context?.client });
       } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }
     if (message?.action === "openRecording") {
@@ -743,7 +810,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
   let sequence = 0, discarded = false, screenshotCount = 0;
   // Where the conversation was held: the local folder, or the SAP system and client. Session Logs filters by it,
   // and nothing else in the log records it - a conversation without it cannot be placed afterwards.
-  let context = null;
+  let context = null, toolset = "";
   // Every file of one VS Code conversation carries its id: a conversation that changes provider writes one file per
   // provider, and Session Logs puts them back together by it.
   const conversation = scope?.conversation || conversationId, branch = scope ? "main" : branchId, parent = scope ? null : branchParent;
@@ -753,7 +820,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch,
       ...(scope?.relatedConversation ? { vertex_related_conversation: scope.relatedConversation } : {}), ...(parent ? { vertex_parent: parent } : {}),
-      ...(context ? { vertex_context: context } : {}) }, protection.protect(entry))) + "\n", "utf8");
+      ...(context ? { vertex_context: context } : {}), ...(toolset ? { vertex_toolset: toolset } : {}) }, protection.protect(entry))) + "\n", "utf8");
   };
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
   return {
@@ -763,6 +830,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       if (on.questions) write({ type: "vertex_decision", input: JSON.parse(JSON.stringify(input)) });
     },
     setOperation(value){operation=String(value||"Chat");},
+    setToolset(value){toolset=typeof value === "string" ? value.slice(0,200) : "";},
     /** Folder mode: {mode:"folder",folder}. SAP mode: {mode:"sap",system,client}. Anything else is refused. */
     setContext(value){
       if (!value || typeof value !== "object") { context = null; return; }
@@ -804,6 +872,16 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
         prompt: sanitizeText(String(prompt || ""), objects, snapshots),
         tools: sanitize(tools || [], objects), schema: sanitize(schema || null, objects) };
       write({ type: "vertex_request", request, contextSize, vertex_objects: objects, vertex_snapshots: snapshots });
+    },
+    orchestration(report) {
+      const saved={kind:report.kind,stage:report.stage};
+      for(const key of ["tool","source_stage","reason","calls","mode","requested_mode"])if(report[key]!==undefined)saved[key]=report[key];
+      if(on.questions && report.missing)saved.missing=report.missing;
+      if(on.questions && report.tools)saved.tools=report.tools;
+      if(on.questions && report.plan)saved.plan=report.plan;
+      if(on.questions && report.task){saved.task=report.task;saved.total=report.total;}
+      if(report.report){saved.status=report.report.stage_status;if(on.answers)saved.report=report.report;}
+      write({type:"vertex_orchestration",report:saved});
     },
     toolSelection(report) { write({type:"vertex_tool_selection",report:on.questions?report:{elapsedMs:report.elapsedMs,selected:report.selected}}); },
     routing(report) { write({type:"vertex_topic_routing",report:on.questions?protection.protect(report):{status:report.status,basis:report.basis,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage}}); },
@@ -1057,8 +1135,20 @@ function summarize(result) {
 const RESULT_TEXT = 20000;
 function resultContent(result, objects) {
   const body = text(result);
-  let shown;
-  try { shown = JSON.stringify(sanitize(JSON.parse(body), objects)); } catch (_) { shown = sanitizeText(body, objects); }
+  let data = body;
+  for (let layer = 0; layer < 4 && typeof data === "string"; layer++) {
+    try { data = JSON.parse(data); } catch (_) { break; }
+  }
+  data = sanitize(data, objects);
+  let shown = typeof data === "string" ? data : JSON.stringify(data);
+  if (shown.length > RESULT_TEXT && data && typeof data === "object" && Array.isArray(data.rows) && data.columns) {
+    const rows = data.rows;
+    let low = 0, high = rows.length;
+    const limited = count => JSON.stringify({ ...data, rows: rows.slice(0, count), log_truncated: { rowsLogged: count, rowsOmitted: rows.length - count } });
+    while (low < high) { const middle = Math.ceil((low + high) / 2); if (limited(middle).length <= RESULT_TEXT) low = middle; else high = middle - 1; }
+    shown = limited(low);
+    if (shown.length <= RESULT_TEXT) return shown;
+  }
   return shown.length > RESULT_TEXT ? shown.slice(0, RESULT_TEXT) + "\n[" + (shown.length - RESULT_TEXT) + " more characters not logged]" : shown;
 }
 
@@ -1093,7 +1183,7 @@ async function assistantTool(log, name, args, call) {
 
 const shared = new Map();
 const newConversationId = () => stamp(new Date()) + "_" + ({ randomBytes: function (n) { var bytes = new Uint8Array(n); window.crypto.getRandomValues(bytes); return { toString: function () { return Array.prototype.map.call(bytes, function (b) { return (b < 16 ? '0' : '') + b.toString(16); }).join(''); } }; } }).randomBytes(4).toString("hex");
-function independentScope() { return { conversation: newConversationId(), relatedConversation: conversationId }; }
+function independentScope(related = true) { return { conversation: newConversationId(), ...(related ? { relatedConversation: conversationId } : {}) }; }
 let conversationId = newConversationId(), branchId = "main", branchParent = null;
 /** One log per folder, provider and choice for the life of the process: the VS Code chat is one conversation. */
 function current(root, provider, include) {

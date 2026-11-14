@@ -74,6 +74,7 @@ iframe { flex: 1; width: 100%; border: 0; background: var(--vscode-editor-backgr
 <script>
 "use strict";
 var report = document.getElementById("report"), snapshotFrame = document.getElementById("snapshot"), bar = document.getElementById("bar");
+var sessions = [];
 var statusBox = document.getElementById("status");
 var REPORT = /*INIT*/null/*INIT*/;
 
@@ -130,11 +131,16 @@ function tell(message) { report.contentWindow.postMessage(message, "*"); }
 // What the report asks, done as VS Code's log-report.js does it, with Eclipse's files, dialogs and editors.
 async function refresh() {
   var read = JSON.parse(await call("sdeLogsRead"));
-  var sessions = read.files.map(function (file) { return vertexLogs.parseSession(file.text, file.name); })
+  sessions = read.files.map(function (file) { return vertexLogs.parseSession(file.text, file.name); })
     .filter(Boolean).sort(function (a, b) { return b.start - a.start; });
   tell({ action: "data", report: { configured: read.configured, folder: read.folder, sessions: sessions } });
 }
 async function handle(message) {
+  if (message.action === "openSelect") {
+    var session = sessions.find(function (item) { return item.prompts.some(function (prompt) { return prompt.key === message.key; }); });
+    if (!session) throw new Error("That prompt is no longer in the log folder.");
+    await call("sdeLogsSelect", JSON.stringify({ text: vertexLogs.loggedSource(message.sql), system: session.context && session.context.mode === "sap" ? session.context.system : "" }));
+  }
   if (message.action === "ready" || message.action === "refresh") { await refresh(); }
   if (message.action === "settings") { sdeLogsSettings(); }
   if (message.action === "chooseFolder") { await call("sdeLogsChooseFolder"); await refresh(); }

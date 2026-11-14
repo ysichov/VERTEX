@@ -1,3 +1,59 @@
+## 2026-11-14 — MCP as an object type in the Tools window
+
+Reused the existing header of `tools.html` instead of building a second window: MCP is a
+picker entry beside Local Folder, gated on the host capability (`sdeMcpServers`), not a
+`VertexObjects` type - so the assistant's navigation contract and `normalize()` are
+untouched and the ABAP object model keeps its name rules. The server goes in the existing
+name field, whose match list serves the server names; the tools go in the existing
+function picker, grouped with `<optgroup>` from the toolsets `overview()` already
+computes. Eclipse bundles neither the page nor the capability, as with Object Navigator.
+
+`mcp-external.js` gained `runTool(server, tool, args)`: it starts the server through the
+existing `ensure()`, refuses a tool the server does not serve, and returns the server's
+own answer untouched. `remember()` now also keeps each tool's `inputSchema` and its whole
+description (`about`) beside the short catalog line, which is unchanged - the window needs
+the schema to build a form, and nothing is started to read it.
+
+`mcp.html` is the new page. The form comes from JSON Schema alone: `enum` to a list,
+`boolean` to a checkbox (an option applied when the tool runs, not a toggle), `integer`/
+`number` to a bounded number field, `object`/`array` to a JSON textarea, everything else
+to a text field; `required` leads, the rest fold under Optional. An empty optional field
+is not sent at all.
+
+The result view is a list of probes over the MCP `content[]`, first match wins: image,
+resource by MIME, a JSON array of objects as a table, an object carrying a row list under
+`rows`/`data`/`items`/`results`/`records` as that table (the `columns` array orders it, the
+scalars beside it stay as the counts and the statement that ran - the shape SelecTor, the log
+report and `llmQueryResult` already read), other JSON as a tree, a fenced block as code in its
+language, a text opening with `SELECT` as SQL (the same anchored test `logs.js` uses - no
+reading of the text), and otherwise the server's text as it came, which is a view of its own
+rather than a failure. A `Table | Raw` segment toggle - the shared `vertex-segment-toggle`,
+used unchanged - redraws the same answer as the server's own text, so no view stands between
+the reader and what arrived. Deciding by the shape of the answer, not
+by a list of tool names, is what makes several hundred tools work at once and keeps a new
+server from needing a code change.
+
+Validation: five tests in `test/mcp-tool-window.test.js` cover the probes, a row list
+carried under a key with its stated column order and counts, the controls built from a
+schema, the page's own script parsing (no other test reaches it, since the page does not
+use the shared Tools code), and `runTool` against a fake Streamable HTTP server including
+its two refusals. Full suite after the change: 1590 tests, 1572 passed, 16 failed, 2
+skipped - the same failure names as before this work, and the same count `dev_history`
+already records for this repository. One failure during the work was this change (a sliced
+`connect()` could not see the `mcpHost` constant) and was fixed by making the page bridge
+test `sdeMcpRun` itself; `vertex-page.test.js`, the one that looked closest to this work,
+was confirmed to fail with the change reverted. No baseline was captured before the first
+edit, so the comparison is by name against the runs during the work and by count against
+the recorded history. The page was checked in light and dark against a stub server: form,
+both folds, busy state, every result view, and the Table/Raw switch. VSIX 0.9.92 rebuilt
+and the packaged page matched its source. The window has been opened against a live ARC-1
+server by the user; what that showed - the query answer arriving under `rows` - is what the
+row-list probe and the switch were added for.
+
+## 2026-11-14 — Release 0.9.92: log scope and tool-result presentation
+
+Reused independentScope with an optional relationship flag; commit/PR generation checks both ordinary and Web chat history before linking. Reused stepTitle/argsOf for SAPRead type/name/part and SELECT FROM/JOIN summaries. prettyJson decodes up to four valid JSON string layers without replacing literal backslashes. The existing fields renderer detects columns/rows (including serialized arrays), retains metadata, and uses the report table/scroll styles and SelecTor text-only cells. Shared reader/page changes are bundled into Eclipse. Validation: focused baseline 107/107 and changed suite 111/111 passed. Full changed run: 1,575 tests, 1,484 passed, 89 failed, 2 skipped; several failures report sandbox filesystem/Git-config access errors. Two pre-change full attempts stalled, so a complete name-by-name full baseline comparison is unavailable. Browser visual verification was blocked by computer-use connection timeouts. Eclipse 0.9.92.20261114072608 built and its install archive passed path/artifact checks; local docs/ update site refreshed. Universal VSIX 0.9.92 passed standard archive policy, CRC and Scheme checks; version and all four changed runtime files were independently matched to sources. The first npm install failed inside the sandbox; the authorized build outside it succeeded. Follow-up: reused Run Select/SelecTor parsing, report link controls, read-only vertex-source snapshots and the exact logged SAPRead VERSION_SOURCE contract. Log version opens validate the recorded revision and retain system/client and recorded toolset; legacy SAPRead logs use ARC-1. No model call is made to open source. Codex model_response records are displayed as aggregated CLI turns, with internal request count unknown. MCP result projection limits only rows sent to the model (default 100, setting vertex.chat.queryMaxRows), preserves provider metadata, records fetched/sent/omitted counts and adds query-selection guidance. Explicit larger fetches remain possible. Query schemas/default arguments use the configured size within provider schema bounds. Old clipped table strings recover complete rows only with a visible partial warning; future table clipping remains valid JSON. Validation: 229 focused tests passed, including a fake MCP source read, read-only provider, logged join ON/filter restoration, query projection and clipped historical tables. The pictured historical JOIN recovers 61 complete rows; lost characters cannot be reconstructed. Eclipse follow-up build 0.9.92.20261114075626 verified; Universal VSIX rebuilt and verified: all seven changed JavaScript runtime files, shared report page and configured 100-row default match the packaged source. Final nine MCP checks also passed after provider-bound defaults were tightened. Visual verification remains unavailable due to the previously reported computer-use timeout.
+
 ## 2026-11-14 — VS Code 0.9.91: New in includes cache creation
 
 Reused the shared log-report page and its existing input/cacheWrite fields. New in renders and sorts input + cacheWrite without changing stored logs or raw counters. This also corrects historical Claude logs. Only VS Code is packaged for this release, per user instruction; Eclipse version remains unchanged. Validation: 20 log-report tests passed; the historical Claude log recalculates to 54,415 new input tokens. VSIX 0.9.91 rebuilt and its version and shared report page verified. No full test run performed.

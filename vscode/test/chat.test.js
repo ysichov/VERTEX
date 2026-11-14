@@ -608,6 +608,25 @@ test('Vercel Vision chat forwards images and removes tools when the model cannot
  assert.doesNotMatch(received.prompt,/abcd|efgh/);
 });
 
+test('commit and PR logs link only while the chat has messages, including restored history',async t=>{
+ const logs=require('../session-log'),report=require('../log-report');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-commit-scope-'));
+ t.after(()=>{logs.reset();fs.rmSync(root,{recursive:true,force:true});});
+ logs.reset('old-chat');
+ t.mock.method(compatible,'ask',async()=>({model:'text',plan:{answer:'Improve logs\n\nKeep utility operations separate.'}}));
+ const ask=chat.create(fakeVscode({provider:'vercel-api',model:'text',logPath:root,'log.questions':true,'log.answers':true}),{schemas:[],instructions:''},{},{get:async()=>null});
+ await ask.generateCommitMessage({text:'diff'},{});
+ ask.restoreConversation([{question:'Review these changes',answer:'Reviewed'}]);
+ await ask.generateCommitMessage({text:'diff'},{});
+ await ask.generateCommitMessage({text:'diff'},{},'pr');
+ ask.newConversation();
+ await ask.generateCommitMessage({text:'diff'},{},'pr');
+ const sessions=report.readSessions(root).sessions;
+ assert.equal(sessions.length,4);assert.equal(new Set(sessions.map(s=>s.conversation)).size,4);
+ const commits=sessions.filter(s=>s.prompts[0].operation==='Commit message'),prs=sessions.filter(s=>s.prompts[0].operation==='Pull request description');
+ for(const group of [commits,prs]){assert.equal(group.filter(s=>s.relatedConversation==='old-chat').length,1);assert.equal(group.filter(s=>!s.relatedConversation).length,1);}
+});
+
 test('commit message generation is isolated and supplies no action tools',async t=>{
  let options;t.mock.method(compatible,'ask',async value=>{options=value;return {model:'text',plan:{answer:'Improve Git review\n\nAdd a draft commit form.'}};});
  const ask=chat.create(fakeVscode({provider:'vercel-api',model:'text'}),{schemas:[{name:'read_sap_object'}],instructions:'',editorContext:()=>{throw Error('No editor access needed');}},{start:()=>{throw Error('No MCP needed');}},{get:async()=>null});

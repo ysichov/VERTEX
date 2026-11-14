@@ -20,10 +20,48 @@ const sumUsage = (into, usage) => {
   into.cacheWrite += Number(usage.cache_creation_input_tokens || 0);
 };
 
+// Old logs cut the serialized string, sometimes halfway through a row. Keep only
+// complete rows; never fill a missing value or pretend the response was complete.
+function partialTable(text) {
+  const marker = /\n\[(\d+) more characters not logged\]$/.exec(text);
+  if (!marker) return null;
+  let prefix = text.slice(0, marker.index);
+  for (let layer = 0; layer < 4 && prefix.trimStart().startsWith('"'); layer++) {
+    let decoded;
+    for (let cut = 0; cut <= 12 && cut < prefix.length; cut++) {
+      try { decoded = JSON.parse(prefix.slice(0, prefix.length - cut) + '"'); break; } catch (_) { /* incomplete escape */ }
+    }
+    if (typeof decoded !== "string") return null;
+    prefix = decoded;
+  }
+  const start = /"rows"\s*:\s*\[/.exec(prefix);
+  if (!start) return null;
+  const from = start.index + start[0].length;
+  let depth = 1, quoted = false, escaped = false, complete = from;
+  for (let i = from; i < prefix.length; i++) {
+    const c = prefix[i];
+    if (quoted) { if (escaped) escaped = false; else if (c === "\\") escaped = true; else if (c === '"') quoted = false; }
+    else if (c === '"') quoted = true;
+    else if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") { depth--; if (depth === 1) complete = i + 1; if (depth === 0) break; }
+  }
+  try {
+    const data = JSON.parse(prefix.slice(0, from) + prefix.slice(from, complete) + "]}");
+    const columns = typeof data.columns === "string" ? JSON.parse(data.columns) : data.columns;
+    if (!Array.isArray(columns) || !Array.isArray(data.rows)) return null;
+    data.log_truncated = "Only " + data.rows.length + " complete rows survived; " + marker[1] + " characters were not logged.";
+    return data;
+  } catch (_) { return null; }
+}
+
 function prettyJson(value) {
-  if (typeof value !== "string") return JSON.stringify(value, null, 2);
-  try { return JSON.stringify(JSON.parse(value), null, 2); }
-  catch (_) { return value; }
+  if (typeof value === "string") value = partialTable(value) || value;
+  // Some providers wrap an already serialized tool result in another JSON string.
+  // Decode valid JSON layers only: literal backslashes in ordinary text stay intact.
+  for (let depth = 0; depth < 4 && typeof value === "string"; depth++) {
+    try { value = JSON.parse(value); } catch (_) { break; }
+  }
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
 function prettyRequest(text) {
@@ -86,7 +124,7 @@ function parseSession(text, file) {
         const id = record.response?.id || "";
         const last = current.timeline.filter(entry => entry.kind === "model").pop();
         if (last && id && last.id === id) last.usage = record.response?.usage || last.usage;
-        else current.timeline.push({ kind: "model", id, usage: record.response?.usage || null, time: Number.isFinite(time) ? time : null });
+        else current.timeline.push({ kind: "model", id, ...(record.provider === "codex" ? { usageScope: "cli_turn" } : {}), usage: record.response?.usage || null, time: Number.isFinite(time) ? time : null });
       } else if (current) current.details.push({ type: record.scope === "request_error" ? "Request failed" + (record.response?.model_step ? " at model step " + record.response.model_step : "") : "Provider usage (" + record.scope + ")",
         ...(record.scope === "request_error" ? { failed: true } : {}),
         text: prettyJson({ provider: record.provider, response: record.response }) });
@@ -127,7 +165,7 @@ function parseSession(text, file) {
       const prompt = typeof content === "string" ? content : Array.isArray(content) && !content.some(block => block?.type === "tool_result")
         ? content.filter(block => block?.type === "text").map(block => block.text || "").join("\n") : "";
       if (prompt.trim()) {
-        current = { time: Number.isFinite(time) ? time : session.end, end: Number.isFinite(time) ? time : session.end,
+        current = { time: Number.isFinite(time) ? time : session.end, end: Number.isFinite(time) ? time : session.end, toolset: record.vertex_toolset || "",
           key: name + ":" + session.prompts.length, provider, branch: record.vertex_branch || "main", parent: record.vertex_parent || null,
           text: prompt.trim(), operation: String(record.vertex_operation || "Chat"), model: "", usage: emptyUsage(), details: [], objects: record.vertex_objects || [],
           screenshots: Array.isArray(record.vertex_screenshots) ? record.vertex_screenshots : [],
@@ -414,7 +452,7 @@ function open(vscode, options = {}) {
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
     .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
-    .replace("</head>", () => '<script nonce="' + nonce + '">window.vertexCanContinue = true;window.vertexCanTagTopics = ' + require("./review-jev").enabled(vscode) + ';</script></head>')
+    .replace("</head>", () => '<script nonce="' + nonce + '">window.vertexCanContinue = true;window.vertexCanReadVersions = ' + Boolean(options.readVersion) + ';window.vertexCanTagTopics = ' + require("./review-jev").enabled(vscode) + ';</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
     .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
   // The page gets the list only - each prompt without its details, steps and Jev input - and asks for one prompt's
@@ -483,6 +521,26 @@ function open(vscode, options = {}) {
           const document = await vscode.workspace.openTextDocument(vscode.Uri.file(object.path));
           await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside });
         } else if (object.object_name && options.openObject) await options.openObject(object);
+      } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }
+    if (message?.action === "openSelect") {
+      try {
+        const session = full.sessions.find(session => session.prompts.some(prompt => prompt.key === message.key));
+        if (!session) throw new Error("That prompt is no longer in the log folder.");
+        await vscode.commands.executeCommand("vertex.runSelect", { sql: message.sql, system: session.context?.mode === "sap" ? session.context.system : undefined });
+      } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }
+    if (message?.action === "openVersion") {
+      try {
+        const prompt = promptIndex.get(message.key);
+        const session = full.sessions.find(session => session.prompts.includes(prompt));
+        const detail = prompt?.details.find(detail => detail.type === "tool result" && detail.tool_id === message.toolId);
+        const data = detail && JSON.parse(prettyJson(detail.text));
+        const revisions = typeof data?.revisions === "string" ? JSON.parse(data.revisions) : data?.revisions;
+        const version = revisions?.find(version => version.uri === message.uri);
+        if (!version || !options.readVersion) throw new Error("That historical version is unavailable in this log.");
+        await options.readVersion({ uri: version.uri, name: data.object?.name || "", version: version.id, toolset: prompt.toolset,
+          system: session.context?.mode === "sap" ? session.context.system : "", client: session.context?.client });
       } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }
     if (message?.action === "openRecording") {

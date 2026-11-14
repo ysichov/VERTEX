@@ -379,7 +379,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       if (currentImages.length && modelCapabilities?.vision === false) throw new Error("This model does not accept screenshots (no Vision). Choose a Vision model or remove the images; nothing was sent.");
 
       const config = vscode.workspace.getConfiguration("vertex.ai");
-      const log = sessionLog.current(config.get("logPath", ""), id, sessionLog.fromConfig(config));log?.setOperation("Chat");log?.setContext(heldIn());
+      const log = sessionLog.current(config.get("logPath", ""), id, sessionLog.fromConfig(config));log?.setOperation("Chat");log?.setContext(heldIn());log?.setToolset(vscode.workspace.getConfiguration("vertex.chat").get("mcpServer", "VERTEX"));
       // Recognize each attachment independently: no question, history, workspace or tools.
       const recognizedImages = [];
       for (const image of currentImages) {
@@ -1004,7 +1004,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
     const pr = purpose === "pr", what = pr ? "pull request description" : "commit message";
     const helper=require("./git-commit"), id=subscriptionProvider(vscode);
     const config=vscode.workspace.getConfiguration("vertex.ai"), model=config.get("model", "") || await defaultModel(id);
-    const log=sessionLog.create(config.get("logPath", ""),id,sessionLog.stamp(new Date())+"_"+require("crypto").randomBytes(3).toString("hex"),sessionLog.fromConfig(config),pr?"Pull request description":"Commit message", sessionLog.independentScope());
+    const log=sessionLog.create(config.get("logPath", ""),id,sessionLog.stamp(new Date())+"_"+require("crypto").randomBytes(3).toString("hex"),sessionLog.fromConfig(config),pr?"Pull request description":"Commit message", sessionLog.independentScope(conversation.length > 0 || webConversation.length > 0));
     log?.setContext(snapshot.folder ? {mode:"folder",folder:snapshot.folder} : require("./log-report").currentPlace(vscode));
     const custom=await require("./prompt-files").promptFile(pr?"git-pr":"git-commit","read");
     const prompt=require("./context-protection").create().text(pr?helper.prPrompt(snapshot,draft,custom.exists?custom.text:undefined):helper.prompt(snapshot,draft,custom.exists?custom.text:undefined));
