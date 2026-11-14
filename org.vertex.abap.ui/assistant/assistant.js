@@ -431,6 +431,10 @@ async function ask(options) {
   if ((options.images || []).length && !claudeLike(options.assistant) && options.assistant !== "codex") {
     throw new Error("Screenshots are sent to Claude Code, Codex and EPAM CodeMie; nothing was sent.");
   }
+  // Claude Code takes screenshots only as a stream-json message, so a silent caller (screenshot recognition) streams too.
+  if ((options.images || []).length && claudeLike(options.assistant) && typeof options.onProgress !== "function") {
+    options = Object.assign({}, options, { onProgress: function () {} });
+  }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-window-"));
   try {
     const command = claudeLike(options.assistant)

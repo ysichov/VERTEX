@@ -1,3 +1,7 @@
+## 2026-11-14 — VS Code 0.9.93: screenshot recognition via stream-json
+
+`claudeCommand` in `assistant.js` throws when images are present without `onProgress`, because Claude Code takes images only as a `stream-json` message. The screenshot recognition call in `chat.js` passes no `onProgress`, so every screenshot failed before sending. `ask()` now substitutes a no-op `onProgress` when images are present on the Claude Code path; applied identically to `vscode/assistant.js` and `org.vertex.abap.ui/assistant/assistant.js`. Version bumped in the VS Code host only (`package.json`, `package-lock.json`, READMEs); the Eclipse version is unchanged. No test covers this path.
+
 ## 2026-11-14 — Logs & Cost, command targets, rules in the request
 
 Reused the existing `log-report.html` page, `usage-report.js` engine and the shared `vertex-segment-toggle` and date-range block rather than a second window: the Usage & Cost view renders into `#usage-content` of the Logs page, sharing `vertexDateRange` (default Today). The usage rows are sent with the `data` message (`usageRows`, via `readUsage` in VS Code; `parseUsage` in the Eclipse bundle `logs-entry.js`, from the files Java already reads). The `vertex.showLogs` launcher entry was dropped; `vertex.showUsage` is titled Logs & Cost (plugin.xml, LogsView, chat.html renamed likewise).

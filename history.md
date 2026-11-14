@@ -1,3 +1,7 @@
+## 2026-11-14 — VS Code 0.9.93: screenshots in chat
+
+Recognising a screenshot no longer fails with "Screenshots need the streaming chat; nothing was sent" for Claude Code and CodeMie. Eclipse version and build are unchanged.
+
 ## 2026-11-14 — Logs & Cost, build targets and project rules for the assistant
 
 **Session Logs and Usage & Cost are one window, Logs & Cost**, in VS Code and Eclipse. A **Logs | Usage & Cost** switch and one date range serve both views: Today by default, calendar inputs, week/month/year or a custom range, and previous/next period. Dates and provider filters survive switching views. Conversation rows show Model and Jev costs separately; CodeMie CLI totals are marked as estimates (≈), not the service bill or project budget spending. Claude subscription estimates are excluded from recorded USD totals. The chat's log button in Eclipse has a new icon and title. Usage & Cost tables support sorting by any column and display USD amounts to at most six decimal places.
