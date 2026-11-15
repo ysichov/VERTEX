@@ -8,6 +8,7 @@ const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const approval = require("./folder-approval");
 const commandOutput = require("./command-output");
+const sourceChangeMarkers = require("./source-change-markers");
 const MAX_FILE = 2 * 1024 * 1024;
 const MAX_TEXT = 16000;
 const SKIP = new Set([".git", "node_modules", ".next", "dist", "build", "target"]);
@@ -185,6 +186,7 @@ function create(vscode, options) {
       const input = { ...args, file_path: file };
       const change = approval.change(name, input, read);
       if (change.error) throw new Error(change.error);
+      change.after = sourceChangeMarkers.mark(file, change.before, change.after, options.provider, options.model);
       if (Buffer.byteLength(change.after) > MAX_FILE) throw new Error("File exceeds the 2 MB limit.");
       if (!options.reviewAfter) await permission(name, input);
       active(); resolve(args.file_path);
@@ -200,6 +202,8 @@ function create(vscode, options) {
       if (typeof args.command !== "string" || !args.command.trim()) throw new Error("A command is required.");
       const location = commandLocation(args);
       const unapplied = location.cwd !== root && options.pendingChanges ? (await options.pendingChanges()).map(change => change.file) : [];
+      if (location.purpose === "build" && location.cwd === project && unapplied.length)
+        throw new Error("The project build would omit unapplied working-copy edits. Finish this turn so VERTEX can show Review, then build the project after Apply. Pending files: " + unapplied.join(", "));
       const details = { ...args, ...location, ...(unapplied.length ? { unapplied_changes: unapplied, warning: "This command runs outside the working copy and does not include its unapplied changes." } : {}) };
       if (location.cwd !== root || !options.reviewAfter || !options.shellWithoutAsking) await permission(name, details);
       active();
