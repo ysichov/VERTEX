@@ -145,7 +145,7 @@
         return withRouting.slice(0, 1).concat(recognition, withRouting.slice(1, answerAt < 0 ? withRouting.length : answerAt), verification,
           withRouting.slice(answerAt < 0 ? withRouting.length : answerAt), other);
       });
-      const height = Math.max(672, ...blocks.map(items => 88 + items.length * 92));
+      const height = Math.max(672, ...blocks.map(items => 88 + items.length * 102));
       const surface = color("--vscode-editorWidget-background"), border = color("--vscode-panel-border");
       shown.forEach((group, index) => {
         const prompt = group.prompt;
@@ -155,30 +155,40 @@
         const topicAccent = color("--vscode-charts-" + ["blue", "green", "orange", "purple", "red", "yellow"][topicNumber % 6]);
         plane(x, 12, 260, 3, topicAccent, 1);
         const lane = make("div", "flow-lane"); lane.style.left = x + "px"; lane.style.width = "260px"; lane.style.height = height - 16 + "px";
-        const head = make("div", "flow-lane-heading");
-        head.style.color = topicAccent;
-        head.appendChild(make("strong", "", "Prompt " + (page * pageSize + index + 1)));
-        head.appendChild(make("span", "muted", [topicNumber ? "T" + topicNumber : "", prompt.provider, prompt.model].filter(Boolean).join(" · ")));
-        lane.appendChild(head);
         const recordedStages = blocks[index];
         recordedStages.forEach((node, row) => {
-          const y = 76 + row * 92, accent = color(node.state === "failed" ? "--vscode-errorForeground" : node.state === "unknown" || node.state === "unverified" ? "--vscode-descriptionForeground" : colors[node.kind]);
-          const child = node.kind === "tool" && node.parentCall;
-          const left = child ? 30 : 12, blockWidth = child ? 218 : 236;
-          if (row < recordedStages.length - 1) plane(x + 24, y + 70, 2, 22, border, 1);
+          const y = 76 + row * 102, accent = color(node.state === "failed" ? "--vscode-errorForeground" : node.state === "unknown" || node.state === "unverified" ? "--vscode-descriptionForeground" : colors[node.kind]);
+          const child = node.kind === "tool" && node.parentCall, isPrompt = node.kind === "prompt";
+          const left = child ? 30 : 12, blockWidth = child ? 218 : 236, blockHeight = isPrompt ? 92 : 72;
+          if (row < recordedStages.length - 1) plane(x + 24, y + blockHeight - 2, 2, 32, border, 1);
           if (child) plane(x + 24, y + 35, 6, 2, border, 1);
-          plane(x + left, y, blockWidth, 72, accent, node.state === "unknown" ? .05 : .12);
-          plane(x + left, y, 3, 72, accent, 1);
-          const button = make("button", "flow-node " + node.state); button.type = "button";
+          plane(x + left, y, blockWidth, blockHeight, accent, node.state === "unknown" ? .05 : .12);
+          plane(x + left, y, 3, blockHeight, accent, 1);
+          const button = make("button", "flow-node " + node.state + (isPrompt ? " flow-prompt" : "")); button.type = "button";
+          button.style.height = blockHeight + "px";
           if (child) { button.classList.add("flow-child"); button.style.left = left + "px"; button.style.width = blockWidth + "px"; }
           const target = node.prompt || prompt;
           button.classList.toggle("selected", selectedKey === String(target.key || target.time) + ":" + node.kind + ":" + node.title);
           button.style.top = y + "px"; button.style.setProperty("--flow-accent", accent);
           button.setAttribute("aria-label", "Prompt " + (page * pageSize + index + 1) + ": " + node.title + ", " + node.label);
           button.title = node.title + ": " + node.label;
-          button.appendChild(make("strong", "", node.title));
-          if (node.kind === "prompt" && topicNumber) { const badge = make("span", "flow-topic-badge", "T" + topicNumber); badge.style.color = topicAccent; button.appendChild(badge); }
-          button.appendChild(make("span", "", node.label));
+          if (isPrompt) {
+            const modelName = [prompt.model, prompt.provider].filter(Boolean).join(" · ") || "Model unknown";
+            button.appendChild(make("span", "flow-model", modelName));
+            const promptText = make("span", "flow-prompt-text", node.label); button.appendChild(promptText);
+            const usage = prompt.usage || {}, info = [];
+            const input = Number(usage.input || 0), output = Number(usage.output || 0);
+            if (input || output) info.push(input.toLocaleString() + " in · " + output.toLocaleString() + " out tokens");
+            if (Number.isFinite(usage.cost)) info.push((usage.costEstimated ? "≈ " : "") + "$" + Number(usage.cost).toFixed(6));
+            const footer = make("span", "flow-prompt-footer");
+            footer.appendChild(make("strong", "", "Prompt " + (page * pageSize + index + 1)));
+            if (topicNumber) { const badge = make("span", "flow-topic-badge", "T" + topicNumber); badge.style.color = topicAccent; footer.appendChild(badge); }
+            if (info.length) footer.appendChild(make("small", "flow-usage", info.join(" · ")));
+            button.appendChild(footer);
+          } else {
+            button.appendChild(make("strong", "", node.title));
+            button.appendChild(make("span", "", node.label));
+          }
           button.onclick = () => choose(target, node, button); lane.appendChild(button); nodes.push({ node, button });
         });
         world.appendChild(lane);

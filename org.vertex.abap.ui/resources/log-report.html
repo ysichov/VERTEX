@@ -153,6 +153,13 @@
   .flow-lane-heading span { font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   button.flow-node { position: absolute; left: 12px; width: 236px; height: 72px; text-align: left; padding: 9px 12px; background: transparent; color: var(--vscode-editor-foreground); border: 1px solid transparent; display: flex; flex-direction: column; gap: 5px; white-space: normal; overflow-wrap: anywhere; }
   .flow-node strong { color: var(--flow-accent); font-size: .95em; }
+   .flow-node.flow-prompt { gap: 3px; padding: 6px 10px; }
+   .flow-prompt .flow-model { display: block; flex: none; color: var(--vscode-editor-foreground); font-size: .78em; white-space: nowrap; text-overflow: ellipsis; }
+   .flow-prompt .flow-prompt-text { display: -webkit-box; flex: 1; min-height: 0; color: var(--vscode-charts-green, var(--vscode-textLink-foreground)); font-size: .9em; line-height: 1.2; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+   .flow-prompt .flow-prompt-footer { display: flex; flex: none; align-items: center; gap: 6px; min-width: 0; }
+   .flow-prompt .flow-prompt-footer strong { color: var(--vscode-descriptionForeground); font-size: .78em; white-space: nowrap; }
+   .flow-prompt .flow-topic-badge { position: static; line-height: 13px; padding: 0 3px; font-size: .68em; }
+   .flow-prompt .flow-usage { min-width: 0; color: var(--vscode-descriptionForeground); font-size: .68em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .flow-node .flow-topic-badge { position: absolute; top: 7px; right: 9px; display: inline-block; width: auto; padding: 0 6px; border: 1px solid currentColor; border-radius: 4px; font-size: .8em; font-weight: bold; line-height: 18px; }
   .flow-node.flow-child strong::before { content: "↳ "; color: var(--vscode-descriptionForeground); }
   .flow-node span { font-size: .85em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

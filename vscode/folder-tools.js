@@ -203,8 +203,14 @@ function create(vscode, options) {
       const details = { ...args, ...location, ...(unapplied.length ? { unapplied_changes: unapplied, warning: "This command runs outside the working copy and does not include its unapplied changes." } : {}) };
       if (location.cwd !== root || !options.reviewAfter || !options.shellWithoutAsking) await permission(name, details);
       active();
+      const projectDiff = options.reviewAfter && root !== project ? require("./project-command-diff") : null;
+      let projectBefore, projectSnapshotError;
+      if (projectDiff) {
+        try { projectBefore = await projectDiff.snapshot(project); }
+        catch (error) { projectSnapshotError = error.message; }
+      }
       const win = process.platform === "win32";
-      return new Promise(resolveCommand => {
+      const commandResult = await new Promise(resolveCommand => {
         let failure;
         const capture = commandOutput.collect({ directory: outputDirectory });
         const output = vscode.window?.createOutputChannel ? require("./build-runner").output(vscode) : null;
@@ -227,6 +233,14 @@ function create(vscode, options) {
             ...(win && /InvalidEndOfLine/.test(captured.stderr) ? { hint: "Windows PowerShell 5.1 does not support && or ||. The project folder is already cwd; retry the single command directly, e.g. git log -1 --oneline. Git did not run. Do not substitute a changelog for Git output." } : {}) });
         });
       });
+      if (projectBefore) {
+        try {
+          const changed = projectDiff.show(vscode, project, projectBefore, await projectDiff.snapshot(project));
+          if (changed.length) { commandResult.project_changed_files = changed; commandResult.project_diff = "Shown in Bash changes in project; these changes are already in the real project and need no Apply."; }
+        } catch (error) { projectSnapshotError = error.message; }
+      }
+      if (projectSnapshotError) commandResult.project_diff_error = "Could not verify changes in the real project: " + projectSnapshotError;
+      return commandResult;
     }
     throw new Error("Unknown local tool: " + name);
   }
