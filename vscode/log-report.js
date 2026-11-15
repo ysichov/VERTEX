@@ -179,6 +179,8 @@ function parseSession(text, file) {
       if (prompt.trim()) {
         current = { time: Number.isFinite(time) ? time : session.end, end: Number.isFinite(time) ? time : session.end, toolset: record.vertex_toolset || "",
           key: name + ":" + session.prompts.length, provider, branch: record.vertex_branch || "main", parent: record.vertex_parent || null,
+          turnId: typeof record.vertex_turn === "string" ? record.vertex_turn : null,
+          relatedTurnId: typeof record.vertex_related_turn === "string" ? record.vertex_related_turn : null,
           text: prompt.trim(), operation: String(record.vertex_operation || "Chat"), model: "", usage: emptyUsage(), details: [], objects: record.vertex_objects || [],
           screenshots: Array.isArray(record.vertex_screenshots) ? record.vertex_screenshots : [],
           // Model calls and tool calls in the order they happened.

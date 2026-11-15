@@ -11,7 +11,7 @@ async function evaluate(vscode, task, stage, report, evidence, options={}) {
    criteria:{passed:"Proved by recorded results",failed:"Recorded results contradict completion",unverified:"Insufficient evidence to prove completion"}}]));
  const estimated=jev.estimateTokens(state,questions);
  return jev.paced(vscode,connection,estimated,async()=>{
-   const scope={...require("./session-log").independentScope(),...(options.logContext?{context:options.logContext}:{})};
+   const scope={...require("./session-log").independentScope(),...(options.logContext?{context:options.logContext}:{}),...(options.relatedTurnId?{relatedTurnId:options.relatedTurnId}:{})};
    const audit=require("./ai-accounting").begin(vscode,connection.provider,connection.model,options.operation || OPERATION,scope,stage.task);
    audit.decision({provider:connection.provider,model:connection.model,state,questions});
    try {

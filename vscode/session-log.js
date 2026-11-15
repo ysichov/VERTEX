@@ -48,7 +48,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
   let sequence = 0, discarded = false, screenshotCount = 0;
   // Where the conversation was held: the local folder, or the SAP system and client. Session Logs filters by it,
   // and nothing else in the log records it - a conversation without it cannot be placed afterwards.
-  let context = null, toolset = "";
+  let context = null, toolset = "", turnId = scope?.turnId || null;
   // Every file of one VS Code conversation carries its id: a conversation that changes provider writes one file per
   // provider, and Session Logs puts them back together by it.
   const conversation = scope?.conversation || conversationId, branch = scope ? "main" : branchId, parent = scope ? null : branchParent;
@@ -57,7 +57,9 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
     if (discarded) return;
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch,
-      ...(scope?.relatedConversation ? { vertex_related_conversation: scope.relatedConversation } : {}), ...(parent ? { vertex_parent: parent } : {}),
+      ...(scope?.relatedConversation ? { vertex_related_conversation: scope.relatedConversation } : {}),
+      ...(scope?.relatedTurnId ? { vertex_related_turn: scope.relatedTurnId } : {}),
+      ...(turnId ? { vertex_turn: turnId } : {}), ...(parent ? { vertex_parent: parent } : {}),
       ...(context ? { vertex_context: context } : {}), ...(toolset ? { vertex_toolset: toolset } : {}) }, protection.protect(entry))) + "\n", "utf8");
   };
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
@@ -68,6 +70,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       if (on.questions) write({ type: "vertex_decision", input: JSON.parse(JSON.stringify(input)) });
     },
     setOperation(value){operation=String(value||"Chat");},
+    setTurnId(value){turnId=typeof value==="string"&&/^[a-f0-9]{16}$/.test(value)?value:null;},
     setToolset(value){toolset=typeof value === "string" ? value.slice(0,200) : "";},
     /** Folder mode: {mode:"folder",folder}. SAP mode: {mode:"sap",system,client}. Anything else is refused. */
     setContext(value){

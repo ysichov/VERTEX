@@ -153,6 +153,8 @@
   .flow-lane-heading span { font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   button.flow-node { position: absolute; left: 12px; width: 236px; height: 72px; text-align: left; padding: 9px 12px; background: transparent; color: var(--vscode-editor-foreground); border: 1px solid transparent; display: flex; flex-direction: column; gap: 5px; white-space: normal; overflow-wrap: anywhere; }
   .flow-node strong { color: var(--flow-accent); font-size: .95em; }
+  .flow-node .flow-topic-badge { position: absolute; top: 7px; right: 9px; display: inline-block; width: auto; padding: 0 6px; border: 1px solid currentColor; border-radius: 4px; font-size: .8em; font-weight: bold; line-height: 18px; }
+  .flow-node.flow-child strong::before { content: "↳ "; color: var(--vscode-descriptionForeground); }
   .flow-node span { font-size: .85em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   button.flow-node:hover { background: var(--vscode-list-hoverBackground); }
   button.flow-node:focus-visible, button.flow-node.selected { border-color: var(--vscode-focusBorder); outline: 1px solid var(--vscode-focusBorder); }
@@ -690,11 +692,14 @@ function markdown(text, target) {
     var box=section("Steps (chronological)","technical"), loaded=false;
     box.addEventListener("toggle",function(){
       if(!box.open||loaded)return;loaded=true;
+      var shown=0;
       (p.events||[]).forEach(function(event,index){
-        var clock=event.time?new Date(event.time).toLocaleTimeString():"", prefix=(index+1)+". "+clock+" · "+event.actor+" · ",entry;
+        if(event.kind==="model" && !(p.events||[]).slice(index+1).some(function(later){return later.kind==="model"||later.kind==="tool";})
+          && (p.events||[]).slice(index+1).some(function(later){return later.kind==="detail"&&p.details[later.detail]?.type==="answer";}))return;
+        var clock=event.time?new Date(event.time).toLocaleTimeString():"", prefix=(++shown)+". "+clock+" · "+event.actor+" · ",entry;
         if(event.kind==="model") {
           var model=event.model||{},u=model.usage||{};
-          entry=section(prefix+(model.usageScope==="cli_turn"?"Codex run totals (internal calls unknown)":"Model response"),"model");
+          entry=section(prefix+(model.usageScope==="cli_turn"?"Codex run totals (internal calls unknown)":"Model call · usage"),"model");
           line(entry,"Usage",usageText({input:u.cached_input_tokens!=null?Math.max(0,(u.input_tokens||0)-u.cached_input_tokens):u.input_tokens,output:u.output_tokens,cacheRead:u.cache_read_input_tokens||u.cached_input_tokens,cacheWrite:u.cache_creation_input_tokens}));
         } else if(event.kind==="note") entry=section(prefix+(event.model.note==="thinking"?"Thinking":"Message"),"model",event.model.text);
         else if(event.kind==="request") {
@@ -1030,7 +1035,9 @@ function markdown(text, target) {
     report.sessions.slice().sort(function (a, b) { return Number(internal(a)) - Number(internal(b)); }).forEach(function (source) {
       var parentContext = parentContexts.get(source.relatedConversation);
       var samePlace = !source.context || !parentContext || contextKey(source.context) === contextKey(parentContext);
-      var related = internal(source) && samePlace && parents.has(source.relatedConversation) ? source.relatedConversation : null;
+      var related = internal(source) && source.relatedConversation && (parents.has(source.relatedConversation) || samePlace || source.prompts.every(function (p) {
+        return p.operation === "Screenshot recognition" || p.operation === "Topic routing with Jev" || p.operation === "Topic tagging with Jev";
+      })) ? source.relatedConversation : null;
       var conversationId = related || source.conversation;
       var key = conversationId ? "conversation:" + conversationId : "file:" + source.id;
       var group = groups.get(key);
@@ -1276,20 +1283,42 @@ function markdown(text, target) {
       { name: "Conversation", cls: "", width: null, value: function (p) { return String(p.text || "").toLowerCase(); } },
       { name: "Topic", cls: "", width: 70, value: function (p) { return p.topic && p.topic.id ? Number(p.topic.id.slice(6)) : 0; }, num: true },
       { name: "Model", cls: "", width: 150, value: function (p) { return (p.provider || "") + " " + (p.model || ""); } },
-      { name: "Run", cls: "num", width: 55, value: function (p) { return p.toolCalls || 0; }, num: true },
+      { name: "Run", cls: "num", width: 55, value: function (p) { return runsOf(p); }, num: true },
       { name: "Context ≈tok", cls: "num", width: 105, value: function (p) { return p.contextSize ? p.contextSize.estimatedTokens : -1; }, num: true },
 
-      { name: "New in", cls: "num", width: 70, value: function (p) { return newInput(p.usage); }, num: true },
-      { name: "Out", cls: "num", width: 65, value: function (p) { return p.usage.output || 0; }, num: true },
-      { name: "Cache read", cls: "num", width: 90, value: function (p) { return p.usage.cacheRead || 0; }, num: true },
-      { name: "Cost USD", cls: "num", width: 90, value: function (p) { return p.usage.cost || 0; }, num: true },
+      { name: "New in", cls: "num", width: 70, value: function (p) { return newInput(usageOf(p)); }, num: true },
+      { name: "Out", cls: "num", width: 65, value: function (p) { return usageOf(p).output || 0; }, num: true },
+      { name: "Cache read", cls: "num", width: 90, value: function (p) { return usageOf(p).cacheRead || 0; }, num: true },
+      { name: "Cost USD", cls: "num", width: 90, value: function (p) { return usageOf(p).cost || 0; }, num: true },
       { name: "Duration", cls: "time", width: 90, value: function (p) { return (p.end || 0) - (p.time || 0); }, num: true },
       { name: "Time", cls: "time", width: 125, value: function (p) { return p.time || 0; }, num: true }];
     // A conversation whose models report no cost (a subscription) has no Cost column: it would be all dashes.
     var hasCost = s.prompts.some(function (p) { return p.usage && p.usage.cost != null; });
     if (!hasCost) columns = columns.filter(function (column) { return column.name !== "Cost USD"; });
     var rows = [];
-    var source=s.prompts.slice(),pageNumber=0,pageSize=30;
+    var chronological=s.prompts.slice().sort(function(a,b){return (a.time||0)-(b.time||0)||a.key.localeCompare(b.key);});
+    var chatPrompts=chronological.filter(function(p){return p.operation==="Chat"||p.operation==="Web search";});
+    var technicalByChat=new Map(),unlinkedTechnical=[];
+    if(chatPrompts.length) chronological.forEach(function(p){
+      if(p.operation==="Chat"||p.operation==="Web search")return;
+      var next=chatPrompts.find(function(q){return (q.time||0)>=(p.time||0);});
+      var previous=chatPrompts.slice().reverse().find(function(q){return (q.time||0)<(p.time||0);});
+      var exact=p.relatedTurnId&&chatPrompts.find(function(q){return q.turnId===p.relatedTurnId;});
+      if(p.relatedTurnId&&!exact){unlinkedTechnical.push(p);return;}
+      var owner=exact||(next&&previous?((p.time||0)-(previous.time||0)<=(next.time||0)-(p.time||0)?previous:next):next||previous);
+      if(owner){if(!technicalByChat.has(owner))technicalByChat.set(owner,[]);technicalByChat.get(owner).push(p);}
+    });
+    var source=chatPrompts.length?chatPrompts.concat(unlinkedTechnical):s.prompts.slice(),pageNumber=0,pageSize=30;
+    function childrenOf(p){return technicalByChat.get(p)||[];}
+    function runsOf(p){return [p].concat(childrenOf(p)).reduce(function(sum,item){return sum+(item.toolCalls||0);},0);}
+    function usageOf(p){
+      var combined={input:0,output:0,cacheRead:0,cacheWrite:0};
+      [p].concat(childrenOf(p)).forEach(function(item){var usage=item.usage||{};
+        ["input","output","cacheRead","cacheWrite","costMissing","costEstimated"].forEach(function(key){combined[key]=(combined[key]||0)+(usage[key]||0);});
+        if(usage.cost!=null)combined.cost=(combined.cost||0)+usage.cost;
+      });
+      return combined;
+    }
     var navigation=el("div","list-tools"),pageLabel=el("span","muted");
     var previousPage=el("button","continue-session","Previous"),nextPage=el("button","continue-session","Next");
     previousPage.type=nextPage.type="button";
@@ -1319,11 +1348,22 @@ function markdown(text, target) {
         var promptLoaded = false;
         prompt.ontoggle = function () {
           row.className = prompt.open ? "" : "compact";
-          if (prompt.open && !promptLoaded) { promptLoaded = true; detailBody.appendChild(lazyConversation(p)); }
+          if (prompt.open && !promptLoaded) { promptLoaded = true; detailBody.appendChild(lazyConversation(p)); appendTechnical(); }
           detail.hidden = !prompt.open;
         };
         cell.appendChild(prompt);
-      } else { detail.hidden = false; detailBody.appendChild(lazyConversation(p)); }
+      } else { detail.hidden = false; detailBody.appendChild(lazyConversation(p)); appendTechnical(); }
+      function appendTechnical(){
+        var technical=technicalByChat.get(p)||[];
+        if(!technical.length)return;
+        var steps=section("Technical steps ("+technical.length+")","technical");
+        technical.forEach(function(step){
+          var item=section(step.operation+" · "+promptTime(step.time,s.start),"technical");
+          item.addEventListener("toggle",function(){if(item.open&&!item.loaded){item.loaded=true;item.appendChild(lazyConversation(step));}});
+          steps.appendChild(item);
+        });
+        detailBody.appendChild(steps);
+      }
       row.appendChild(cell);
       // Its topic, coloured as the chat colours it, so the topics of a conversation can be told apart at a glance.
       var topicCell = el("td", "topic-cell");
@@ -1363,15 +1403,15 @@ function markdown(text, target) {
       identity.appendChild(modelLabel);
       if (p.branch && p.branch !== "main") identity.appendChild(el("div", "muted", "Branch " + p.branch));
       row.appendChild(identity);
-      row.appendChild(el("td", "num", n(p.toolCalls)));
+      row.appendChild(el("td", "num", n(runsOf(p))));
       var context = el("td", "num", p.contextSize ? "≈" + n(p.contextSize.estimatedTokens) : "—");
       context.title = p.contextSize ? "Prepared context before sending: " + n(p.contextSize.characters) + " characters. Approximate tokens = characters / 4; not model-tokenizer counts. Includes instructions, history, current prompt, tools and answer schema. Excludes provider-added wrappers, binary images and later tool steps."
         : "Context size was not recorded in this log. Cumulative usage cannot reconstruct it.";
       row.appendChild(context);
-      row.appendChild(el("td", "num", n(newInput(p.usage))));
-      row.appendChild(el("td", "num", n(p.usage.output)));
-      row.appendChild(el("td", "num", n(p.usage.cacheRead)));
-      if (hasCost) row.appendChild(el("td", "num", costText(p.usage)));
+      row.appendChild(el("td", "num", n(newInput(usageOf(p)))));
+      row.appendChild(el("td", "num", n(usageOf(p).output)));
+      row.appendChild(el("td", "num", n(usageOf(p).cacheRead)));
+      if (hasCost) row.appendChild(el("td", "num", costText(usageOf(p))));
       var duration = el("td", "time", span(p.time, p.end) || "—");
       duration.title = "Elapsed time from the prompt to its last recorded assistant response";
       row.appendChild(duration);
