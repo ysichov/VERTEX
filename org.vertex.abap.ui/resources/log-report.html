@@ -50,15 +50,17 @@
   details.prompt[open] > summary { color: var(--vscode-descriptionForeground); }
   tr.compact > td { padding-top: 2px; padding-bottom: 2px; }
   .entry { --entry-color: var(--vscode-descriptionForeground); margin: 6px 0; background: transparent; }
-  /* No coloured bar at the side: the block's kind reads from its title colour. A block inside a block (a step in
-     Steps, a call in Tools) is separated from the one before by a thin rule above. */
-  .entry .entry { margin: 0; border-top: 1px solid var(--vscode-panel-border); }
-  .entry .entry > summary { font-weight: normal; color: var(--vscode-editor-foreground); }
+  /* Nested details keep their own event colour and move under the parent. */
+  .entry .entry { margin: 0 0 0 18px; border-top: 1px solid var(--vscode-panel-border); }
+  .entry .entry > summary { font-weight: normal; color: var(--entry-color); }
   .provider { color: var(--vscode-charts-purple, var(--vscode-textLink-foreground)); }
   .session-models, .prompt-model { color: var(--vscode-editor-foreground); }
   .preview, .prompt > summary { color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); }
   .entry.user { --entry-color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); }
   .entry.model { --entry-color: var(--vscode-charts-green, var(--vscode-textLink-foreground)); }
+  .entry.tool { --entry-color: var(--vscode-charts-orange, var(--vscode-textLink-foreground)); }
+  .entry.jev { --entry-color: var(--vscode-charts-purple, var(--vscode-textLink-foreground)); }
+  .entry.vertex { --entry-color: var(--vscode-charts-red, var(--vscode-textLink-foreground)); }
   .entry > summary { padding: 6px 8px; cursor: pointer; color: var(--entry-color); font-weight: 600; }
   .entry > summary:hover { background: var(--vscode-list-hoverBackground); }
   /* A failed request reads as a failure in the list, without opening it. */
@@ -169,7 +171,10 @@
   .flow-fallback .flow-lane { background: var(--vscode-editorWidget-background); }
   .flow-fallback button.flow-node { border-left: 3px solid var(--flow-accent); background: var(--vscode-editor-background); }
   .flow-hint { font-size: .9em; margin: 6px 0 10px; }
-  .flow-inspector { margin-top: 12px; padding: 10px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editorWidget-background); overflow-wrap: anywhere; }
+  .flow-dialog { box-sizing: border-box; width: min(900px, 92vw); max-height: 85vh; overflow: auto; color: var(--vscode-editor-foreground); background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-panel-border); }
+  .flow-dialog::backdrop { background: var(--vscode-widget-shadow, rgba(0,0,0,.5)); }
+  .flow-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; top: 0; z-index: 1; padding: 8px; background: var(--vscode-editorWidget-background); border-bottom: 1px solid var(--vscode-panel-border); }
+  .flow-inspector { padding: 10px; overflow-wrap: anywhere; }
   .flow-inspector:empty { display: none; }
 </style>
 </head>
@@ -480,28 +485,38 @@ function markdown(text, target) {
   /* VS Code sends the list without each prompt's details (lazy); an opened prompt asks the host for its record.
      Eclipse parses the logs in the page, so its prompts are complete and render at once. */
   var waitingDetail = {};
+  function loadPromptDetails(p, done) {
+    if (!p.lazy) { done(null); return; }
+    var request = !waitingDetail[p.key];if (request) waitingDetail[p.key] = [];
+    waitingDetail[p.key].push(function(reply){
+      if (reply.error) { done(reply.error); return; }
+      Object.assign(p, reply.prompt, { lazy: false });done(null);
+    });
+    if (request) vscode.postMessage({ action: "promptDetail", key: p.key });
+  }
+  function serviceResult(p, target) {
+    var pending=el("div","muted","Loading result…");target.appendChild(pending);
+    loadPromptDetails(p,function(error){
+      pending.remove();if(error){target.appendChild(el("p","error",error));return;}
+      var answers=(p.details||[]).filter(function(d){return d.type==="answer"&&d.text;});
+      if(answers.length){answers.forEach(function(d){
+        var table=p.decision?jevTable(d.text,p.decision):null;
+        target.appendChild(table||richText(d.text));objectLinks(target,d.objects);
+      });return;}
+      var visible=(p.details||[]).map(function(d){return detailSection(d,p,"");}).filter(Boolean);
+      if(visible.length)visible.forEach(function(d){target.appendChild(d);d.open=true;});
+      else target.appendChild(el("p","muted","No result text was recorded for this operation."));
+    });
+  }
   function lazyConversation(p) {
     var holder = el("div", "conversation-holder");
     var show = function () { holder.appendChild(conversation(p)); };
     if (!p.lazy) { show(); return holder; }
-    var loading=false;
-    ["User","Steps (chronological)"].forEach(function(label){
-      var entry=section(label,label==="User"?"user":label==="Model answer"?"model":"technical");
-      entry.addEventListener("toggle",function(){
-        if(!entry.open||loading)return;loading=true;
-        var requestDetail=!waitingDetail[p.key];if(requestDetail)waitingDetail[p.key]=[];
-        var pending=el("div","muted","Loading…");entry.appendChild(pending);
-        waitingDetail[p.key].push(function(reply){
-          loading=false;
-          if(reply.error){pending.textContent=reply.error;return;}
-          if(typeof reply.prompt.text==="string")p.text=reply.prompt.text;
-          p.details=reply.prompt.details||[];p.timeline=reply.prompt.timeline||[];p.events=reply.prompt.events||[];p.decision=reply.prompt.decision||undefined;p.lazy=false;
-          holder.textContent="";show();
-          var target=Array.prototype.find.call(holder.querySelectorAll("details.entry"),function(box){return box.querySelector("summary").textContent.indexOf(label)===0;});
-          if(target)target.open=true;
-        });
-        if(requestDetail)vscode.postMessage({action:"promptDetail",key:p.key});
-      });holder.appendChild(entry);
+    holder.appendChild(el("div","muted","Loading…"));
+    loadPromptDetails(p,function(error){
+      holder.textContent="";
+      if(error)holder.appendChild(el("p","error",error));
+      else show();
     });
     return holder;
   }
@@ -550,10 +565,11 @@ function markdown(text, target) {
         : [a.object_type || a.type, a.object_name || a.name, a.method_name || a.include || a.part].filter(function (x) { return x && x !== "main"; }).join(" ") || a.query || a.pattern || a.action || "";
       return what ? name + ": " + String(what).slice(0, 90) : name;
     }
-    if (name === "Bash") return "Bash: " + (input.description || String(input.command || "").split("\n")[0]).slice(0, 90);
-    if (name === "Read" || name === "Edit" || name === "Write") return name + ": " + fileName(input.file_path);
-    if (name === "Grep" || name === "Glob") return name + ": " + String(input.pattern || "").slice(0, 90);
-    if (name === "Review") return "Review: " + (input.files || []).length + " file" + ((input.files || []).length === 1 ? "" : "s");
+    if (name === "Bash") return "Bash · " + ((input.description || String(input.command || "").split("\n")[0]).slice(0, 90) || "command");
+    if (name === "Read") return "Read · " + (fileName(input.file_path) || "file");
+    if (name === "Edit" || name === "Write") return name + " · " + (fileName(input.file_path) || "file");
+    if (name === "Grep" || name === "Glob") return name + " · " + (name === "Grep" ? "Search for " : "List files matching ") + String(input.pattern || "").slice(0, 90);
+    if (name === "Review") return "Review · " + (input.files || []).length + " file" + ((input.files || []).length === 1 ? "" : "s");
     return name;
   }
   function line(target, label, value, promptKey) {
@@ -695,34 +711,52 @@ function markdown(text, target) {
         objectLinks(target, d.objects);
       }
 
-  function chronology(p) {
+  function chronology(p,user) {
     var box=section("Steps (chronological)","technical"), loaded=false;
     box.addEventListener("toggle",function(){
       if(!box.open||loaded)return;loaded=true;
-      var shown=0;
-      (p.events||[]).forEach(function(event,index){
-        if(event.kind==="model" && !(p.events||[]).slice(index+1).some(function(later){return later.kind==="model"||later.kind==="tool";})
-          && (p.events||[]).slice(index+1).some(function(later){return later.kind==="detail"&&p.details[later.detail]?.type==="answer";}))return;
-        var clock=event.time?new Date(event.time).toLocaleTimeString():"", prefix=(++shown)+". "+clock+" · "+event.actor+" · ",entry;
-        if(event.kind==="model") {
-          var model=event.model||{},u=model.usage||{};
-          entry=section(prefix+(model.usageScope==="cli_turn"?"Codex run totals (internal calls unknown)":"Model call · usage"),"model");
-          line(entry,"Usage",usageText({input:u.cached_input_tokens!=null?Math.max(0,(u.input_tokens||0)-u.cached_input_tokens):u.input_tokens,output:u.output_tokens,cacheRead:u.cache_read_input_tokens||u.cached_input_tokens,cacheWrite:u.cache_creation_input_tokens}));
-        } else if(event.kind==="note") entry=section(prefix+(event.model.note==="thinking"?"Thinking":"Message"),"model",event.model.text);
-        else if(event.kind==="request") {
+      var events=p.events||[], items=[{time:p.time||0,order:0,user:user}], results=new Map(), paired=new Set(), duplicates=new Set();
+      function operationName(value){return String(value||"").replace(/ \(Jev\)/," with Jev").toLowerCase();}
+      (p.technicalChildren||[]).forEach(function(step){
+        var match=events.map(function(event,index){return {event:event,index:index,detail:p.details[event.detail]};})
+          .filter(function(item){return item.event.kind==="detail"&&!duplicates.has(item.index)&&operationName(item.detail?.type)===operationName(step.operation);})
+          .sort(function(a,b){return Math.abs((a.event.time||0)-(step.time||0))-Math.abs((b.event.time||0)-(step.time||0));})[0];
+        if(match)duplicates.add(match.index);
+      });
+      events.forEach(function(event){if(event.kind==="tool_result"){
+        var result=p.details[event.detail];if(result&&result.tool_id)results.set(result.tool_id,event);
+      }});
+      events.forEach(function(event,index){
+        if(duplicates.has(index))return;
+        if(event.kind==="model"||event.kind==="note")return;
+        if(event.kind==="tool_result"&&paired.has(event.detail))return;
+        var detail=p.details[event.detail], resultEvent=event.kind==="tool"&&detail?results.get(detail.tool_id):null;
+        var result=resultEvent&&p.details[resultEvent.detail];if(resultEvent)paired.add(resultEvent.detail);
+        items.push({time:event.time||p.time||0,order:index,event:event,detail:detail,result:result});
+      });
+      (p.technicalChildren||[]).forEach(function(step,index){items.push({time:step.time||0,order:-1000+index,service:step});});
+      items.sort(function(a,b){return a.time-b.time||a.order-b.order;});
+      items.forEach(function(item,index){
+        var event=item.event,detail=item.detail,step=item.service,clock=new Date(item.time).toLocaleTimeString();
+        var prefix=(index+1)+". "+clock+" · ",entry;
+        if(item.user){
+          entry=item.user;var heading=entry.querySelector("summary");if(heading)heading.textContent=prefix+heading.textContent;
+        } else if(step){
+          entry=section(prefix+step.operation,/Jev/i.test(step.operation)?"technical jev":/Recovery|Orchestrator/i.test(step.operation)?"technical vertex":"technical tool");
+          var serviceLoaded=false;entry.addEventListener("toggle",function(){if(entry.open&&!serviceLoaded){serviceLoaded=true;serviceResult(step,entry);}});
+        } else if(event.kind==="tool"||event.kind==="tool_result"){
+          if(!detail)return;
+          entry=section(prefix+(event.kind==="tool"?stepTitle(detail):(event.tool||"Tool")+" result"),
+            detail.failed||item.result?.failed?"technical tool failed":"technical tool");
+          var toolLoaded=false;entry.addEventListener("toggle",function(){if(!entry.open||toolLoaded)return;toolLoaded=true;
+            appendToolEntry(entry,detail,p);if(item.result)appendToolEntry(entry,item.result,p);
+          });
+        } else if(event.kind==="request"){
           entry=section(prefix+"Request and context","technical");
-          (event.details||[]).forEach(function(i){var detail=detailSection(p.details[i],p,"");if(detail)entry.appendChild(detail);});
-        } else {
-          var d=p.details[event.detail];if(!d)return;
-          if(event.kind==="tool"||event.kind==="tool_result") {
-            var title=event.kind==="tool"?stepTitle(d):(event.tool||"Tool")+" result";
-            entry=section(prefix+title,d.failed?"technical failed":"technical");
-            var shown=false;entry.addEventListener("toggle",function(){if(!entry.open||shown)return;shown=true;
-              appendToolEntry(entry,d,p);
-            });
-          } else if(d.type==="answer") {entry=section(prefix+"Response","model");markdown(d.text,entry);objectLinks(entry,d.objects);}
-          else entry=detailSection(d,p,prefix);
-        }
+          (event.details||[]).forEach(function(i){var part=detailSection(p.details[i],p,"");if(part)entry.appendChild(part);});
+        } else if(detail?.type==="answer"){
+          entry=section(prefix+"Response","model");markdown(detail.text,entry);objectLinks(entry,detail.objects);
+        } else if(detail) entry=detailSection(detail,p,prefix);
         if(entry)box.appendChild(entry);
       });
     });
@@ -731,13 +765,6 @@ function markdown(text, target) {
 
   function conversation(p) {
     var body = el("div", "conversation");
-    if (window.vertexCanContinue && p.decision) {
-      var resumeDecision=el("button","continue-session","Continue");
-      resumeDecision.type="button";
-      resumeDecision.title="Restore this Jev step's context and questions without running it";
-      resumeDecision.onclick=function(event){event.preventDefault();event.stopPropagation();vscode.postMessage({action:"continueDecision",key:p.key});};
-      body.appendChild(resumeDecision);
-    }
     var user = section("User" + (p.topic && p.topic.label ? " · topic: " + p.topic.label : "") + ((p.screenshots || []).length ? " · " + p.screenshots.length + " screenshot" + (p.screenshots.length === 1 ? "" : "s") : ""), "user", p.text);
     objectLinks(user, p.objects);
     (p.screenshots || []).forEach(function (shot, i) {
@@ -747,8 +774,8 @@ function markdown(text, target) {
       link.onclick = function () { vscode.postMessage({ action: "openScreenshot", file: shot.file }); };
       user.appendChild(link);
     });
+    if ((p.events && p.events.length) || (p.technicalChildren && p.technicalChildren.length)) { body.appendChild(chronology(p,user)); return body; }
     body.appendChild(user);
-    if (p.events && p.events.length) { body.appendChild(chronology(p)); return body; }
 
     var answers = p.details.filter(function (d) { return d.type === "answer"; });
     if (answers.length) {
@@ -847,9 +874,10 @@ function markdown(text, target) {
       var label = d.type === "Model request and context" ? "Request and context" : d.type;
       if (prefix) label = prefix + label;
       if (d.snapshot) label = d.snapshot.kind === "uml" ? "Recorded UML" : "Recorded metrics";
+      var tone=/Jev/i.test(d.type)?" jev":/Recovery|Orchestrator/i.test(d.type)?" vertex":"";
       var detail;
       if (d.verification) {
-        detail = section(label, d.failed ? "technical failed" : "technical");
+        detail = section(label, "technical"+tone+(d.failed?" failed":""));
         var verificationShown = false;
         detail.addEventListener("toggle", function () {
           if (!detail.open || verificationShown) return;
@@ -866,7 +894,7 @@ function markdown(text, target) {
         });
       } else if (d.routing) {
         // Jev's answers as a table, with the whole report under it for anything the table leaves out.
-        detail = section(label, "technical");
+        detail = section(label, "technical"+tone);
         var routingShown = false;
         detail.addEventListener("toggle", function () {
           if (!detail.open || routingShown) return;
@@ -875,7 +903,7 @@ function markdown(text, target) {
           if (answers) detail.appendChild(answers);
           detail.appendChild(el("div", "detail", d.text));
         });
-      } else detail = section(label, d.failed ? "technical failed" : "technical", d.text);
+      } else detail = section(label, "technical"+tone+(d.failed?" failed":""), d.text || "No details were recorded for this operation.");
       objectLinks(detail, d.objects);
       if (d.snapshot) {
         var open = el("button", "recording-link", "Open recorded " + (d.snapshot.kind === "uml" ? "UML" : "metrics"));
@@ -967,33 +995,33 @@ function markdown(text, target) {
     var version = ++flowDetailVersion;
     function show() {
       if (version !== flowDetailVersion || !inspector.isConnected) return;
-      // Flow selects a specific body, not the full chronological prompt view.
-      var detailPrompt = Object.assign({}, prompt, { events: [] });
-      if (node.kind === "checks" || node.kind === "review") {
-        var names = node.kind === "review" ? /^(Review)$/ : /^(Verification|Lint|Tests?)$/i;
-        var ids = new Set((prompt.details || []).filter(function (d) { return d.type === "tool" && names.test(d.name || ""); }).map(function (d) { return d.tool_id; }));
-        detailPrompt = Object.assign({}, detailPrompt, { details: (prompt.details || []).filter(function (d) { return ids.has(d.tool_id); }), timeline: [] });
+      if(node.prompt){serviceResult(prompt,inspector);return;}
+      if(node.kind==="prompt"){
+        var user=conversation(Object.assign({},prompt,{events:[],details:[],technicalChildren:[]})).querySelector(".entry.user");
+        if(user){inspector.appendChild(user);user.open=true;return;}
       }
-      var rendered = conversation(detailPrompt);
-      var candidates = Array.prototype.slice.call(rendered.children);
-      var target = candidates.find(function (entry) {
-        var heading = entry.querySelector("summary");
-        return heading && (heading.textContent.indexOf(node.section || node.title) === 0 || node.section === "Steps" && heading.textContent.indexOf("Tools") === 0);
-      });
-      if (!target && node.kind === "answer" && prompt.failed) { inspector.appendChild(el("p", "error", "The request failed; open its recorded failure details below.")); inspector.appendChild(rendered); return; }
-      if (!target) { inspector.appendChild(el("p", "muted", "No detail body was logged for this stage.")); return; }
-      inspector.appendChild(target); target.open = true;
+      if(node.kind==="tool"){
+        var call=(prompt.details||[]).filter(function(d){return d.type==="tool";})[node.stepIndex];
+        if(call){appendToolEntry(inspector,call,prompt);
+          var result=(prompt.details||[]).find(function(d){return d.type==="tool result"&&d.tool_id===call.tool_id;});
+          if(result)appendToolEntry(inspector,result,prompt);return;
+        }
+      }
+      if(node.kind==="answer"){
+        var answer=(prompt.details||[]).filter(function(d){return d.type==="answer";}).pop();
+        if(answer){inspector.appendChild(richText(answer.text));objectLinks(inspector,answer.objects);return;}
+      }
+      var detail=(prompt.details||[]).find(function(d){return d.type===node.title;});
+      if(detail){var sectionNode=detailSection(detail,prompt,"");if(sectionNode){inspector.appendChild(sectionNode);sectionNode.open=true;return;}}
+      inspector.appendChild(el("p","muted","No detail body was logged for this stage."));
     }
     if (!prompt.lazy) { show(); return; }
     var loading = el("p", "muted", "Loading…"); inspector.appendChild(loading);
-    var request = !waitingDetail[prompt.key];
-    if (request) waitingDetail[prompt.key] = [];
-    waitingDetail[prompt.key].push(function (reply) {
+    loadPromptDetails(prompt,function(error){
       if (version !== flowDetailVersion || !inspector.isConnected) return;
-      if (reply.error) { loading.textContent = reply.error; return; }
-      Object.assign(prompt, reply.prompt, { lazy: false }); loading.remove(); show();
+      if (error) { loading.textContent = error; return; }
+      loading.remove(); show();
     });
-    if (request) vscode.postMessage({ action: "promptDetail", key: prompt.key });
   }
   function flowView(root, sessions) {
     if (flowDispose) { flowDispose(); flowDispose = null; }
@@ -1355,22 +1383,11 @@ function markdown(text, target) {
         var promptLoaded = false;
         prompt.ontoggle = function () {
           row.className = prompt.open ? "" : "compact";
-          if (prompt.open && !promptLoaded) { promptLoaded = true; detailBody.appendChild(lazyConversation(p)); appendTechnical(); }
+          if (prompt.open && !promptLoaded) { promptLoaded = true; p.technicalChildren=childrenOf(p); detailBody.appendChild(lazyConversation(p)); }
           detail.hidden = !prompt.open;
         };
         cell.appendChild(prompt);
-      } else { detail.hidden = false; detailBody.appendChild(lazyConversation(p)); appendTechnical(); }
-      function appendTechnical(){
-        var technical=technicalByChat.get(p)||[];
-        if(!technical.length)return;
-        var steps=section("Technical steps ("+technical.length+")","technical");
-        technical.forEach(function(step){
-          var item=section(step.operation+" · "+promptTime(step.time,s.start),"technical");
-          item.addEventListener("toggle",function(){if(item.open&&!item.loaded){item.loaded=true;item.appendChild(lazyConversation(step));}});
-          steps.appendChild(item);
-        });
-        detailBody.appendChild(steps);
-      }
+      } else { detail.hidden = false; p.technicalChildren=childrenOf(p); detailBody.appendChild(lazyConversation(p)); }
       row.appendChild(cell);
       // Its topic, coloured as the chat colours it, so the topics of a conversation can be told apart at a glance.
       var topicCell = el("td", "topic-cell");

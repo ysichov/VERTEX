@@ -467,7 +467,7 @@ async function tagTopics(vscode, sessionId) {
 /** The report as the list shows it: every prompt without the parts only an opened prompt needs. */
 function listReport(report) {
   return { ...report, sessions: report.sessions.map(session => ({ ...session,
-    prompts: session.prompts.map(({ details, timeline, events, decision, ...prompt }) => ({ ...prompt, flow: require("./log-flow").summary({ ...prompt, details, timeline, decision }), toolCalls: (details || []).filter(d => d.type === "tool").length, text: require("./topic-routing").observations(prompt.text).question.slice(0,2000),
+    prompts: session.prompts.map(({ details, timeline, events, decision, ...prompt }) => ({ ...prompt, flow: require("./log-flow").summary({ ...prompt, details, timeline, events, decision }), toolCalls: (details || []).filter(d => d.type === "tool").length, text: require("./topic-routing").observations(prompt.text).question.slice(0,2000),
       sections: ["User",...(details?.some(d=>d.type==="answer")?["Model answer"]:[]),
         ...(details?.some(d=>d.type==="tool"||d.type==="tool result")||timeline?.some(t=>t.kind==="model")?["Steps"]:[]),
         ...(details||[]).filter(d=>!["answer","tool","tool result"].includes(d.type)).map(d=>d.snapshot?(d.snapshot.kind==="uml"?"Recorded UML":"Recorded metrics"):d.type==="Model request and context"?"Request and context":d.type)], lazy: true })) })) };
