@@ -119,6 +119,24 @@ test('Only selected function guidance is exposed; hidden names are removed from 
 
 function samplePlan(){return {goal:'Inspect changes',stages:[{id:1,task:'Find transports',operation:'discover',depends_on:[],completion_checks:['Dates verified']},{id:2,task:'Read source',operation:'read',depends_on:[1],completion_checks:['Object read']},{id:3,task:'Inspect independent system metadata',operation:'inspect',depends_on:[],completion_checks:['Metadata returned']}]};}
 function plannedReport(id,answer='result'){return {answer,stage_id:id,stage_status:'complete',evidence:['Actual result'],remaining:[]};}
+
+test('Jev evaluates actual evidence for every stage check and logs verification separately',async t=>{
+ let operation,input;
+ t.mock.method(require('../ai-accounting'),'begin',(_v,_p,_m,op)=>{operation=op;return {callbacks:{},decision:x=>input=x,finish(){},fail(){}};});
+ t.mock.method(require('../jev'),'evaluate',async(_p,_k,_m,state)=>{assert.equal(state.tool_evidence.tools[0].result.code,2);return {answers:{check_0:{type:'choice',choice:'failed',confidence:0.95}},model:'jev-latest',usage:{input_tokens:20}};});
+ const result=await router.verifyStage({},'Build',samplePlan().stages[0],plannedReport(1),{tools:[{result:{code:2,stderr:'failed'}}]},{connection:{provider:'typesafe-api',model:'jev-latest',key:'test'}});
+ assert.equal(operation,router.VERIFY_OPERATION);assert.equal(result.status,'failed');assert.ok(input.questions.check_0);
+});
+test('Jev rejection blocks advancement despite executor success; recovery is evaluated again',async()=>{
+ let runs=0,checks=0;const events=[];
+ const session={start:async()=>{},advance:async()=>assert.fail('must not advance'),recover:async()=>{},snapshot:()=>[{tool:'Bash',result:'failure'}],guard:()=>({})};
+ const result=await router.runPlanned({plan:samplePlan(),session,execute:async stage=>{runs++;return {plan:plannedReport(stage.id),usage:{input_tokens:10}};},verify:async(_stage,_report,evidence)=>{checks++;assert.equal(evidence.tools[0].tool,'Bash');return {status:'failed',checks:[{check:'Dates verified',status:'failed'}]};},onEvent:event=>events.push(event)});
+ assert.equal(runs,2);assert.equal(checks,2);assert.equal(result.stageReports[0].stage_status,'blocked');assert.equal(result.unfinished.length,2);assert.equal(events.filter(e=>e.kind==='stage_verification').length,2);
+});
+test('Unavailable Jev never silently turns executor claims into successful stages',async()=>{
+ const events=[];const result=await router.runPlanned({plan:samplePlan(),session:{start:async()=>{}},execute:async()=>({plan:plannedReport(1)}),verify:async()=>{throw Error('Decision unavailable');},onEvent:e=>events.push(e)});
+ assert.equal(result.stageReports[0].stage_status,'blocked');assert.match(result.plan.answer,/Decision unavailable/);assert.equal(events.find(e=>e.kind==='stage_verification').verification.status,'unverified');
+});
 test('The stage plan must be JSON with ordered acyclic dependencies and narrow bounded stages',()=>{
  const plan=samplePlan();assert.deepEqual(router.parsePlan(JSON.stringify(plan)),plan);
  for(const invalid of ['Here are my stages',{}, {...plan,stages:[]},{...plan,stages:[{...plan.stages[0],depends_on:[1]}]},{...plan,stages:[{...plan.stages[0],id:2}]},{...plan,prose:'skip'}])assert.throws(()=>router.parsePlan(invalid),/JSON stage plan/);

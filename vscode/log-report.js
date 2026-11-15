@@ -96,6 +96,8 @@ function parseSession(text, file) {
     let record;
     try { record = JSON.parse(line); } catch { continue; }
     const time = Date.parse(record.timestamp || "");
+    const priorPrompt=current, detailStart=current?.details.length||0, timelineStart=current?.timeline.length||0;
+    try {
     if (!session.conversation && typeof record.vertex_conversation === "string") session.conversation = record.vertex_conversation;
     // Where the conversation was held. Only the two shapes the log writes are accepted; a log without it
     // stays uncontexted rather than being guessed from its file name or its content.
@@ -143,8 +145,10 @@ function parseSession(text, file) {
       continue;
     }
     // The report travels whole as well as prettified: the page reads Jev's answers as a table from it.
-    if(record.type==="vertex_orchestration"){if(current)current.details.push({type:record.report?.kind==="plan"?"Orchestrator JSON plan":record.report?.kind==="execution_mode"?"Orchestrator mode":"Orchestrator stage",text:prettyJson(record.report)});continue;}
+    if(record.type==="vertex_orchestration"){if(current)current.details.push({type:record.report?.kind==="plan"?"Orchestrator JSON plan":record.report?.kind==="execution_mode"?"Orchestrator mode":record.report?.kind==="stage_verification"?"Orchestrator stage verification with Jev":"Orchestrator stage",text:prettyJson(record.report)});continue;}
     if(record.type==="vertex_tool_selection"){if(current)current.details.push({type:"Orchestrator tool selection",text:prettyJson(record.report)});continue;}
+    if(record.type==="vertex_task_recovery" || record.type==="vertex_task_verification" && record.report?.recovery){if(current)current.details.push({type:"Recovery: "+(record.report?.recovery||"state"),text:[record.report?.attempt?"Attempt "+record.report.attempt:"",record.report?.status?"Last verdict: "+record.report.status:"",record.report?.error||""].filter(Boolean).join("\n"),failed:record.report?.recovery==="error"});continue;}
+    if(record.type==="vertex_task_verification"){if(current)current.details.push({type:record.report?.scope==="changes"?"Change verification with Jev":"Task verification with Jev",verification:record.report,text:prettyJson(record.report),failed:record.report?.status==="failed"});continue;}
     if(record.type==="vertex_topic_routing"){if(current){current.topic=record.report?.topic||null;current.details.push({type:"Topic routing (Jev)",routing:record.report&&typeof record.report==="object"?record.report:null,text:prettyJson(record.report)});}continue;}
     if (record.type === "vertex_context_optimization") {
       if(current) current.details.push({type:"Context optimization (Jev)",text:prettyJson(record.report)});
@@ -230,6 +234,23 @@ function parseSession(text, file) {
         }
       }
     }
+    } finally {
+      if (current) {
+        const events=current.events||(current.events=[]), same=current===priorPrompt;
+        const fresh=current.details.slice(same?detailStart:0);
+        const actor=record.type==='vertex_task_recovery' || record.type==='vertex_task_verification' && record.report?.recovery ? 'VERTEX orchestrator'
+          : record.type==='vertex_orchestration' || record.type==='vertex_tool_selection' ? 'MCP orchestrator'
+          : /vertex_task_verification|vertex_topic_routing|vertex_context_optimization/.test(record.type) ? 'Jev' : 'LLM';
+        for(const item of current.timeline.slice(same?timelineStart:0))if(item.kind==='model'||item.kind==='note')events.push({kind:item.kind,actor:'LLM',time:Number.isFinite(time)?time:null,model:item});
+        if(record.type==='vertex_request' && fresh.length) events.push({kind:'request',actor:'LLM',time:Number.isFinite(time)?time:null,details:fresh.map((_,i)=>current.details.length-fresh.length+i)});
+        else fresh.forEach((detail,i)=>{
+          const tool=detail.type==='tool'?detail:detail.type==='tool result'?toolCalls.get(detail.tool_id):null;
+          const who=tool?(tool.name==='Verification'?'Checks':'Tools'):actor;
+          events.push({kind:detail.type==='tool'?'tool':detail.type==='tool result'?'tool_result':'detail',actor:who,time:Number.isFinite(time)?time:null,detail:current.details.length-fresh.length+i,tool:tool?.name});
+        });
+      }
+    }
+
   }
   // Apply run estimates as cost only: the assistant records already carry the run's tokens.
   for(const [prompt,costs] of nativeCosts) {
@@ -444,7 +465,7 @@ async function tagTopics(vscode, sessionId) {
 /** The report as the list shows it: every prompt without the parts only an opened prompt needs. */
 function listReport(report) {
   return { ...report, sessions: report.sessions.map(session => ({ ...session,
-    prompts: session.prompts.map(({ details, timeline, decision, ...prompt }) => ({ ...prompt, flow: require("./log-flow").summary({ ...prompt, details, timeline, decision }), toolCalls: (details || []).filter(d => d.type === "tool").length, text: require("./topic-routing").observations(prompt.text).question.slice(0,2000),
+    prompts: session.prompts.map(({ details, timeline, events, decision, ...prompt }) => ({ ...prompt, flow: require("./log-flow").summary({ ...prompt, details, timeline, decision }), toolCalls: (details || []).filter(d => d.type === "tool").length, text: require("./topic-routing").observations(prompt.text).question.slice(0,2000),
       sections: ["User",...(details?.some(d=>d.type==="answer")?["Model answer"]:[]),
         ...(details?.some(d=>d.type==="tool"||d.type==="tool result")||timeline?.some(t=>t.kind==="model")?["Steps"]:[]),
         ...(details||[]).filter(d=>!["answer","tool","tool result"].includes(d.type)).map(d=>d.snapshot?(d.snapshot.kind==="uml"?"Recorded UML":"Recorded metrics"):d.type==="Model request and context"?"Request and context":d.type)], lazy: true })) })) };
@@ -494,7 +515,7 @@ function open(vscode, options = {}) {
     if (message?.action === "promptDetail") {
       const key = String(message.key || "");
       const prompt = promptIndex.get(key);
-      await panel?.webview.postMessage(prompt ? { action: "promptDetail", key, prompt: { text: prompt.text, details: prompt.details, timeline: prompt.timeline, decision: prompt.decision || null } }
+      await panel?.webview.postMessage(prompt ? { action: "promptDetail", key, prompt: { text: prompt.text, details: prompt.details, timeline: prompt.timeline, events: prompt.events, decision: prompt.decision || null } }
         : { action: "promptDetail", key, error: "That prompt is no longer in the log folder; refresh Session Logs." });
     }
     if (message?.action === "settings") await vscode.commands.executeCommand("workbench.action.openSettings", "vertex.ai.log");

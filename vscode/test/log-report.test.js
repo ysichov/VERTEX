@@ -8,6 +8,34 @@ const path = require("node:path");
 const vm = require("node:vm");
 const report = require("../log-report");
 
+test('lazy prompt starts with chronological disclosures instead of repeated legacy sections', () => {
+ const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+ const element=()=>({children:[],appendChild(child){this.children.push(child);},addEventListener(){}});
+ const context={el:element,section:label=>({...element(),label})};vm.createContext(context);
+ vm.runInContext(page.slice(page.indexOf('  var waitingDetail = {};'),page.indexOf('  function section(')),context);
+ const holder=context.lazyConversation({lazy:true,sections:['User','Task verification with Jev','Task verification with Jev']});
+ assert.deepEqual(Array.from(holder.children,entry=>entry.label),['User','Steps (chronological)']);
+});
+
+test('legacy checks and recovery states retain file order as distinct chronological actors',()=>{
+ const rows=[{type:'user',message:{content:'Edit'}},{type:'vertex_topic_routing',report:{topic:{id:'t'}}},{type:'vertex_request',request:{instructions:'Rules',prompt:'Edit',tools:[],schema:null}},
+ {type:'assistant',vertex_step:'local',message:{content:[{type:'tool_use',id:'lint',name:'Verification',input:{files:['x.js']}}]}},
+ {type:'user',message:{content:[{type:'tool_result',tool_use_id:'lint',content:'PASSED'}]}},
+ {type:'vertex_task_verification',report:{status:'failed',checks:[]}},{type:'vertex_task_verification',report:{status:'failed',checks:[],recovery:'started',attempt:1}},
+ {type:'vertex_provider_response',provider:'codex',scope:'model_response',response:{id:'run',usage:{input_tokens:10}}},
+ {type:'vertex_task_verification',report:{status:'passed',checks:[]}},{type:'vertex_task_recovery',report:{status:'passed',recovery:'finished',attempt:1}}];
+ const session=report.parseSession(rows.map((r,i)=>JSON.stringify({timestamp:new Date(Date.UTC(2026,10,15,7,0,i)).toISOString(),...r})).join('\n'),'codex_20261115_090000.jsonl');
+ const prompt=session.prompts[0];assert.deepEqual(prompt.events.map(e=>e.actor),['Jev','LLM','Checks','Checks','Jev','VERTEX orchestrator','LLM','Jev','VERTEX orchestrator']);
+ assert.deepEqual(prompt.events.map(e=>e.time),prompt.events.map(e=>e.time).slice().sort((a,b)=>a-b));assert.equal(prompt.details.filter(d=>d.verification).length,2);assert.equal(prompt.details.filter(d=>/^Recovery:/.test(d.type)).length,2);
+ assert.equal(report.listReport({sessions:[session]}).sessions[0].prompts[0].events,undefined);
+});
+
+test('global task verification is a distinct detail and does not double executor token usage',()=>{
+ const records=[{type:'user',message:{content:'Build'}},{type:'assistant',message:{id:'answer',usage:{input_tokens:10,output_tokens:2},content:[]}},{type:'vertex_task_verification',report:{status:'failed',usage:{input_tokens:100}}}];
+ const session=report.parseSession(records.map(r=>JSON.stringify({timestamp:'2026-11-15T06:00:00Z',...r})).join('\n'),'codex_20261115_080000.jsonl');
+ assert.equal(session.usage.input,10);const detail=session.prompts[0].details.find(d=>d.type==='Task verification with Jev');assert.equal(detail.failed,true);assert.match(detail.text,/failed/);
+});
+
 test('Codex turn totals are marked separately from individual API model responses',()=>{
  const records=[{type:'user',message:{content:'Inspect'}},{type:'vertex_provider_response',provider:'codex',scope:'model_response',response:{id:'turn:1',usage:{input_tokens:100}}}];
  const session=report.parseSession(records.map(record=>JSON.stringify({timestamp:'2026-11-14T01:00:00Z',...record})).join('\n'),'codex_fixture.jsonl');
@@ -320,6 +348,15 @@ test("a Jev answer reads as a table: what each question was about, the answer, c
   assert.equal(jevTable("A plain model answer", decision), null);
 });
 
+test('task verification reuses the Jev decision table with probabilities and legacy missing-confidence support',()=>{
+ const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+ const node=(tag,cls='',text='')=>({tag,cls,text,children:[],appendChild(child){this.children.push(child);return child;}});
+ const table=new Function('el',page.slice(page.indexOf('  function routingTable('),page.indexOf('  var waitingDetail'))+';return verificationTable;')(node);
+ const data={checks:[{check:'Requested edit applied',status:'failed',confidence:0.64,probabilities:{passed:0.03,failed:0.76,unverified:0.21}}]};
+ const rows=table(data).children;assert.deepEqual(rows[1].children.slice(0,4).map(x=>x.text),['1','Requested edit applied','failed','0.64']);assert.equal(rows[1].children[4].children.find(x=>x.cls==='chosen').text,'failed: 0.76');
+ assert.equal(table({checks:[{check:'Old record',status:'failed'}]}).children[1].children[3].text,'—');
+});
+
 test("the list sent to the page leaves each prompt's details, steps and Jev input on the host", () => {
   const { listReport } = require("../log-report.js");
   const report = { configured: true, folder: "logs", sessions: [{ id: "s", prompts: [{ key: "s:0", text: "Q", usage: {}, details: [{ type: "answer", text: "A".repeat(1000) }], timeline: [{ kind: "model" }], decision: { questions: {} } }] }] };
@@ -419,7 +456,7 @@ test('continuing an older conversation without a place gives the whole conversat
   assert.deepEqual(logs.conversationList(report, 'sap:A4H/100'), []);
 });
 
-test('internal routing, tagging and recognition join their parent with totals, files and lazy details intact',()=>{
+test('internal routing, tagging, recognition and orchestrator selection join their parent with totals, files and lazy details intact',()=>{
  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
  const node=(tag,cls='',text='')=>({tag,cls,text,value:'',children:[],events:{},style:{},classList:{toggle(){},add(){},remove(){}},appendChild(c){this.children.push(c);return c;},setAttribute(){},removeAttribute(){},addEventListener(n,f){this.events[n]=f;}});
  const content=node('main'),context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{}},document:{getElementById:()=>({value:'',textContent:''}),createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,usageText:()=>'',promptPreview:p=>p.find(x=>x.operation==='Chat')?.text||p[0]?.text||'',conversation:()=>node('div')};
@@ -429,19 +466,22 @@ test('internal routing, tagging and recognition join their parent with totals, f
  const routing=session('routing','Topic routing with Jev','parent'),tagging=session('tagging','Topic tagging with Jev','parent'),recognition=session('image','Screenshot recognition','parent');
  routing.usage.costEstimated=1;
  const review=session('review','AI Review','parent');
+ const selection=session('selection','Orchestrator tool selection','parent');
+ const verification=session('verification','Orchestrator stage verification with Jev','parent');
+ const taskCheck=session('task-check','Task verification with Jev','parent');
  const orphan=session('orphan','Screenshot recognition','missing');
  const other=session('other','AI Review','parent');other.context={mode:'folder',folder:'C:/other'};
  const check=session('check','Model check');
  const evaluation=session('evaluation','Jev evaluation');
- const records=context.render({configured:true,folder:'logs',sessions:[routing,tagging,recognition,review,orphan,other,check,evaluation,parent]});
+ const records=context.render({configured:true,folder:'logs',sessions:[routing,tagging,recognition,review,selection,verification,taskCheck,orphan,other,check,evaluation,parent]});
  assert.equal(records.length,5,'linked calls merge, orphan and differently placed review remain separate');
  assert.equal(records.find(r=>r.item.id==='orphan').rows[0].hidden,true);
  assert.equal(records.find(r=>r.item.id==='other').rows[0].hidden,true);
  assert.equal(records.find(r=>r.item.id==='check').rows[0].hidden,true);
  assert.equal(records.find(r=>r.item.id==='evaluation').rows[0].hidden,false);
  const group=records.find(r=>r.item.id==='parent').item;
- assert.equal(group.context.folder,'C:/project');assert.equal(group.prompts.length,5);assert.equal(group.usage.input,50);assert.equal(group.usage.cost,0.05);assert.equal(group.usage.costEstimated,1);
- assert.deepEqual(Array.from(group.fileIds).sort(),['image','parent','review','routing','tagging']);assert.equal(group.prompts.find(p=>p.provider==='image').key,'image:0');
+ assert.equal(group.context.folder,'C:/project');assert.equal(group.prompts.length,8);assert.equal(group.usage.input,80);assert.ok(Math.abs(group.usage.cost-0.08)<1e-12);assert.equal(group.usage.costEstimated,1);
+ assert.deepEqual(Array.from(group.fileIds).sort(),['image','parent','review','routing','selection','tagging','task-check','verification']);assert.equal(group.prompts.find(p=>p.provider==='image').key,'image:0');
  const tools=content.children.find(c=>c.cls==='list-tools');assert.equal(tools.children.filter(c=>c.cls==='kind-filter').length,2,'only standalone evaluation and model-check filters remain');
  const row=records.find(r=>r.item.id==='parent');row.toggle();assert.equal(row.rows[1].hidden,false);
 });

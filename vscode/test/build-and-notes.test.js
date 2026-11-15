@@ -45,6 +45,15 @@ test("a command is remembered in the folder's own settings and read back", async
   assert.equal(buildRunner.remembered(vscode, "C:/p"), "mvn -q package");
 });
 
+test("a saved command output remains a clickable file reference in the conversation log",t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-command-reference-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const capture=require('../command-output').collect({directory:path.join(root,'command-output')});capture.write('stdout','full output\n'.repeat(2000));
+ const result={code:0,...capture.finish()},log=sessionLog.create(root,'test','output',{questions:true,tools:true});
+ log.user('Build');log.step({kind:'use',id:'build',name:'Bash',input:{command:'build'}});log.step({kind:'result',id:'build',name:'Bash',content:JSON.stringify(result)});
+ const records=fs.readFileSync(log.file,'utf8').trim().split('\n').map(JSON.parse),block=records.at(-1).message.content[0];
+ assert.ok(block.content.includes(result.output_file.replace(/\\/g,'\\\\')));assert.deepEqual(block.vertex_objects,[{path:result.output_file,kind:'file'}]);assert.ok(fs.existsSync(result.output_file));
+});
+
 test("what Claude says and thinks between steps is logged with the answers option and drawn in the timeline", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-notes-"));
   const log = sessionLog.create(root, "claude", "notes", { questions: true, answers: true, tools: true });

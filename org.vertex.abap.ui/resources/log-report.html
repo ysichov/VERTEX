@@ -177,7 +177,7 @@
 <div class="muted">Enable <code>vertex.ai.log.request</code> to see VERTEX instructions and context for new prompts.</div>
 <div id="date-range" class="list-tools" aria-label="Date range">
 <button data-date="previous" title="Previous period" aria-label="Previous period">←</button>
-<label>Period <select data-date="period" class="log-context"><option value="all">All dates</option><option value="day" selected>Today</option><option value="week">Week</option><option value="month">Month</option><option value="year">Year</option><option value="custom">Custom range</option></select></label>
+<label><select data-date="period" class="log-context"><option value="all">All dates</option><option value="day" selected>Today</option><option value="week">Week</option><option value="month">Month</option><option value="year">Year</option><option value="custom">Custom range</option></select></label>
 <button data-date="next" title="Next period" aria-label="Next period">→</button>
 <label>From <input type="date" data-date="from" id="from" class="log-context"></label>
 <label>To <input type="date" data-date="to" id="to" class="log-context"></label>
@@ -191,7 +191,11 @@ function vertexDateRange(root, changed) {
   var period = root.querySelector('[data-date="period"]'), previous = root.querySelector('[data-date="previous"]'), next = root.querySelector('[data-date="next"]');
   function date(value) { var a = value.split('-').map(Number); return new Date(a[0], a[1]-1, a[2], 12); }
   function iso(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-  function controls() { previous.disabled = next.disabled = period.value === 'all'; }
+  function controls() {
+    previous.disabled = next.disabled = period.value === 'all';
+    var custom = period.value === 'custom';
+    from.parentElement.hidden = to.parentElement.hidden = !custom;
+  }
   function apply(anchor) {
     var start = new Date(anchor), end;
     if (period.value === 'all') { from.value = to.value = ''; }
@@ -381,6 +385,7 @@ function markdown(text, target) {
     if (!answers || typeof answers !== "object" || !answers.route) return null;
     var topics = Array.isArray(report.topics) ? report.topics : [];
     var label = function (key) {
+      if (report.labels && report.labels[key]) return report.labels[key];
       if (key === "route") return "Which topic this question belongs to";
       var found = topics.filter(function (t) { return "need_" + t.id === key; })[0];
       return found ? (found.label || found.lastQuestion || found.id) : key;
@@ -453,6 +458,16 @@ function markdown(text, target) {
     return box;
   }
 
+  function verificationTable(report) {
+    var answers = {}, labels = {};
+    (report.checks || []).forEach(function (check, index) {
+      var key = index ? "check_" + index : "route";
+      labels[key] = check.check || "Task completion";
+      answers[key] = { choice: check.status || "unverified", confidence: check.confidence, probabilities: check.probabilities };
+    });
+    return routingTable({ answers: answers, labels: labels });
+  }
+
   /* VS Code sends the list without each prompt's details (lazy); an opened prompt asks the host for its record.
      Eclipse parses the logs in the page, so its prompts are complete and render at once. */
   var waitingDetail = {};
@@ -461,7 +476,7 @@ function markdown(text, target) {
     var show = function () { holder.appendChild(conversation(p)); };
     if (!p.lazy) { show(); return holder; }
     var loading=false;
-    (p.sections||["User","Model answer","Steps"]).forEach(function(label){
+    ["User","Steps (chronological)"].forEach(function(label){
       var entry=section(label,label==="User"?"user":label==="Model answer"?"model":"technical");
       entry.addEventListener("toggle",function(){
         if(!entry.open||loading)return;loading=true;
@@ -471,7 +486,7 @@ function markdown(text, target) {
           loading=false;
           if(reply.error){pending.textContent=reply.error;return;}
           if(typeof reply.prompt.text==="string")p.text=reply.prompt.text;
-          p.details=reply.prompt.details||[];p.timeline=reply.prompt.timeline||[];p.decision=reply.prompt.decision||undefined;p.lazy=false;
+          p.details=reply.prompt.details||[];p.timeline=reply.prompt.timeline||[];p.events=reply.prompt.events||[];p.decision=reply.prompt.decision||undefined;p.lazy=false;
           holder.textContent="";show();
           var target=Array.prototype.find.call(holder.querySelectorAll("details.entry"),function(box){return box.querySelector("summary").textContent.indexOf(label)===0;});
           if(target)target.open=true;
@@ -656,6 +671,52 @@ function markdown(text, target) {
     }
     return false;
   }
+  function appendToolEntry(target, d, p) {
+        if (d.type === "tool" && d.step && drawStep(target, d)) { objectLinks(target, d.objects); return; }
+        target.appendChild(el("div", "kind", d.type === "tool" ? "Arguments" : "Result"));
+        if (d.recording) {
+          var link = el("button", "recording-link", (d.recording.kind === "transpiler" ? "Open transpiler recording " : "Open SAP debug recording ") + d.recording.id.slice(0, 8));
+          link.type = "button";
+          link.onclick = function () { vscode.postMessage({ action: "openRecording", recording: d.recording }); };
+          target.appendChild(link);
+        }
+        var text = d.type === "tool" ? d.text.slice(d.text.indexOf("\n") + 1) : d.text;
+        // Fields as lines where the text is a JSON object; anything else as it is.
+        if (!fields(target, text, p.key, d.tool_id)) target.appendChild(el("div", "detail", text));
+        objectLinks(target, d.objects);
+      }
+
+  function chronology(p) {
+    var box=section("Steps (chronological)","technical"), loaded=false;
+    box.addEventListener("toggle",function(){
+      if(!box.open||loaded)return;loaded=true;
+      (p.events||[]).forEach(function(event,index){
+        var clock=event.time?new Date(event.time).toLocaleTimeString():"", prefix=(index+1)+". "+clock+" · "+event.actor+" · ",entry;
+        if(event.kind==="model") {
+          var model=event.model||{},u=model.usage||{};
+          entry=section(prefix+(model.usageScope==="cli_turn"?"Codex run totals (internal calls unknown)":"Model response"),"model");
+          line(entry,"Usage",usageText({input:u.cached_input_tokens!=null?Math.max(0,(u.input_tokens||0)-u.cached_input_tokens):u.input_tokens,output:u.output_tokens,cacheRead:u.cache_read_input_tokens||u.cached_input_tokens,cacheWrite:u.cache_creation_input_tokens}));
+        } else if(event.kind==="note") entry=section(prefix+(event.model.note==="thinking"?"Thinking":"Message"),"model",event.model.text);
+        else if(event.kind==="request") {
+          entry=section(prefix+"Request and context","technical");
+          (event.details||[]).forEach(function(i){var detail=detailSection(p.details[i],p,"");if(detail)entry.appendChild(detail);});
+        } else {
+          var d=p.details[event.detail];if(!d)return;
+          if(event.kind==="tool"||event.kind==="tool_result") {
+            var title=event.kind==="tool"?stepTitle(d):(event.tool||"Tool")+" result";
+            entry=section(prefix+title,d.failed?"technical failed":"technical");
+            var shown=false;entry.addEventListener("toggle",function(){if(!entry.open||shown)return;shown=true;
+              appendToolEntry(entry,d,p);
+            });
+          } else if(d.type==="answer") {entry=section(prefix+"Response","model");markdown(d.text,entry);objectLinks(entry,d.objects);}
+          else entry=detailSection(d,p,prefix);
+        }
+        if(entry)box.appendChild(entry);
+      });
+    });
+    box.open=true;return box;
+  }
+
   function conversation(p) {
     var body = el("div", "conversation");
     if (window.vertexCanContinue && p.decision) {
@@ -675,6 +736,8 @@ function markdown(text, target) {
       user.appendChild(link);
     });
     body.appendChild(user);
+    if (p.events && p.events.length) { body.appendChild(chronology(p)); return body; }
+
     var answers = p.details.filter(function (d) { return d.type === "answer"; });
     if (answers.length) {
       var answer = section("Model answer", "model");
@@ -705,20 +768,7 @@ function markdown(text, target) {
         : "Tools (" + calls.length + " calls)", "technical");
       var stepsLoaded=false;
       var entries = new Map();
-      function appendEntry(target, d) {
-        if (d.type === "tool" && d.step && drawStep(target, d)) { objectLinks(target, d.objects); return; }
-        target.appendChild(el("div", "kind", d.type === "tool" ? "Arguments" : "Result"));
-        if (d.recording) {
-          var link = el("button", "recording-link", (d.recording.kind === "transpiler" ? "Open transpiler recording " : "Open SAP debug recording ") + d.recording.id.slice(0, 8));
-          link.type = "button";
-          link.onclick = function () { vscode.postMessage({ action: "openRecording", recording: d.recording }); };
-          target.appendChild(link);
-        }
-        var text = d.type === "tool" ? d.text.slice(d.text.indexOf("\n") + 1) : d.text;
-        // Fields as lines where the text is a JSON object; anything else as it is.
-        if (!fields(target, text, p.key, d.tool_id)) target.appendChild(el("div", "detail", text));
-        objectLinks(target, d.objects);
-      }
+      function appendEntry(target,d) { appendToolEntry(target,d,p); }
       var byId = new Map(calls.map(function (d) { return [d.tool_id, d]; }));
       // A call's arguments and result are built when it opens: a long run has hundreds, mostly never opened.
       function later(entry, d) {
@@ -776,12 +826,33 @@ function markdown(text, target) {
       });
       body.appendChild(toolBox);
     }
-    p.details.forEach(function (d) {
+    p.details.forEach(function(d) { var detail=detailSection(d,p,""); if(detail)body.appendChild(detail); });
+    return body;
+  }
+
+  function detailSection(d, p, prefix) {
       if (d.type === "answer" || d.type === "tool" || d.type === "tool result") return;
       var label = d.type === "Model request and context" ? "Request and context" : d.type;
+      if (prefix) label = prefix + label;
       if (d.snapshot) label = d.snapshot.kind === "uml" ? "Recorded UML" : "Recorded metrics";
       var detail;
-      if (d.routing) {
+      if (d.verification) {
+        detail = section(label, d.failed ? "technical failed" : "technical");
+        var verificationShown = false;
+        detail.addEventListener("toggle", function () {
+          if (!detail.open || verificationShown) return;
+          verificationShown = true;
+          var report = d.verification;
+          line(detail, "Result", String(report.status || "unverified").toUpperCase());
+          if (report.model) line(detail, "Model", report.model);
+          if (report.recovery) line(detail, "Recovery", report.recovery + (report.attempt ? " · attempt " + report.attempt : ""));
+          if (report.host_override) line(detail, "Host check", "Overrides the Jev opinion: " + (report.jev_status || "unknown"));
+          var table = verificationTable(report);
+          if (table) { var scroll = el("div", "table-scroll"); scroll.appendChild(table); detail.appendChild(scroll); }
+          if (report.error) line(detail, "Reason", report.error);
+          if (report.usage) line(detail, "Usage", usageText({input:report.usage.input_tokens,output:report.usage.output_tokens,cost:report.usage.estimated_cost_usd}));
+        });
+      } else if (d.routing) {
         // Jev's answers as a table, with the whole report under it for anything the table leaves out.
         detail = section(label, "technical");
         var routingShown = false;
@@ -800,9 +871,7 @@ function markdown(text, target) {
         open.onclick = function () { vscode.postMessage({ action: "openSnapshot", snapshot: d.snapshot }); };
         detail.appendChild(open);
       }
-      body.appendChild(detail);
-    });
-    return body;
+      return detail;
   }
 
   /* A table whose headings sort it (as in Metrics: a click, again to reverse, the arrow shows which) and whose
@@ -886,11 +955,12 @@ function markdown(text, target) {
     var version = ++flowDetailVersion;
     function show() {
       if (version !== flowDetailVersion || !inspector.isConnected) return;
-      var detailPrompt = prompt;
+      // Flow selects a specific body, not the full chronological prompt view.
+      var detailPrompt = Object.assign({}, prompt, { events: [] });
       if (node.kind === "checks" || node.kind === "review") {
         var names = node.kind === "review" ? /^(Review)$/ : /^(Verification|Lint|Tests?)$/i;
         var ids = new Set((prompt.details || []).filter(function (d) { return d.type === "tool" && names.test(d.name || ""); }).map(function (d) { return d.tool_id; }));
-        detailPrompt = Object.assign({}, prompt, { details: (prompt.details || []).filter(function (d) { return ids.has(d.tool_id); }), timeline: [] });
+        detailPrompt = Object.assign({}, detailPrompt, { details: (prompt.details || []).filter(function (d) { return ids.has(d.tool_id); }), timeline: [] });
       }
       var rendered = conversation(detailPrompt);
       var candidates = Array.prototype.slice.call(rendered.children);
@@ -951,7 +1021,7 @@ function markdown(text, target) {
     // Group at presentation time; keep original file ids for host actions.
     var groups = new Map();
     var internal = function (s) { return s.prompts.length && s.prompts.every(function (p) {
-      return p.operation === "Topic routing with Jev" || p.operation === "Topic tagging with Jev" || p.operation === "Screenshot recognition" || p.operation === "Context optimization with Jev" || p.operation === "AI Review" || p.operation === "Review block with Jev" || p.operation === "Commit message" || p.operation === "Pull request description";
+      return p.operation === "Topic routing with Jev" || p.operation === "Topic tagging with Jev" || p.operation === "Orchestrator tool selection" || p.operation === "Orchestrator stage verification with Jev" || p.operation === "Task verification with Jev" || p.operation === "Change verification with Jev" || p.operation === "Screenshot recognition" || p.operation === "Context optimization with Jev" || p.operation === "AI Review" || p.operation === "Review block with Jev" || p.operation === "Commit message" || p.operation === "Pull request description";
     }); };
     var parents = new Set(report.sessions.filter(function (s) { return !internal(s); }).map(function (s) { return s.conversation; }).filter(Boolean));
     var parentContexts = new Map();

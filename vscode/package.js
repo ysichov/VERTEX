@@ -41,6 +41,8 @@ const required = [
     "extension/log-report.js",
     "extension/log-flow.js",
     "extension/folder-tools.js",
+    "extension/command-output.js",
+    "extension/task-verification.js",
     "extension/change-checks.js",
     "extension/node_modules/eslint/package.json",
     "extension/node_modules/eslint/LICENSE",

@@ -370,6 +370,7 @@ test("Codex runs without the person's config, shell or plugins, and gets the rul
   }
   assert.ok(args.includes("mcp_servers.vertex.url=http://127.0.0.1:37777/selector"));
   assert.ok(args.includes("mcp_servers.vertex.bearer_token_env_var=VERTEX_WINDOW_TOKEN"));
+    assert.ok(args.includes("mcp_servers.vertex.tool_call_timeout_sec=900"));
   assert.equal(after(args, "-m"), "gpt-5.6-luna");
   assert.equal(args[args.length - 1], "-");
   assert.equal(spawn.calls[0].input, "RULES\n\nPROMPT");

@@ -758,11 +758,21 @@ to the model and the user, not skipped.
 
 Outside **VERTEX Orchestrator**, only toolsets marked `always` are offered (by default SAP RAP).
 
+**Global VERTEX workflow and MCP orchestration are separate.** For code changes, the shared workflow runs lint/automatic checks, then asks Jev to compare the performed edit with the complete changed diff before showing human review. This is independent of the MCP toolset. It does not assess readiness of the whole task, require a later build/Apply, or run a completion decision for ordinary question–answer exchanges and builds without edits. Enable the shared decision model and key in **LLM Providers**; the existing Jev gear chooses it. **Change verification with Jev** and its separately accounted usage appear in the log. A positive Jev opinion cannot override failed host checks.
+
+If Jev finds an incorrect or unverifiable edit, the executor gets one recovery attempt with actual errors and original constraints. Automatic-check repair uses that same budget. If the repeat remains unsuccessful, the explanation and continuation question appear in the chat. Reply **continue** there, or select another model and then continue; the conversation and working copy remain available. Jev details use the normal decision table, including confidence and probabilities when recorded.
+
+Open **Steps (chronological)** in a logged prompt to see events in recorded order. Each row has its time and actor: **LLM**, **Tools**, **Checks**, **Jev**, **VERTEX orchestrator** or **MCP orchestrator**. Calls and results have separate positions. Recovery states are preserved without repeating an entire Jev verdict. The same reader applies to historical logs; missing internal CLI events are not reconstructed.
+
+**MCP tool orchestration** is the **VERTEX Orchestrator** choice in the MCP list. It selects tools and, when needed, MCP execution stages; it is not the global multimodel workflow described above.
+
 Choose **VERTEX Orchestrator** in the MCP list. A single Jev request selects the functions
 needed for the task and chooses `direct` or `staged`. Its catalog contains short descriptions,
 actions and schema sizes rather than full parameter schemas. Only VERTEX and ARC-1 participate.
 SQL SELECT and code reading remain the read-only baseline. Raw server-wide guides and excluded
 function references are hidden from the executor.
+
+After each staged MCP execution attempt, Jev assesses its stage completion checks against recorded tool results. Executor claims alone do not prove success. Failed or unverified checks block advancement; a missing decision is reported as unverified. The existing single recovery attempt may obtain missing evidence within the same permissions and action budget. This stage routing remains separate from the pre-review code-change check; no whole-task completion assessment is added after synthesis.
 
 **Direct is the default.** The executor receives the whole task and all selected function schemas,
 without a planning-model call or an arbitrary two/three-function cap. A task needing five functions
@@ -786,7 +796,9 @@ The gear beside the MCP list, or **VERTEX: Configure Orchestrator Jev Model**, s
 Jev decision model used by Auto (Jev) and review assessments. Enable that model and its key in
 **LLM Providers** first. ARC-1 must be configured and reachable. A missing model or invalid decision stops before execution; a failed staged selection does not advance the plan.
 
-In **Session Logs**, **Orchestrator tool selection** is visible by default. The log shows the selected execution mode and function set. JSON plans and stage reports appear only for staged runs. Each Jev stage records its subtask, decisions and probabilities, selected and deferred tools, authorization exclusions, time and usage. Detailed inputs require question logging; stage result bodies respect answer logging.
+In **Session Logs**, tool selection and Jev stage verification appear inside their parent conversation. The log shows the selected execution mode, function set and verification result. JSON plans and stage reports appear only for staged runs. Each Jev stage records its subtask, decisions and probabilities, selected and deferred tools, authorization exclusions, time and usage. Detailed inputs require question logging; stage result bodies respect answer logging.
+
+Local commands and post-review builds return output up to 8 KB in full. Larger output is saved permanently under `<VERTEX log folder>/command-output/<ID>/output.log`; the conversation log retains a clickable file reference, exit status and a compact preview. With no configured log folder, VERTEX uses its application log storage, or `~/.vertex/ai-logs` when that is unavailable. These files are not automatically deleted. The agent can read saved output in pages using `Read`; the entire file is not automatically sent to the model. **Output → VERTEX Build** also shows live command output. A file-save error is reported explicitly. Active local commands finish before the chat request closes; a premature CLI answer is revisited with the actual results.
 
 ### MCP Servers window
 

@@ -36,6 +36,87 @@ for (const allow of [false, true]) test(`Folder build with SAP Orchestrator sele
 });
 
 test.beforeEach(t => { t.mock.method(assistant, "resolveAssistant", async (vscode, id) => "/ext/" + id); });
+test.beforeEach(t => { t.mock.method(require('../orchestrator-plan'), 'verifyStage', async()=>({status:'passed',checks:[],usage:{}})); });
+test.beforeEach(t => { t.mock.method(require('../task-verification'), 'verifyTask', async()=>({status:'passed',checks:[],usage:{}})); });
+
+for(const fixed of [true,false])test(`Jev sends a rejected exact Edit back for one real reread and recovery (${fixed})`,async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-jev-recovery-')),file=path.join(root,'index.js'),before='const value = 1;\r\n';
+ fs.writeFileSync(file,before);t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const copy={folder:root,top:root,dir:root,cwd:root,refresh:async()=>[],remove:async()=>{},changes:async()=>{const after=fs.readFileSync(file,'utf8');return after===before?[]:[{file:'index.js',path:file,before,after,status:'changed'}];}};
+ t.mock.method(require('../agent-worktree'),'open',async()=>copy);
+ t.mock.method(require('../worktree-review'),'open',()=>({dispose(){},panel:{}}));
+ t.mock.method(require('../build-runner'),'remembered',()=> '');
+ let served,calls=0,decisions=0;
+ const server={token:'test',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:set=>{served=set;return {route:'/recover',dispose(){}};}};
+ t.mock.method(assistant,'ask',async options=>{
+   calls++;if(calls===2){assert.match(options.prompt,/old_string is not/);assert.match(options.instructions,/one host-controlled recovery/);}
+   await served.call({},'Read',{file_path:'index.js'});
+   try{await served.call({},'Edit',{file_path:'index.js',old_string:calls===2&&fixed?'const value = 1;':'   const value = 1;',new_string:'const value = 2;'});}catch(error){assert.match(error.message,/old_string is not/);}
+   return {model:'test',plan:{answer:calls===2&&fixed?'Fixed':'Edit failed',navigation:null,build_command:''},usage:{input_tokens:10,output_tokens:2}};
+ });
+ t.mock.method(require('../task-verification'),'verifyTask',async()=>{decisions++;return {status:decisions===2&&fixed?'passed':'failed',checks:[{check:'Requested edit',status:decisions===2&&fixed?'passed':'failed'}]};});
+ const vscode=fakeVscode({provider:'codex-subscription',model:'test',logPath:root});vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];
+ const ask=chat.create(vscode,{schemas:[],editorContext:()=>null},server,{get:async()=>null});
+ try{const result=await ask('Change value to 2',{contextMode:'folder'});assert.equal(calls,2);assert.equal(decisions,2);assert.equal(result.usage.input_tokens,20);assert.equal(result.taskVerification.status,fixed?'passed':'failed');assert.equal(fs.readFileSync(file,'utf8').includes('value = 2'),fixed);
+ if(!fixed){
+   assert.match(result.answer,/Continue working\?/);
+   t.mock.method(assistant,'ask',async options=>{assert.equal(options.model,'better-model');assert.match(options.prompt,/Change value to 2/);assert.match(options.prompt,/Last recorded tool error/);await served.call({},'Read',{file_path:'index.js'});await served.call({},'Edit',{file_path:'index.js',old_string:'const value = 1;',new_string:'const value = 2;'});return {model:'better-model',plan:{answer:'Fixed after continuation',navigation:null,build_command:''}};});
+   t.mock.method(require('../task-verification'),'verifyTask',async()=>({status:'passed',checks:[]}));
+   assert.equal((await ask('continue',{contextMode:'folder',model:'better-model'})).answer.includes('Fixed after continuation'),true);
+ }
+ }finally{await ask.dispose();}
+});
+
+test('standalone Folder builds do not trigger the code-change review check',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-global-build-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ t.mock.method(require('../agent-worktree'),'open',async()=>({folder:root,top:root,dir:root,cwd:root,refresh:async()=>[],remove:async()=>{},changes:async()=>[{file:'pending.js',before:'const x = 1;',after:'const x = 2;'}]}));
+ t.mock.method(require('../worktree-review'),'open',()=>({dispose(){},panel:{}}));
+ t.mock.method(require('../build-runner'),'remembered',()=> '');
+ t.mock.method(require('../orchestrator-plan'),'connect',async()=>assert.fail('Not an MCP orchestration request'));
+ const vscode=fakeVscode({provider:'codex-subscription',model:'test',logPath:root});vscode.window.showWarningMessage=async()=>"Allow";
+ vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];let served,verified=0;
+ const server={token:'test',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:set=>{served=set;return {route:'/global',dispose(){}};}};
+ t.mock.method(assistant,'ask',async()=>{const result=JSON.parse((await served.call({},'Bash',{command:'exit 0',purpose:'build'})).content[0].text);assert.equal(result.code,0);return {model:'test',plan:{answer:'Built',navigation:null,build_command:''}};});
+ t.mock.method(require('../task-verification'),'verifyTask',async(_v,task,answer,evidence)=>{verified++;assert.equal(task,'Build now');assert.equal(answer,'Built');assert.equal(evidence.pending,0);assert.equal(evidence.tools[0].result.code,0);return {status:'passed',checks:[]};});
+ const ask=chat.create(vscode,{schemas:[],orchestrator:()=>false,editorContext:()=>null},server,{get:async()=>null});
+ try{const result=await ask('Build now',{contextMode:'folder'});assert.equal(result.taskVerification,null);assert.equal(verified,0);
+ const text=fs.readFileSync(fs.readdirSync(path.join(root,'claude_compatible')).map(f=>path.join(root,'claude_compatible',f))[0],'utf8');assert.doesNotMatch(text,/vertex_task_verification/);
+ }finally{await ask.dispose();}
+});
+test('ordinary API answers do not trigger a whole-task completion decision',async t=>{
+ t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+ t.mock.method(require('../orchestrator-plan'),'connect',async()=>assert.fail('No MCP selection'));
+ t.mock.method(compatible,'ask',async()=>({model:'test',plan:{answer:'Done',navigation:null,build_command:''}}));
+ t.mock.method(require('../task-verification'),'verifyTask',async()=>({status:'failed',checks:[{check:'Unsupported action claim',status:'failed'}]}));
+ const ask=chat.create(fakeVscode({provider:'openai-api',model:'test',contextMode:'folder'}),{schemas:[],editorContext:()=>null},null,{get:async()=>null});
+ try{const result=await ask('Explain');assert.equal(result.taskVerification,null);assert.equal(result.answer,'Done');}finally{await ask.dispose();}
+});
+test('Stop cancels the global decision and does not publish a late verification',async t=>{
+ t.mock.method(require('../task-verification'),'createEvidence',()=>({record(){},step(){},snapshot:()=>({tools:[{tool:'Edit'}]})}));
+ let ready;const started=new Promise(resolve=>{ready=resolve;});
+ t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+ t.mock.method(compatible,'ask',async()=>({model:'test',plan:{answer:'Done',navigation:null,build_command:''}}));
+ t.mock.method(require('../task-verification'),'verifyTask',async(_v,_t,_a,_e,options)=>{ready();await new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('stopped')),{once:true}));});
+ const ask=chat.create(fakeVscode({provider:'openai-api',model:'test',contextMode:'folder'}),{schemas:[],editorContext:()=>null},null,{get:async()=>null});
+ const pending=ask('Explain');await started;ask.stop();assert.equal((await pending).stopped,true);await ask.dispose();
+});
+
+test('a premature CLI answer waits for the command and receives completed results before finishing',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-late-build-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ t.mock.method(require('../agent-worktree'),'open',async()=>null);
+ const vscode=fakeVscode({provider:'codex-subscription',model:'test',logPath:root});
+ vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];vscode.window.showWarningMessage=async()=>"Allow";
+ let served,calls=0,command;
+ const server={token:'test',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:set=>{served=set;return {route:'/late',dispose(){}};}};
+ t.mock.method(assistant,'ask',async options=>{
+   if(++calls===1){command=served.call({},'Bash',{command:process.platform==='win32'?'Write-Output completed-build':'printf completed-build',purpose:'build'});return {plan:{answer:'Still working'},model:'test'};}
+   assert.match(options.prompt,/VERTEX host completion results/);assert.match(options.prompt,/completed-build/);
+   const result=JSON.parse((await command).content[0].text);assert.equal(result.code,0);
+   return {plan:{answer:'Build finished',navigation:null,build_command:''},model:'test'};
+ });
+ const ask=chat.create(vscode,{schemas:[],instructions:'',editorContext:()=>null},server,{get:async()=>null});
+ try{assert.equal((await ask('Build now',{contextMode:'folder'})).answer,'Build finished');assert.equal(calls,2);}finally{await ask.dispose();}
+});
 
 function fakeVscode(settings) {
   return {
@@ -58,6 +139,8 @@ for (const fix of [true, false]) test(`host checks run before review and permit 
   t.mock.method(require('../agent-worktree'),'open',async()=>copy);
   t.mock.method(require('../build-runner'),'remembered',()=> '');
   let reviews=0,served,calls=0;
+  let checked=0;
+  t.mock.method(require('../task-verification'),'verifyTask',async(_v,_task,_answer,evidence)=>{checked++;assert.equal(calls,2);assert.equal(reviews,0);assert.equal(evidence.hostChecks.state,fix?'passed':'failed');return {status:fix?'passed':'failed',checks:[]};});
   t.mock.method(require('../worktree-review'),'open',()=>{reviews++;assert.equal(calls,2);return {dispose(){}};});
   const vscode=fakeVscode({provider:'codex-subscription',model:'test-model'});
   vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];
@@ -72,6 +155,7 @@ for (const fix of [true, false]) test(`host checks run before review and permit 
   const ask=chat.create(vscode,{schemas:[],editorContext:()=>null},server,{get:async()=>null});
   const result=await ask('Change the project',{contextMode:'folder'});
   assert.equal(calls,2);assert.equal(reviews,1);
+  assert.equal(checked,1);
   assert.equal(result.verification.state,fix?'passed':'failed');
   assert.match(result.answer,fix?/automatic checks: PASSED/:/automatic checks: FAILED/);
   assert.equal(result.usage.input_tokens,20);
@@ -821,12 +905,13 @@ function jsonPlan(task='user question'){return {goal:task,stages:[{id:1,task,ope
 function stageReport(answer,id=1){return {answer,navigation:null,build_command:'',stage_id:id,stage_status:'complete',evidence:['Verified result'],remaining:[]};}
 test('Jev chooses direct execution and functions in one request without a planning model call',async t=>{
  const router=require('../orchestrator-plan'),events=[];
+ t.mock.method(require('../task-verification'),'verifyTask',async(_v,_task,_answer,evidence)=>{events.push('verify');assert.ok(Array.isArray(evidence.tools));return {status:'passed',usage:{input_tokens:2}};});
  t.mock.method(router,'connect',async()=>({provider:'typesafe-api',model:'jev-latest',key:'test'}));
  t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
  t.mock.method(router,'select',async(_v,task,_c,tools,options)=>{events.push('jev');assert.ok(options.decideMode);assert.equal(task,'user question');return {tools:tools.filter(t=>t.name==='read_evidence'),executionMode:'direct',model:'jev-latest',provider:'typesafe-api',permissions:{write:false,execute:false},usage:{input_tokens:10}};});
  t.mock.method(compatible,'ask',async options=>{events.push('execute');assert.ok(!options.structuredResult);assert.equal(options.schema.properties.stage_id,undefined);assert.deepEqual(options.tools.map(t=>t.name),['read_evidence']);await assert.rejects(async()=>options.callTool('write_evidence',{}),/unavailable/);return {plan:{answer:'done',navigation:null,build_command:''},model:'weak'};});
  const ask=chat.create(fakeVscode({provider:'openrouter-api',model:'weak'}),routingTools(),null,{});
- const result=await ask('user question');assert.deepEqual(events,['jev','execute']);assert.equal(result.answer,'done');assert.equal(result.planner.usage.input_tokens,10);ask.dispose();
+ const result=await ask('user question');assert.deepEqual(events,['jev','execute']);assert.equal(result.answer,'done');assert.equal(result.planner.usage.input_tokens,10);assert.equal(result.taskVerification,null);ask.dispose();
 });
 test('Jev failure blocks execution and Stop cancels initial selection after the JSON plan',async t=>{
  t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));

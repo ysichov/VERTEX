@@ -7,7 +7,7 @@ const tools = require("../folder-tools");
 function fixture(t, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-local-tools-"));
   const page = {}, asked = [];
-  const vscode = { ViewColumn: { Beside: 2 }, window: {
+  const vscode = { workspace: { getConfiguration: () => ({ get: (key, fallback) => key === 'logPath' ? root : fallback }) }, ViewColumn: { Beside: 2 }, window: {
     showWarningMessage: async text => { asked.push(text); return options.allow ? "Allow" : undefined; },
     createWebviewPanel: () => ({ webview: { html: "", onDidReceiveMessage: fn => { page.send = fn; }, postMessage: async () => {} },
       onDidDispose: fn => { page.close = fn; }, dispose: () => page.close(), reveal() {} }) } };
@@ -28,6 +28,18 @@ test("a Glob pattern ending in / lists folders, not files", async t => {
   assert.deepEqual((await agent.call("Glob", { pattern: "*" })).matches, ["a.txt"]);
 });
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test("noisy shell commands finish without a buffer limit and their persistent logs can only be read",async t=>{
+ const {agent,root}=fixture(t,{allow:true});
+ fs.writeFileSync(path.join(root,'noisy.js'),"process.stdout.write('PREFIX\\n'+'x'.repeat(200000)+'\\nSUFFIX\\n');process.stderr.write('diagnostic\\n');");
+ const result=await agent.call('Bash',{command:(process.platform==='win32'?'& ':'')+'"'+process.execPath+'" noisy.js'});
+ assert.equal(result.code,0);assert.equal(result.output_truncated,true);assert.match(fs.readFileSync(result.output_file,'utf8'),/PREFIX/);
+ assert.match((await agent.call('Read',{file_path:result.output_file,limit:1})).text,/PREFIX/);
+ await assert.rejects(agent.call('Write',{file_path:result.output_file,content:'replace'}),/read-only/i);
+ const second=tools.create({window:{},workspace:{getConfiguration:()=>({get:(key,fallback)=>key==='logPath'?root:fallback})}},{cwd:root});t.after(()=>second.dispose());
+ assert.match((await second.call('Read',{file_path:result.output_file,limit:1})).text,/PREFIX/);
+ fs.rmSync(path.dirname(result.output_file),{recursive:true,force:true});
+});
 
 test("common tools search, page, edit and create files, and log every step", async t => {
   const { agent, root, steps } = fixture(t);

@@ -5,8 +5,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { execFile } = require("node:child_process");
+const { spawn } = require("node:child_process");
 const approval = require("./folder-approval");
+const commandOutput = require("./command-output");
 const MAX_FILE = 2 * 1024 * 1024;
 const MAX_TEXT = 16000;
 const SKIP = new Set([".git", "node_modules", ".next", "dist", "build", "target"]);
@@ -17,7 +18,7 @@ const schema = (name, description, properties, required) => ({ name, description
     destructiveHint: !["Read", "Glob", "Grep"].includes(name), openWorldHint: name === "Bash" },
   inputSchema: { type: "object", properties, required, additionalProperties: false } });
 const schemas = [
-  schema("Read", "Read a UTF-8 project file with line numbers. Read existing files before changing them. Use offset/limit for paging.",
+  schema("Read", "Read a UTF-8 project file or a recorded command output_file with line numbers. Read existing files before changing them. Use offset/limit for paging; command logs are read-only.",
     { file_path: str("Path relative to the working folder."), offset: integer("First line, starting at 1."), limit: integer("Maximum lines, default 200, at most 500.") }, ["file_path"]),
   schema("Glob", "List project files. Supports *, ** and ? in a relative glob; a pattern ending in / lists directories instead (*/ the top-level folders, **/ all folders). Skips symlinks, .git and generated dependency/build directories. Results are bounded.",
     { pattern: str("For example **/*.js, **/AGENTS.md, or */ for folders."), path: str("Optional subdirectory, default working folder.") }, ["pattern"]),
@@ -31,7 +32,7 @@ const schemas = [
     { command: str("Command to run."), purpose: { type: "string", enum: ["command", "build", "artifact"], description: "command for diagnostics or other work; build for building, packaging or build prerequisites; artifact for copying a completed package." },
       target: { type: "string", enum: ["working_copy", "project", "directory"], description: "Optional execution target. Defaults to project for build/artifact, working_copy otherwise." },
       directory: str("Absolute existing directory; required only with target=directory, as requested by the user. Do not use cd to conceal a different target."),
-      description: str("Purpose of the command."), timeout: integer("Timeout in milliseconds, default 120000, at most 900000 (15 minutes) for builds.") }, ["command", "purpose"])
+      description: str("Purpose of the command. Short output is returned in full. Large output is saved to output_file; use Read with offset/limit for details. A preview or diagnostic highlight alone does not prove success."), timeout: integer("Timeout in milliseconds, default 120000 for diagnostics and 900000 (15 minutes) for builds; at most 900000.") }, ["command", "purpose"])
 
 ];
 
@@ -52,6 +53,7 @@ function glob(pattern) {
 }
 
 function create(vscode, options) {
+  const outputDirectory = commandOutput.directory(vscode);
   const root = fs.realpathSync(options.cwd);
   const project = fs.realpathSync(options.projectFolder || options.cwd);
   function commandLocation(args) {
@@ -70,6 +72,8 @@ function create(vscode, options) {
   const written = new Map();
   const controller = new AbortController();
   let serial = Promise.resolve();
+  let outstanding = 0;
+  const completed = [];
   const active = () => {
     if (controller.signal.aborted || options.isActive && !options.isActive()) throw new Error("This local-tool request is no longer active.");
   };
@@ -125,7 +129,9 @@ function create(vscode, options) {
   }
   async function execute(name, args) {
     active();
+    if ((name === "Write" || name === "Edit") && commandOutput.owns(args.file_path)) throw new Error("Command output logs are read-only.");
     if (name === "Read") {
+      if (commandOutput.owns(args.file_path)) return commandOutput.readPage(args.file_path, args.offset, args.limit);
       const file = resolve(args.file_path), text = read(file);
       seen.set(file, text);
       const lines = text.split(/\r?\n/), offset = Math.max(1, Number(args.offset) || 1);
@@ -198,14 +204,29 @@ function create(vscode, options) {
       if (location.cwd !== root || !options.reviewAfter || !options.shellWithoutAsking) await permission(name, details);
       active();
       const win = process.platform === "win32";
-      return new Promise(resolveCommand => execFile(win ? "powershell.exe" : "/bin/sh",
+      return new Promise(resolveCommand => {
+        let failure;
+        const capture = commandOutput.collect({ directory: outputDirectory });
+        const output = vscode.window?.createOutputChannel ? require("./build-runner").output(vscode) : null;
+        output?.appendLine("> " + args.command + "    (" + location.cwd + ")");
+        const child = spawn(win ? "powershell.exe" : "/bin/sh",
         win ? ["-NoProfile", "-NonInteractive", "-Command", "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding; $OutputEncoding = [Console]::OutputEncoding; " + args.command] : ["-lc", args.command],
-        { cwd: location.cwd, env: require("./assistant").nodeEnv(), windowsHide: true, timeout: Math.min(900000, Math.max(1000, Number(args.timeout) || 120000)),
-          maxBuffer: 128 * 1024, signal: controller.signal },
-        (error, stdout, stderr) => resolveCommand({ ...location, ...(unapplied.length ? { unapplied_changes: unapplied, warning: details.warning } : {}), code: error ? error.code || -1 : 0,
-          stdout: String(stdout).slice(-8000), stderr: String(stderr).slice(-4000),
-          ...(error ? { error: error.message.slice(0, 2000) } : {}),
-          ...(win && /InvalidEndOfLine/.test(String(stderr)) ? { hint: "Windows PowerShell 5.1 does not support && or ||. The project folder is already cwd; retry the single command directly, e.g. git log -1 --oneline. Git did not run. Do not substitute a changelog for Git output." } : {}) })));
+        { cwd: location.cwd, env: require("./assistant").nodeEnv(), windowsHide: true, timeout: Math.min(900000, Math.max(1000, Number(args.timeout) || (location.purpose === "build" ? 900000 : 120000))),
+          signal: controller.signal });
+        child.stdout?.setEncoding("utf8"); child.stderr?.setEncoding("utf8");
+        child.stdout?.on("data", text => { capture.write("stdout", text); output?.append(text); });
+        child.stderr?.on("data", text => { capture.write("stderr", text); output?.append(text); });
+        child.on("error", error => { failure = error; });
+        child.on("close", (code, signal) => {
+          output?.appendLine("[exit " + code + (signal ? ", " + signal : "") + "]");
+          const captured = capture.finish();
+          resolveCommand({ ...location, ...(unapplied.length ? { unapplied_changes: unapplied, warning: details.warning } : {}),
+            code: code === null ? -1 : code, ...(failure?.code ? { error_code: failure.code } : {}), ...captured,
+            ...(output ? { output_channel: "VERTEX Build" } : {}),
+            ...(signal ? { signal } : {}), ...(failure ? { error: failure.message.slice(0, 2000) } : {}),
+            ...(win && /InvalidEndOfLine/.test(captured.stderr) ? { hint: "Windows PowerShell 5.1 does not support && or ||. The project folder is already cwd; retry the single command directly, e.g. git log -1 --oneline. Git did not run. Do not substitute a changelog for Git output." } : {}) });
+        });
+      });
     }
     throw new Error("Unknown local tool: " + name);
   }
@@ -213,15 +234,20 @@ function create(vscode, options) {
     schemas,
     changes() { return [...written].map(([file, before]) => ({ file: path.relative(root, file).replace(/\\/g, "/"), before: before || "", after: read(file), status: before === null ? "added" : "changed" })); },
     dispose() { controller.abort(); approve.dispose(); },
+    settled() { return serial; },
+    pending() { return outstanding; },
+    completed() { return completed.slice(); },
     call(name, args = {}) {
+      outstanding++;
       const run = serial.then(async () => {
         active();
         const id = "local_" + crypto.randomBytes(8).toString("hex");
         const input = { ...args, ...(name === "Bash" ? commandLocation(args) : {}) };
-        for (const key of ["file_path", "path"]) if (input[key]) input[key] = resolve(input[key]);
+        for (const key of ["file_path", "path"]) if (input[key] && !(name === "Read" && commandOutput.owns(input[key]))) input[key] = resolve(input[key]);
         if (options.onStep) options.onStep({ kind: "use", id, name, input, provider: "local" });
         try {
           const result = await execute(name, args);
+          if (name === "Bash") { completed.push({ command: args.command, result }); if (completed.length > 8) completed.shift(); }
           if (options.onStep) options.onStep({ kind: "result", id, name, content: name === "Read" ? result.text : JSON.stringify(result), is_error: name === "Bash" && result.code !== 0, provider: "local" });
           return result;
         } catch (error) {
@@ -229,8 +255,9 @@ function create(vscode, options) {
           throw error;
         }
       });
-      serial = run.catch(() => {});
-      return run;
+      const finished = run.finally(() => { outstanding--; });
+      serial = finished.catch(() => {});
+      return finished;
     }
   };
 }

@@ -7,7 +7,6 @@
 
 const { spawn } = require("child_process");
 
-const TAIL = 80;
 let channel = null;
 
 function output(vscode) {
@@ -22,11 +21,10 @@ function run(vscode, folder, command, spawnFn = spawn) {
   out.appendLine("");
   out.appendLine("> " + command + "    (" + folder + ")");
   return new Promise(resolve => {
-    const lines = [];
+    const commandOutput = require("./command-output");
+    const capture = commandOutput.collect({ directory: commandOutput.directory(vscode) });
     const keep = text => {
       out.append(text);
-      for (const part of String(text).split(/\r?\n/)) if (part.trim()) lines.push(part);
-      while (lines.length > TAIL) lines.shift();
     };
     let child;
     try {
@@ -36,12 +34,15 @@ function run(vscode, folder, command, spawnFn = spawn) {
       resolve({ code: -1, tail: error.message });
       return;
     }
-    child.stdout && child.stdout.on("data", keep);
-    child.stderr && child.stderr.on("data", keep);
+    child.stdout?.setEncoding?.("utf8");
+    child.stderr?.setEncoding?.("utf8");
+    child.stdout && child.stdout.on("data", text => { capture.write("stdout", text); keep(text); });
+    child.stderr && child.stderr.on("data", text => { capture.write("stderr", text); keep(text); });
     child.on("error", error => { keep("Could not start: " + error.message + "\n"); });
     child.on("close", code => {
       out.appendLine("[exit " + code + "]");
-      resolve({ code: code === null ? -1 : code, tail: lines.join("\n") });
+      const captured = capture.finish();
+      resolve({ code: code === null ? -1 : code, ...captured, tail: (captured.stdout.trimEnd() + "\n" + captured.stderr).trim() });
     });
   });
 }
@@ -66,4 +67,4 @@ function select(saved, proposed) {
   saved = String(saved || "").trim(); proposed = String(proposed || "").trim();
   return { command: proposed || saved, automatic: !!saved && (!proposed || proposed === saved) };
 }
-module.exports = { run, remembered, remember, select };
+module.exports = { run, remembered, remember, select, output };

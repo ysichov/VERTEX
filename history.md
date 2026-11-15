@@ -1,3 +1,23 @@
+## 2026-11-15 — 0.9.96: chronological steps and scoped change checks
+
+Prompt logs now show recorded events in one chronological Steps view with time and actor labels for LLM, tools, lint/checks, Jev and the global/MCP orchestrators. Legacy repeated-verdict recovery records become explicit orchestrator events; their positions remain intact. New recovery records contain only state metadata. Historical files do not need rewriting, and unrecorded CLI internals are not invented.
+
+Lazy-loaded prompts now start with User and Steps (chronological), rather than displaying the obsolete repeated section list before opening a detail.
+
+Jev's shared check is restricted to performed code changes before human diff review: lint first, then the complete changed hunks and the edit instruction. It no longer judges whole-task readiness or demands a later build, deployment or Apply. Ordinary answers and standalone builds without edits do not invoke this check. Topic routing is separate.
+
+## 2026-11-15 — 0.9.96: recover incomplete tasks and render Jev verdicts
+
+An unsuccessful Jev task check now returns actionable failures to the executor for one recovery attempt under the original permissions and tool limits. Exact Edit failures require rereading the actual file. Static-check repair and task recovery share the same single repair budget. If recovery still fails, the chat explains the stop and asks whether to continue; users can reply in the same chat or switch models first. Task-verification log details use the existing Jev decision table instead of raw JSON, including confidence/probabilities when recorded and readable legacy verdicts.
+
+## 2026-11-15 — 0.9.96: global task completion check with Jev
+
+The VS Code chat now checks final task results with Jev independently of the selected MCP server or MCP orchestrator. Folder builds without edits, SAP tasks, ordinary answers, Web searches and direct navigation receive a separate task verdict. Jev uses recorded tool results and host checks; unavailable or inconclusive verification is shown as unverified. The global VERTEX model workflow and the MCP tool orchestrator are separate layers: staged MCP execution keeps its stage checks, while a direct task gets one final global check. Decisions and usage are logged inside the parent conversation.
+
+## 2026-11-15 — 0.9.96: reliable command results and stage verification
+
+Long local command output no longer stops a build at 128 KB. Output up to 8 KB stays inline; larger output is retained in a permanent file under the VERTEX log folder's `command-output/`, with a compact preview and a clickable file reference in the conversation log. Files are not automatically removed. The chat waits for active local tools before finishing and asks the agent to incorporate results if its reply arrived early. Jev checks each orchestrator stage against its completion checks and recorded evidence; failed or unverified stages cannot silently advance. Orchestrator selection and verification calls are grouped with their parent conversation, including existing logs.
+
 ## 2026-11-15 — 0.9.96: graphical conversation flow
 
 Logs & Cost has a new Flow mode alongside Logs and Usage & Cost. Pick a conversation above the graph; requests appear as vertical columns, with their recorded Prompt, Jev, LLM steps, Checks, Answer and Review stages. Stages absent from the log are omitted. Clicking a block opens its original details. Search/date/place filters, prompt paging, zoom and a readable WebGL fallback support long conversations.

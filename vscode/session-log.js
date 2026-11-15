@@ -119,9 +119,12 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       if(on.questions && report.plan)saved.plan=report.plan;
       if(on.questions && report.task){saved.task=report.task;saved.total=report.total;}
       if(report.report){saved.status=report.report.stage_status;if(on.answers)saved.report=report.report;}
+      if(report.verification){saved.status=report.verification.status;saved.verification=report.verification;}
       write({type:"vertex_orchestration",report:saved});
     },
     toolSelection(report) { write({type:"vertex_tool_selection",report:on.questions?report:{elapsedMs:report.elapsedMs,selected:report.selected}}); },
+    taskVerification(report) { write({type:"vertex_task_verification",report}); },
+    taskRecovery(report) { write({type:"vertex_task_recovery",report}); },
     routing(report) { write({type:"vertex_topic_routing",report:on.questions?protection.protect(report):{status:report.status,basis:report.basis,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage}}); },
     providerResponse({ provider, scope, response }) {
       // Preserve provider counters verbatim, before normalization. These records
@@ -246,6 +249,10 @@ function stepInput(name, input, objects, localCode) {
 /* What came back: a command's output, a search's matches, an error or a refusal in words; a file's text only counted. */
 function stepResult(name, content, error, objects) {
   const text = resultText(content);
+  if (name === "Bash") {
+    let result; try { result = JSON.parse(text); } catch (_) {}
+    if (typeof result?.output_file === "string") addReference(objects, { path: result.output_file, kind: "file" });
+  }
   if (name === "Read" && !error) return "[" + lineCount(text) + " lines read, not logged]";
   return clip(sanitizeText(text, objects));
 }

@@ -682,6 +682,7 @@ function codexCommand(options, dir) {
   ];
   if (options.tools.length) {
     args.push("-c", "mcp_servers." + SERVER + ".url=" + options.url,
+      "-c", "mcp_servers." + SERVER + ".tool_call_timeout_sec=900",
       "-c", "mcp_servers." + SERVER + ".bearer_token_env_var=" + TOKEN_VAR);
     // exec cannot display Codex approval dialogs. These private local tools enforce
     // containment and ask through VERTEX's own review/approval UI before mutations.
