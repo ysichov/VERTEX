@@ -38,6 +38,9 @@ test("common tools search, page, edit and create files, and log every step", asy
   await agent.call("Edit", { file_path: "a.txt", old_string: "one", new_string: "new" });
   await agent.call("Write", { file_path: "sub/new.js", content: "export const x = 1;" });
   assert.equal(fs.readFileSync(path.join(root, "a.txt"), "utf8"), "new\ntwo\n");
+  assert.deepEqual(agent.changes().map(c => [c.file, c.before, c.after, c.status]), [
+    ["a.txt", "one\ntwo\n", "new\ntwo\n", "changed"], ["sub/new.js", "", "export const x = 1;", "added"]
+  ]);
   assert.ok(steps.some(step => step.is_error));
   assert.equal(steps.filter(step => step.kind === "use").length, 6);
   assert.equal(steps.filter(step => step.kind === "result").length, 6);

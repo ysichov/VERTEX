@@ -1,6 +1,26 @@
-## 2026-11-14 — VS Code 0.9.94: Jev back in the provider list, one model filter everywhere
+## 2026-11-15 — 0.9.96: graphical conversation flow
+
+Logs & Cost has a new Flow mode alongside Logs and Usage & Cost. Pick a conversation above the graph; requests appear as vertical columns, with their recorded Prompt, Jev, LLM steps, Checks, Answer and Review stages. Stages absent from the log are omitted. Clicking a block opens its original details. Search/date/place filters, prompt paging, zoom and a readable WebGL fallback support long conversations.
+
+## 2026-11-15 — 0.9.96: automatic checks for Code Agent changes
+
+The VS Code Code Agent now checks changed JavaScript, JSON and inline webview scripts before review, whichever model is selected. Project-specific commands can add linters and tests for other languages. Failures go back to the model for one repair attempt; the final answer and log retain the actual passed, failed or unverified result. Unsupported and dynamically generated code is explicitly identified rather than silently called verified.
+
+## 2026-11-15 — 0.9.96: chat sending restored
+
+Fixed Enter and form submission stopping before the question reached the assistant and leaving the chat in its working state.
+
+## 2026-11-14 — 0.9.96: builds in Folder mode
+
+Fixed local builds being blocked when VERTEX Orchestrator is selected as the SAP toolset. Folder mode now keeps the Code Agent file and command tools available, including PowerShell commands on Windows. Existing edit review and command approval remain in force.
+
+## 2026-11-14 — VS Code 0.9.95: Jev selectable again, new topics visible, one model filter
 
 **Jev is selectable in the chat again.** TypeSafe Jev had dropped out of the chat provider list and the **Select AI provider** list on 2026-11-13, so the Jev decision interface could not be opened any more unless it was already in use. It is back, and decision models are now offered in the chat model list of every provider that has them: choosing any Jev model — TypeSafe Jev, Gemini Decision or OpenCode Jev — switches the chat to the Jev decision interface.
+
+**Auto (Jev) is offered for every decision provider.** The **Full history / Auto (Jev)** switch checked for TypeSafe or Gemini by name, so someone whose decision model came from OpenCode never saw it and could not turn topic routing on. It now appears whenever an enabled decision model exists.
+
+**A new conversation topic is visible again.** After **Continue a chat** the panel pinned the restored topic, so an exchange that Jev put under a new topic was filtered out of the message list and showed only in Logs & Cost. The view now follows the new topic as soon as one appears; a topic chosen by hand in **Show conversation** is unaffected.
 
 Config models now uses the same **Hide unavailable** checkbox for every provider. OpenRouter and OpenCode had a three-way **All / Available / Free** switch instead, which behaved and looked differently from the rest; it is gone, and their lists are filtered the same way as Vercel AI Gateway and the others. The separate "Free" view is no longer offered. Eclipse version is bumped with VS Code; the update site is unchanged.
 

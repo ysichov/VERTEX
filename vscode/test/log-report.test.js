@@ -198,7 +198,7 @@ test("Claude Code's steps reach the report page with their arguments, to be draw
   assert.match(page, /function drawStep/);
   assert.match(page, /--vscode-diffEditor-insertedLineBackground/);
   assert.doesNotMatch(page, /charts-orange/, "technical entries in a quiet colour");
-  assert.doesNotMatch(page, /border-left/, "no side bars on log entries");
+  assert.doesNotMatch(page, /\.entry[^{}]*\{[^}]*border-left/, "no side bars on log entries");
 });
 
 test("a run reads as one timeline: a model call per message, then the tools it called, in order", () => {
@@ -328,6 +328,9 @@ test("the list sent to the page leaves each prompt's details, steps and Jev inpu
   assert.equal(prompt.text, "Q");
   assert.equal("details" in prompt || "timeline" in prompt || "decision" in prompt, false);
   assert.equal(report.sessions[0].prompts[0].details.length, 1, "the host keeps the full record");
+  assert.equal(prompt.toolCalls, 0);
+  report.sessions[0].prompts[0].details.push({ type: "tool" }, { type: "tool result" }, { type: "tool" });
+  assert.equal(listReport(report).sessions[0].prompts[0].toolCalls, 2, "Run counts calls without sending their bodies or counting results");
 });
 
 

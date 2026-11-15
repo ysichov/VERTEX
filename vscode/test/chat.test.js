@@ -8,6 +8,33 @@ const compatible = require("../openai-compatible");
 const rawCompatibleAsk = compatible.ask;
 const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
 
+for (const allow of [false, true]) test(`Folder build with SAP Orchestrator selected preserves command approval (${allow ? "allow" : "deny"})`, async t => {
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-folder-orchestrator-'));
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ t.mock.method(require('../agent-worktree'),'open',async()=>null);
+ t.mock.method(require('../orchestrator-plan'),'connect',async()=>assert.fail('Folder work must not invoke SAP tool selection'));
+ const vscode=fakeVscode({provider:'codex-subscription',model:'test-model'});
+ vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];
+ let approvals=0,executed=false,served;
+ vscode.window.showWarningMessage=async(message,_options,choice)=>{approvals++;assert.match(message,/build/);return allow?choice:undefined;};
+ const server={token:'test',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:set=>{served=set;return {route:'/chat/test',dispose(){}};}};
+ t.mock.method(assistant,'ask',async options=>{
+  assert.ok(options.tools.includes('Bash'));
+  assert.ok(options.tools.includes('Edit'),'release preparation remains available for review');
+  const args={command:process.platform==='win32'?'Write-Output vertex-build-ok':'printf vertex-build-ok',purpose:'build',target:'project'};
+  const result=await served.call({},'Bash',args);
+  const value=JSON.parse(result.content[0].text);
+  assert.equal(value.code,0);assert.match(value.stdout,/vertex-build-ok/);assert.equal(value.cwd,root);executed=true;
+  return {plan:{answer:'Built',navigation:null,build_command:''},model:'test-model'};
+ });
+ const ask=chat.create(vscode,{schemas:[],orchestrator:()=>true,editorContext:()=>null},server,{get:async()=>null});
+ try {
+  if(allow)assert.equal((await ask('собери всикс 0.9.96',{contextMode:'folder'})).answer,'Built');
+  else await assert.rejects(ask('собери всикс 0.9.96',{contextMode:'folder'}),/declined|denied/i);
+  assert.equal(approvals,1);assert.equal(executed,allow);
+ } finally {await ask.dispose();}
+});
+
 test.beforeEach(t => { t.mock.method(assistant, "resolveAssistant", async (vscode, id) => "/ext/" + id); });
 
 function fakeVscode(settings) {
@@ -20,6 +47,36 @@ function fakeVscode(settings) {
       input: { uri: { scheme: "file", fsPath: "C:\\git\\z_calc.prog.abap" } } }] }] } }
   };
 }
+
+for (const fix of [true, false]) test(`host checks run before review and permit only one repair (${fix ? 'fixed' : 'still broken'})`, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vertex-host-check-'));
+  const file = path.join(root, 'index.js'); fs.writeFileSync(file, 'const x = 1;');
+  t.after(() => fs.rmSync(root, {recursive:true,force:true}));
+  const copy = {folder:root,top:root,dir:root,cwd:root,refresh:async()=>[],remove:async()=>{},changes:async()=>{
+    const after=fs.readFileSync(file,'utf8');return after==='const x = 1;'?[]:[{file:'index.js',path:file,before:'const x = 1;',after,status:'changed'}];
+  }};
+  t.mock.method(require('../agent-worktree'),'open',async()=>copy);
+  t.mock.method(require('../build-runner'),'remembered',()=> '');
+  let reviews=0,served,calls=0;
+  t.mock.method(require('../worktree-review'),'open',()=>{reviews++;assert.equal(calls,2);return {dispose(){}};});
+  const vscode=fakeVscode({provider:'codex-subscription',model:'test-model'});
+  vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];
+  const server={token:'t',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:set=>{served=set;return {route:'/chat/test',dispose(){}};}};
+  t.mock.method(assistant,'ask',async options=>{
+    calls++;
+    if(calls===2)assert.match(options.prompt,/no-undef.*missing/);
+    await served.call({},'Read',{file_path:'index.js'});
+    await served.call({},'Write',{file_path:'index.js',content:calls===2&&fix?'const x = 2;':'missing();'});
+    return {plan:{answer:'Done',build_command:''},model:'test-model',usage:{input_tokens:10,output_tokens:2}};
+  });
+  const ask=chat.create(vscode,{schemas:[],editorContext:()=>null},server,{get:async()=>null});
+  const result=await ask('Change the project',{contextMode:'folder'});
+  assert.equal(calls,2);assert.equal(reviews,1);
+  assert.equal(result.verification.state,fix?'passed':'failed');
+  assert.match(result.answer,fix?/automatic checks: PASSED/:/automatic checks: FAILED/);
+  assert.equal(result.usage.input_tokens,20);
+  await ask.dispose();
+});
 
 test("API model catalogs survive restart, coalesce loads and refresh only explicitly",async t=>{
  const settings={provider:'openrouter-api',model:'vendor/a',modelConfig:{'openrouter-api':{enabled:['vendor/a'],known:['vendor/a','vendor/b']}}};

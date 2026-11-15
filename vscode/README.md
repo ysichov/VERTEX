@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.93**
+**Version: 0.9.96**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -89,7 +89,24 @@ Open Welcome with **VERTEX: Get Started** in the Command Palette.
 
 ## Code Agent and Git
 
+**Builds on Windows.** In **Folder** mode, select the project and ask the agent to build it. Local file and command tools stay available even when the SAP toolset is VERTEX Orchestrator. Commands use Windows PowerShell 5.1 and require command approval; builds default to the real project folder and exclude unapplied working-copy edits. For VERTEX itself, use `./vscode/package.ps1` with Node.js and npm on PATH.
+
 **Agent.** The agent works in an isolated Git working copy of your folder. Review its edits file by file, **Apply** the approved ones to your folder or decline them with a reason for rework. After Apply it can run the project's own build and test commands and fix failures.
+
+**Automatic checks.** After edits, before review, VERTEX checks changed JavaScript (`.js`, `.cjs`, `.mjs`) for syntax and undefined names, JSON for parsing errors, and inline scripts in HTML and JavaScript HTML templates. Project code is parsed, never executed by these built-in checks. Existing diagnostics are counted separately from new ones. The answer and Logs & Cost show **PASSED**, **FAILED** or **UNVERIFIED**; these describe the checks performed, not proof that every feature works. Generated script interpolations, unsupported languages and unavailable checks are disclosed. A failure goes back to the selected model for one repair attempt, followed by another check; persistent failures remain visible when you review the files.
+
+For project linters and tests, add `vertex.ai.verification.commands` to the project's `.vscode/settings.json`, for example:
+
+```json
+{
+  "vertex.ai.verification.commands": [
+    { "glob": "**/*.py", "command": "python -m compileall ." },
+    { "glob": "**/*.js", "command": "npm test" }
+  ]
+}
+```
+
+Each matching command runs once per verification pass in the agent's working folder, with a two-minute timeout and the existing shell permission setting. Globs match repository-relative paths; commands in a selected subfolder run from that subfolder. Dependencies ignored by Git are absent from the copy: install them there when needed, or the check cannot pass. A declined command is **UNVERIFIED**. Choose commands that check rather than rewrite source. Runtime behavior, data contracts and generated code require suitable tests; a successful static check or VSIX build does not establish those. Checks describe the working copy before Apply, including any pending changes from earlier turns.
 
 **Git History** (VERTEX panel, beside **Folder**) lists the folder's commits with date, author and message, filtered by date range, month or author. **Uncommitted changes** at the top opens the working changes against HEAD.
 
@@ -101,7 +118,9 @@ Open Welcome with **VERTEX: Get Started** in the Command Palette.
 
 **Web search** (Vercel AI Gateway): ask explicitly to search the web; only the question is sent, with source links in the answer.
 
-**Logs & Cost** (the **$** icon in the VERTEX title bar; the former Session Logs and Usage & Cost windows are now one) has a **Logs | Usage & Cost** switch and a shared date range, **Today** by default. Usage & Cost shows tokens and USD cost by date, activity, provider and model; conversation rows show Model and Jev costs separately, and ≈ marks estimates (for example CodeMie's list-price estimate), not the service bill. Anthropic API costs in the chat panel and Session Logs are calculated from actual tokens at published list prices, including caching; account discounts are not included. Existing logs are calculated when opened. Screenshot recognition and Jev topic routing/tagging appear inside their parent conversation in Session Logs; conversation totals include these calls, and ≈ marks totals that include estimated Jev costs.
+**Logs & Cost** (the **$** icon in the VERTEX title bar; the former Session Logs and Usage & Cost windows are now one) has a **Logs | Flow | Usage & Cost** switch and a shared date range, **Today** by default. Usage & Cost shows tokens and USD cost by date, activity, provider and model; conversation rows show Model and Jev costs separately, and ≈ marks estimates (for example CodeMie's list-price estimate), not the service bill. Anthropic API costs in the chat panel and Session Logs are calculated from actual tokens at published list prices, including caching; account discounts are not included. Existing logs are calculated when opened. Screenshot recognition and Jev topic routing/tagging appear inside their parent conversation in Session Logs; conversation totals include these calls, and ≈ marks totals that include estimated Jev costs.
+
+Choose **Flow** in **Logs | Flow | Usage & Cost** to replace the table with a graphical conversation view. Select a conversation from the dropdown above the graph or use its previous/next buttons; the existing search, date and folder/SAP filters still apply. Requests form columns from left to right; within each column the recorded Prompt, Jev, LLM steps, Checks, Answer and Review stages run downward. Absent stages are omitted. Click a stage to open its original details below the graph, including verification output and review decisions. **− / + / Fit** control zoom; horizontal scrolling and prompt-page arrows navigate long conversations. **Logs** returns to the selected conversation's table. The graph groups stages for navigation; open **LLM steps** for the actual recorded tool/model sequence. Codex turns do not expose internal model-call counts. If WebGL is unavailable, the same clickable blocks remain readable.
 
 
 Session Logs numbers tool calls and shows query results as tables. Click a SELECT to reopen it in SelecTor with its joins and filters; this reads current SAP data. Click a revision link to read that historical source through the original SAPRead toolset and open it read-only. Codex turn totals are labelled separately from individual API model calls.
@@ -515,7 +534,7 @@ switches at once and clears the chosen model (`vertex.ai.provider`, `vertex.ai.m
 
 #### Decision models: TypeSafe JEV and Gemini
 
-Choose **Auto (Jev)** in the chat to show the decision-model list beside it. It groups all enabled decision models by provider; choose the exact model, for example **Gemini → Gemini Decision 1** or **TypeSafe → jev-preview**. This selection is saved independently of the chat model and is used for topic routing, Tag topics, ASK Jev and block sorting. Add the corresponding key in LLM Providers and enable the model there first. The **◇** marker appears only in LLM Providers. Decision models are excluded from ordinary chat model lists; TypeSafe is excluded from the ordinary chat provider menu. Gemini Decision 1 uses Google's native Decisions API. Gemini cost is shown only when the API reports it; no list-price estimate is added. Free quota depends on the Google project.
+Choose **Auto (Jev)** in the chat to show the decision-model list beside it. It groups all enabled decision models by provider; choose the exact model, for example **Gemini → Gemini Decision 1** or **TypeSafe → jev-preview**. This selection is saved independently of the chat model and is used for topic routing, Tag topics, ASK Jev and block sorting. Add the corresponding key in LLM Providers and enable the model there first. The **◇** marker appears only in LLM Providers. Decision models are also listed in the chat model list of their provider: choosing any of them — TypeSafe Jev, Gemini Decision 1 or OpenCode Jev — switches the chat to the Jev decision interface, where you enter context and questions and get choices and probabilities instead of chat text. Gemini Decision 1 uses Google's native Decisions API. Gemini cost is shown only when the API reports it; no list-price estimate is added. Free quota depends on the Google project.
 
 Each model row in **LLM Providers** has two rate cells you fill in by hand from that tier's own conditions: **In tok/min** (input tokens per minute) and **Calls/min** (requests per minute). Providers state different ones - Gemini's free tier refuses a decision with "limit: 50000 input tokens per minute", while a provider that counts calls needs the second cell - so fill in whichever your tier publishes, or both. VERTEX keeps requests for that model inside them and waits instead of exceeding them, so the model finishes the work rather than failing on a rate limit. One orchestrator tool selection costs roughly 26000 input tokens, so a 50000 token budget allows about two per minute. Each model counts its own minute, and nothing crosses between models or providers. An empty cell means that limit is not enforced. While VERTEX waits, the chat says so and for how long. The counters see only what VERTEX itself spends - another window or tool on the same key spends the same quota unseen, and tiers may also cap requests per day.
 

@@ -154,6 +154,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
       view.webview.html = html(nonce);
       const refresh = async (fresh = false) => {
         const chosen = active();
+        const decisions = ask.decisionModels ? await ask.decisionModels() : {models:[],selected:require("./review-jev").selection(vscode)};
         return view.webview.postMessage({
           system: chosen.error ? "" : chosen.system.name,
           // The active system's clients, when it lists more than one, and the one in use.
@@ -162,8 +163,9 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           // What the list shows: a system reached through SAP's extension says so beside its name.
           labels: systems().map(item => item.name),
           ai: ask.state(),
-          jevOn: require("./model-config").isOn(vscode, "typesafe-api") || require("./model-config").isOn(vscode, "gemini-api"),
-          decisionModels: ask.decisionModels ? await ask.decisionModels() : {models:[],selected:require("./review-jev").selection(vscode)},
+          // Auto (Jev) is offered when there is a decision model to run it with, whichever
+          // provider holds it. Naming the providers here left OpenCode Jev without the switch.
+          jevOn: decisions.models.length > 0, decisionModels: decisions,
           // Where the chat's SAP tools come from: VERTEX itself or an MCP server of vertex.chat.mcpServers.
           mcp: chatMcp ? { servers: chatMcp.choices(), selected: chatMcp.selected(),
             updates: chatMcp.overview().filter(s => Array.isArray(s.update) && s.update.length).map(s => s.name) } : null,
@@ -194,7 +196,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if (message.action === "ready") {
           ready = true;
-          await view.webview.postMessage({jevOn:require("./model-config").isOn(vscode,"typesafe-api")||require("./model-config").isOn(vscode,"gemini-api"),decisionModels:ask.decisionModels?await ask.decisionModels():{models:[],selected:require("./review-jev").selection(vscode)},topicList:ask.topics?.()||[],routeTopics:vscode.workspace.getConfiguration("vertex.ai").get("context.routeTopics",false)});
+          const decisions=ask.decisionModels?await ask.decisionModels():{models:[],selected:require("./review-jev").selection(vscode)};
+          await view.webview.postMessage({jevOn:decisions.models.length>0,decisionModels:decisions,topicList:ask.topics?.()||[],routeTopics:vscode.workspace.getConfiguration("vertex.ai").get("context.routeTopics",false)});
           await showFolder();
           await refresh();
           await showReview();
@@ -341,7 +344,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         if (message.action === "chat") {
           if (continuing) return;
           if (pendingChat) return;
-          const requestId = ++nextRequest;
+          const requestId = Number.isInteger(message.requestId) ? message.requestId : ++nextRequest;
+          if (requestId > nextRequest) nextRequest = requestId;
           // The window shows the question as written; the review's blocks go to the model with it, unseen.
           const web=message.web===true||require("./web-intent").requested(message.text);
           const asked = web ? null : reviewAsk;
@@ -353,10 +357,13 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           if (!shown) { return; }
           const pending = pendingChat = { id: requestId, cancelled: false };
           try {
-          await view.webview.postMessage({ chat: "You: " + shown + (asked ? "  [" + review.askLabel(asked) + "]" : "")
-            + (images.length ? "  [" + images.length + " screenshot" + (images.length > 1 ? "s" : "") + "]" : "") });
+          const userMessage = "You: " + shown + (asked ? "  [" + review.askLabel(asked) + "]" : "")
+            + (images.length ? "  [" + images.length + " screenshot" + (images.length > 1 ? "s" : "") + "]" : "");
           let taskKind=web?"":/коммит|commit/i.test(shown)?"commit":asked||require("./git-history").reviewContext()||/ревью|review|дифф|diff|проверь\s+(?:код|изменен)/i.test(shown)?"review":"";
-          await view.webview.postMessage({ progress: { id: requestId, kind:taskKind,status: taskKind==="review"?"Reviewing changes…":taskKind==="commit"?"Preparing commit message…":"Working…" } });
+          await view.webview.postMessage({ progress: { id: requestId, kind:taskKind, user: userMessage, status: taskKind==="review"?"Reviewing changes…":taskKind==="commit"?"Preparing commit message…":"Working…" } });
+          // Let the webview paint the question and the initial task animation before
+          // tool-context collection starts doing synchronous work.
+          await new Promise(resolve => setTimeout(resolve, 0));
             const scope = asked ? { review_ask: { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) } } : undefined;
             const state = web ? {} : (await toolContext(scope)) || {};
             if(!web&&!taskKind&&(state.review_source||state.vertex_view?.view==="review")){taskKind="review";await view.webview.postMessage({progress:{id:requestId,kind:taskKind,status:"Reading review context…"}});}
@@ -701,7 +708,7 @@ function refreshTopicView(){
  for(const item of messages)item.hidden=topicViewMode!=='all'&&(item.dataset.topicId||'')!==selected;
 }
 document.getElementById('topic-view-select').onchange=e=>{topicViewMode=e.target.value;refreshTopicView();};
-window.addEventListener('message',e=>{const d=e.data||{};if(d.historyContinued)topicViewMode=d.viewTopic||'all';if(d.chat||d.cleared||d.topicList||d.historyContinued||d.progress?.topic||d.progress?.done)queueMicrotask(refreshTopicView);});
+window.addEventListener('message',e=>{const d=e.data||{};if(d.historyContinued)topicViewMode=d.viewTopic||'all';/* A pinned topic from Continue a chat must not hide the exchange that just arrived under a new topic. */if(d.progress?.topic&&topicViewMode.startsWith('topic_')&&topicViewMode!==d.progress.topic.id)topicViewMode='current';if(d.chat||d.cleared||d.topicList||d.historyContinued||d.progress?.topic||d.progress?.done)queueMicrotask(refreshTopicView);});
 function setTopic(item,topic){if(!topic||!/^topic_\\d{4,8}$/.test(topic.id))return;const canonical=typeof topicCatalog!=='undefined'&&topicCatalog.find(t=>t.id===topic.id);if(canonical)topic={...topic,label:canonical.label};item.dataset.topicId=topic.id;const colors=['blue','green','orange','purple','red','yellow'];const color='var(--vscode-charts-'+colors[Number(topic.id.slice(6))%colors.length]+',var(--vscode-focusBorder))';item.style.borderLeft='3px solid '+color;/* The topic is named once, in the Conversations header. A badge on every message said it twice per exchange and the
    working status said it a third time, all repeating the question standing right there; the coloured stripe on the
    left still groups the pair. */
@@ -846,6 +853,7 @@ document.getElementById('mcp-select').addEventListener('change', event => {
 document.getElementById('system-select').addEventListener('change', event => {
   api.postMessage({ action: 'system', name: event.target.value });
 });
+let nextRequest = 0;
 document.getElementById('chat').addEventListener('submit', event => {
   event.preventDefault();
   if(chatRunning||historyOpening)return;
@@ -857,7 +865,20 @@ document.getElementById('chat').addEventListener('submit', event => {
   const selected = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
   if (images.length && selected?.capabilities?.vision === false) { document.getElementById('model-status').textContent = 'This model does not accept screenshots. Choose a Vision model or remove the images.'; return; }
   setChatRunning(true);
-  api.postMessage({ action: 'chat', text, model: document.getElementById('model-select').value,
+  const requestId = ++nextRequest;
+  const optimisticUser = document.createElement('p');
+  optimisticUser.className = 'you'; optimisticUser.textContent = 'You: ' + text;
+  document.querySelector('#messages .chat-empty')?.remove();
+  document.getElementById('messages').appendChild(optimisticUser);
+  const optimisticTask = document.createElement('div');
+  optimisticTask.className = 'vertex task working';
+  const optimisticBody = document.createElement('div');
+  optimisticBody.className = 'progress-body streaming-answer';
+  optimisticBody.textContent = 'VERTEX: Working…';
+  optimisticTask.appendChild(optimisticBody);
+  document.getElementById('messages').appendChild(optimisticTask);
+  progressItems.set(requestId, optimisticTask);
+  api.postMessage({ action: 'chat', requestId, text, model: document.getElementById('model-select').value,
     routeTopics:!document.getElementById('topic-picker-label').hidden&&document.getElementById('topic-picker').value==='auto',
     images: images.map(image => ({ media_type: image.media_type, data: image.data })) });
   field.value = '';
@@ -1002,6 +1023,12 @@ window.addEventListener('message', event => {
       if (model) { model.capabilities = { ...model.capabilities, tools:false }; model.toolSupportEvidence = update.toolSupport.evidence; drawModelCapabilities(); }
     }
     let item = progressItems.get(update.id);
+    if (typeof update.user === 'string' && !item) {
+      document.querySelector('#messages .chat-empty')?.remove();
+      const userItem = document.createElement('p');
+      userItem.className = 'you'; userItem.textContent = update.user;
+      document.getElementById('messages').appendChild(userItem);
+    }
     if (!item && !update.remove) {
       item = document.createElement('div'); item.className = 'vertex task working';
       document.getElementById('messages').appendChild(item);

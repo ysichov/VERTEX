@@ -78,7 +78,9 @@ public class LogsView extends PageView {
 	protected String initialLiteral() {
 		try {
 			return AssistantBridge.quote(readResource("resources/log-report.html").replace("</head>",
-				"<style>" + super.readResource("resources/vertex-controls.css") + "</style></head>")).replace("<", "\\u003c");
+				"<style>" + super.readResource("resources/vertex-controls.css") + "</style>"
+				+ "<script nonce=\"{{NONCE}}\">" + inline(super.readResource("resources/three.min.js")) + "</script>"
+				+ "<script nonce=\"{{NONCE}}\">" + inline(super.readResource("assistant/log-flow.js")) + "</script></head>")).replace("<", "\\u003c");
 		} catch (IOException e) {
 			return AssistantBridge.quote("<p>" + describe(e) + "</p>");
 		}

@@ -5,7 +5,7 @@
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
 
-Current VS Code extension: **0.9.93**.
+Current VS Code extension: **0.9.96**.
 
 For VS Code, the recommended companion is
 [ABAP Syntax Highlighting by Lars Hvam](https://marketplace.visualstudio.com/items?itemName=larshp.vscode-abap)
@@ -22,7 +22,7 @@ VERTEX is a set of plugins for VS Code and Eclipse ADT. Each window reads over t
 VERTEX can work as an AI coding agent for an ordinary local Git repository: Python, JavaScript, TypeScript, Java, C#, Go, ABAP or another language. Open the project folder in VS Code, choose a provider and a model that supports tool calls, and give the agent a task in the VERTEX chat. No SAP system or ABAP project is required.
 
 - Search and read project files, explain code, implement changes and work with Git diffs.
-- Review the agent's edits in an isolated Git working copy, then approve files and **Apply** them to your folder; declined changes can be returned for rework with your reason.
+- Review the agent's edits in an isolated Git working copy, then approve files and **Apply** them to your folder; declined changes can be returned for rework with your reason. In VS Code, automatic static checks and configured project checks run before review, with explicit passed, failed or unverified results and one repair attempt.
 - Run the project's own build and test commands after Apply; failures can be sent back to the agent for correction.
 - Use Claude Code, Codex / ChatGPT subscription, EPAM CodeMie, GitHub Copilot or a supported API provider, with optional session logs.
 
@@ -101,7 +101,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.92.20261114075626**; the VS Code extension is **0.9.92**.
+**0.9.92.20261114075626**; the VS Code extension is **0.9.96**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.

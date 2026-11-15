@@ -39,7 +39,7 @@ test("Jev chat controller offers decision models and supports cancellation witho
  t.mock.method(api,"models",async()=>[{id:"jev-latest",label:"Jev",modelKind:"decision"}]);
  t.mock.method(require("../ai-accounting"),"begin",()=>({callbacks:{},finish(){},fail(){}}));
  const ask=require("../chat").create(vscode,{schemas:[],execute(){throw Error("No tools expected");}},null,secrets,null,null);
- assert.ok(!ask.state().providers.some(p=>p.setting==="typesafe-api"));
+ assert.ok(ask.state().providers.some(p=>p.setting==="typesafe-api"));
  assert.equal((await ask.listModels()).models[0].modelKind,"decision");
  let started;const ready=new Promise(resolve=>{started=resolve;});
  t.mock.method(api,"requestJson",async(id,key,route,body,max,timeout,signal)=>{assert.equal(id,"typesafe-api");assert.equal(key,"synthetic-key");started();return new Promise((resolve,reject)=>signal.addEventListener("abort",()=>reject(Error("aborted")),{once:true}));});
@@ -121,7 +121,7 @@ test('Gemini Decision 1 uses native decisions input, reports tokens and never in
  assert.equal(jev.priceUsage('gemini-api',{input_tokens:510,cost:0}).cost_usd,0);
 });
 
-test('Auto choices contain all enabled decisions grouped by provider, while chat omits them',async t=>{
+test('Auto choices contain all enabled decisions grouped by provider, and chat offers them too',async t=>{
  const api=require('../openai-compatible'),profiles=require('../key-profiles'),values={provider:'gemini-api',model:'gemini-chat',modelConfig:{'typesafe-api':{enabled:['jev-latest','jev-preview'],known:['jev-latest','jev-preview']},'gemini-api':{enabled:['gemini-chat','gemini-decision-1'],known:['gemini-chat','gemini-decision-1']}},decisionModel:{provider:'typesafe-api',model:'jev-preview'}},store=new Map();
  const secrets={get:async k=>store.get(k),store:async(k,v)=>store.set(k,v)};
  await profiles.save(secrets,'typesafe-api','TEST','typesafe-fixture');await profiles.save(secrets,'gemini-api','TEST','gemini-fixture');
@@ -129,5 +129,5 @@ test('Auto choices contain all enabled decisions grouped by provider, while chat
  t.mock.method(api,'models',async id=>id==='typesafe-api'?[{id:'jev-latest',label:'JEV latest',modelKind:'decision'},{id:'jev-preview',label:'JEV preview',modelKind:'decision'}]:[{id:'gemini-chat',label:'Gemini chat'},{id:'gemini-decision-1',label:'Gemini Decision 1',modelKind:'decision'}]);
  const ask=require('../chat').create(vscode,{schemas:[],execute(){}},null,secrets,null,null);
  require('../review-jev').configure(secrets);
- const choices=await ask.decisionModels();assert.deepEqual(choices.models.map(m=>[m.provider,m.model]),[['typesafe-api','jev-latest'],['typesafe-api','jev-preview'],['gemini-api','gemini-decision-1']]);assert.equal(choices.selected.model,'jev-preview');assert.equal((await require('../review-jev').connection(vscode)).model,'jev-preview');assert.deepEqual((await ask.listModels()).models.map(m=>m.id),['gemini-chat']);assert(!ask.state().providers.some(p=>p.setting==='typesafe-api'));await ask.dispose();
+ const choices=await ask.decisionModels();assert.deepEqual(choices.models.map(m=>[m.provider,m.model]),[['typesafe-api','jev-latest'],['typesafe-api','jev-preview'],['gemini-api','gemini-decision-1']]);assert.equal(choices.selected.model,'jev-preview');assert.equal((await require('../review-jev').connection(vscode)).model,'jev-preview');assert.deepEqual((await ask.listModels()).models.map(m=>m.id),['gemini-chat','gemini-decision-1']);assert(ask.state().providers.some(p=>p.setting==='typesafe-api'));await ask.dispose();
 });

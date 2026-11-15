@@ -142,12 +142,32 @@
   .markdown .md-table th { background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); font-weight: 600; }
   .step-fields { margin: 0; padding: 4px 0; font-size: 0.9em; }
   .step-fields .step-line { font-family: var(--vscode-editor-font-family); overflow-wrap: anywhere; }
+  .flow-selector { flex: 1; min-width: 180px; max-width: 760px; }
+  .flow-stage { position: relative; height: min(70vh, 700px); min-height: 360px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background); }
+  .flow-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .flow-viewport { position: absolute; inset: 0; overflow: auto; }
+  .flow-space { position: relative; }
+  .flow-world { position: absolute; left: 0; top: 0; transform-origin: top left; }
+  .flow-lane { position: absolute; top: 0; height: 656px; }
+  .flow-lane-heading { position: absolute; top: 24px; left: 12px; right: 12px; display: flex; flex-direction: column; gap: 3px; }
+  .flow-lane-heading span { font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  button.flow-node { position: absolute; left: 12px; width: 236px; height: 72px; text-align: left; padding: 9px 12px; background: transparent; color: var(--vscode-editor-foreground); border: 1px solid transparent; display: flex; flex-direction: column; gap: 5px; white-space: normal; overflow-wrap: anywhere; }
+  .flow-node strong { color: var(--flow-accent); font-size: .95em; }
+  .flow-node span { font-size: .85em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  button.flow-node:hover { background: var(--vscode-list-hoverBackground); }
+  button.flow-node:focus-visible, button.flow-node.selected { border-color: var(--vscode-focusBorder); outline: 1px solid var(--vscode-focusBorder); }
+  .flow-node.unknown { border: 1px dashed var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
+  .flow-fallback .flow-lane { background: var(--vscode-editorWidget-background); }
+  .flow-fallback button.flow-node { border-left: 3px solid var(--flow-accent); background: var(--vscode-editor-background); }
+  .flow-hint { font-size: .9em; margin: 6px 0 10px; }
+  .flow-inspector { margin-top: 12px; padding: 10px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editorWidget-background); overflow-wrap: anywhere; }
+  .flow-inspector:empty { display: none; }
 </style>
 </head>
 <body>
 <header>
   <h1>Logs &amp; Cost</h1>
-  <div class="vertex-segment-toggle" role="group" aria-label="Report"><button id="view-logs" class="active" aria-pressed="true">Logs</button><button id="view-costs" aria-pressed="false">Usage &amp; Cost</button></div>
+  <div class="vertex-segment-toggle" role="group" aria-label="Report"><button id="view-logs" class="active" aria-pressed="true">Logs</button><button id="view-flow" aria-pressed="false">Flow</button><button id="view-costs" aria-pressed="false">Usage &amp; Cost</button></div>
   <button id="folder">Choose Folder…</button>
   <button id="settings">Log Settings</button>
   <button id="refresh" title="Refresh session logs" aria-label="Refresh session logs">↻</button>
@@ -214,6 +234,7 @@ function vertexDateRange(root, changed) {
   var status = document.getElementById("status");
   var content = document.getElementById("content");
   var usageRoot = document.getElementById("usage-content"), usageRows = [], reportMode = "logs";
+  var flowSelectedId = "", flowDispose = null, flowDetailVersion = 0, restoreFlowSelection = false;
   var usageEngine = window.vertexUsage || (window.parent && window.parent.vertexLogs);
   function renderCosts() {
     if (!usageEngine) return;
@@ -222,14 +243,17 @@ function vertexDateRange(root, changed) {
     usageEngine.renderUsage(usageRoot, usageRows, { from: from, to: to }, usageEngine.aggregate);
   }
   function setMode(mode) {
+    restoreFlowSelection = reportMode === "flow" && mode === "logs";
     reportMode = mode;
-    content.hidden = mode !== "logs"; usageRoot.hidden = mode !== "costs";
-    ["view-logs","view-costs"].forEach(function (id) { var active = id === "view-" + mode, button = document.getElementById(id); button.classList.toggle("active", active); button.setAttribute("aria-pressed", String(active)); });
+    content.hidden = mode === "costs"; usageRoot.hidden = mode !== "costs";
+    ["view-logs","view-flow","view-costs"].forEach(function (id) { var active = id === "view-" + mode, button = document.getElementById(id); button.classList.toggle("active", active); button.setAttribute("aria-pressed", String(active)); });
     clear.hidden = mode !== "logs";
     if (mode === "costs") renderCosts();
+    if (lastReport) render(lastReport);
     selectionChanged();
   }
   document.getElementById("view-logs").onclick = function () { setMode("logs"); };
+  document.getElementById("view-flow").onclick = function () { setMode("flow"); };
   document.getElementById("view-costs").onclick = function () { setMode("costs"); };
   var selected = new Set();
   var clear = document.getElementById("clear-conversations");
@@ -858,9 +882,63 @@ function markdown(text, target) {
 
   // Session Logs shows every conversation by default; the place is a filter the reader chooses. The chat's
   // own Continue a chat list is the opposite: it offers only the place the chat is working in.
+  function showFlowDetail(prompt, node, inspector) {
+    var version = ++flowDetailVersion;
+    function show() {
+      if (version !== flowDetailVersion || !inspector.isConnected) return;
+      var detailPrompt = prompt;
+      if (node.kind === "checks" || node.kind === "review") {
+        var names = node.kind === "review" ? /^(Review)$/ : /^(Verification|Lint|Tests?)$/i;
+        var ids = new Set((prompt.details || []).filter(function (d) { return d.type === "tool" && names.test(d.name || ""); }).map(function (d) { return d.tool_id; }));
+        detailPrompt = Object.assign({}, prompt, { details: (prompt.details || []).filter(function (d) { return ids.has(d.tool_id); }), timeline: [] });
+      }
+      var rendered = conversation(detailPrompt);
+      var candidates = Array.prototype.slice.call(rendered.children);
+      var target = candidates.find(function (entry) {
+        var heading = entry.querySelector("summary");
+        return heading && (heading.textContent.indexOf(node.section || node.title) === 0 || node.section === "Steps" && heading.textContent.indexOf("Tools") === 0);
+      });
+      if (!target && node.kind === "answer" && prompt.failed) { inspector.appendChild(el("p", "error", "The request failed; open its recorded failure details below.")); inspector.appendChild(rendered); return; }
+      if (!target) { inspector.appendChild(el("p", "muted", "No detail body was logged for this stage.")); return; }
+      inspector.appendChild(target); target.open = true;
+    }
+    if (!prompt.lazy) { show(); return; }
+    var loading = el("p", "muted", "Loading…"); inspector.appendChild(loading);
+    var request = !waitingDetail[prompt.key];
+    if (request) waitingDetail[prompt.key] = [];
+    waitingDetail[prompt.key].push(function (reply) {
+      if (version !== flowDetailVersion || !inspector.isConnected) return;
+      if (reply.error) { loading.textContent = reply.error; return; }
+      Object.assign(prompt, reply.prompt, { lazy: false }); loading.remove(); show();
+    });
+    if (request) vscode.postMessage({ action: "promptDetail", key: prompt.key });
+  }
+  function flowView(root, sessions) {
+    if (flowDispose) { flowDispose(); flowDispose = null; }
+    flowDetailVersion++;
+    root.textContent = "";
+    if (!sessions.length) { root.appendChild(el("p", "muted", "No conversations match these filters.")); return; }
+    if (!sessions.some(function (s) { return s.id === flowSelectedId; })) flowSelectedId = sessions[0].id;
+    var tools = el("div", "list-tools"), previous = el("button", "", "←"), next = el("button", "", "→");
+    previous.title = "Previous conversation"; next.title = "Next conversation";
+    var picker = el("select", "log-context flow-selector"); picker.setAttribute("aria-label", "Conversation");
+    sessions.forEach(function (session) {
+      var option = el("option", "", time(session.start) + " · " + promptPreview(session.prompts)); option.value = session.id; picker.appendChild(option);
+    });
+    picker.value = flowSelectedId;
+    var index = sessions.findIndex(function (s) { return s.id === flowSelectedId; });
+    previous.disabled = index === 0; next.disabled = index === sessions.length - 1;
+    previous.onclick = function () { flowSelectedId = sessions[index - 1].id; flowView(root, sessions); };
+    next.onclick = function () { flowSelectedId = sessions[index + 1].id; flowView(root, sessions); };
+    picker.onchange = function () { flowSelectedId = picker.value; flowView(root, sessions); };
+    [previous,picker,next,el("span", "muted", (index + 1) + " / " + sessions.length + " conversations")].forEach(function (item) { tools.appendChild(item); }); root.appendChild(tools);
+    if (!window.vertexLogFlow) { root.appendChild(el("p", "error", "The flow renderer is unavailable. Switch to Logs to read this conversation.")); return; }
+    flowDispose = window.vertexLogFlow.mount(root, sessions[index], { details: showFlowDetail });
+  }
   var lastReport = null, listState = { query: "", hiddenKinds: {}, context: "" };
   vertexDateRange(document.getElementById("date-range"), function () { if (lastReport) render(lastReport); if (reportMode === "costs") renderCosts(); });
   function render(report) {
+    if (typeof flowDispose === "function") { flowDispose(); flowDispose = null; }
     var from = document.getElementById("from").value, to = document.getElementById("to").value;
     document.getElementById("date-error").textContent = from && to && from > to ? "From date must be on or before To date." : "";
     if (from && to && from > to) return;
@@ -887,7 +965,7 @@ function markdown(text, target) {
       var key = conversationId ? "conversation:" + conversationId : "file:" + source.id;
       var group = groups.get(key);
       if (!group) {
-        group = { id: source.id, start: source.start, end: source.end, fileIds: [], providers: [], models: [], prompts: [], usage: {}, costs: { model: {}, jev: {} }, context: null };
+        group = { id: source.id, start: source.start, end: source.end, fileIds: [], providers: [], models: [], prompts: [], usage: {}, costs: { model: {}, jev: {} }, context: null, toolCalls: 0 };
         groups.set(key, group);
       }
       // One conversation is held in one place, whichever of its files records it first.
@@ -896,7 +974,8 @@ function markdown(text, target) {
       group.start = Math.min(group.start, source.start); group.end = Math.max(group.end, source.end);
       if (!group.providers.includes(source.provider)) group.providers.push(source.provider);
       (source.models || []).forEach(function (model) { if (!group.models.includes(model)) group.models.push(model); });
-      group.prompts.push.apply(group.prompts, source.prompts.map(function (p, index) {
+      group.toolCalls += source.toolCalls || 0;
+       group.prompts.push.apply(group.prompts, source.prompts.map(function (p, index) {
         return Object.assign({}, p, { provider: source.provider, key: p.key || source.id + ":" + index });
       }));
       source.prompts.forEach(function (prompt) {
@@ -985,7 +1064,8 @@ function markdown(text, target) {
       { name: "Conversation", cls: "", width: null, value: function (s) { return String(promptPreview(s.prompts) || "").toLowerCase(); } },
       { name: "Prompts", cls: "num", width: 70, num: true, value: function (s) { return s.prompts.filter(chat).length || s.prompts.length; } },
       { name: "Providers", cls: "", width: 170, value: function (s) { return s.provider + " " + (s.models || []).join(" "); } },
-      { name: "New in", cls: "num", width: 75, num: true, value: function (s) { return newInput(s.usage); } },
+      { name: "Run", cls: "num", width: 55, num: true, value: function (s) { return s.toolCalls || 0; } },
+       { name: "New in", cls: "num", width: 75, num: true, value: function (s) { return newInput(s.usage); } },
       { name: "Out", cls: "num", width: 70, num: true, value: function (s) { return s.usage.output || 0; } },
       { name: "Cache read", cls: "num", width: 90, num: true, value: function (s) { return s.usage.cacheRead || 0; } },
       { name: "Cost USD", cls: "num", width: 140, num: true, value: function (s) { return s.usage.cost || 0; } },
@@ -1031,6 +1111,7 @@ function markdown(text, target) {
       if (models.length) { whoLabel.appendChild(document.createTextNode(" · ")); whoLabel.appendChild(el("span", "session-models", models.join(", "))); }
       who.appendChild(whoLabel);
       main.appendChild(who);
+      main.appendChild(el("td", "num", n(s.toolCalls)));
       main.appendChild(el("td", "num", n(newInput(s.usage))));
       main.appendChild(el("td", "num", n(s.usage.output)));
       main.appendChild(el("td", "num", n(s.usage.cacheRead)));
@@ -1067,11 +1148,12 @@ function markdown(text, target) {
         text: (s.prompts.map(function (p) { return p.text || ""; }).join(" ") + " " + s.provider + " " + models.join(" ")).toLowerCase() };
       // The questions' table is built the first time the conversation opens, and kept.
       record.toggle = function () {
+        if (typeof flowSelectedId !== "undefined") flowSelectedId = s.id;
         actionPanel.textContent="";actionPanel.hidden=!actions.children.length;
         if(actions.children.length){var selectedTitle=el("span","action-conversation",preview);selectedTitle.title=preview;actionPanel.appendChild(selectedTitle);actionPanel.appendChild(actions);}
         record.open = !record.open;
         caret.textContent = record.open ? "▾" : "▸";
-        if (record.open && !record.loaded) { record.loaded = true; body.appendChild(promptTable(s)); }
+        if (record.open && !record.loaded) { body.appendChild(promptTable(s)); record.loaded = true; }
         detail.hidden = !record.open;
       };
       title.addEventListener("click", record.toggle);
@@ -1094,6 +1176,7 @@ function markdown(text, target) {
       var where = want === "none" ? "without a recorded place" : want && held[want] ? contextLabel(held[want].context) : "";
       status.textContent = (shown === records.length ? records.length : shown + " of " + records.length)
         + " conversations in " + report.folder + (where ? " · showing " + where : "");
+      if (typeof reportMode !== "undefined" && reportMode === "flow") flowView(flowRoot, records.filter(function (r) { return !r.rows[0].hidden; }).map(function (r) { return r.item; }));
     };
     search.addEventListener("input", filter);
     if (contextSelect) contextSelect.addEventListener("change", filter);
@@ -1101,7 +1184,17 @@ function markdown(text, target) {
     var scroll = el("div", "table-scroll");
     scroll.appendChild(list);
     content.appendChild(scroll);
+    var flowRoot;
+    if (typeof reportMode !== "undefined" && reportMode === "flow") {
+      scroll.hidden = true; actionPanel.hidden = true;
+      flowRoot = el("div", "flow-root"); content.appendChild(flowRoot);
+    }
     filter();
+    if (typeof restoreFlowSelection !== "undefined" && restoreFlowSelection) {
+      restoreFlowSelection = false;
+      var restored = records.find(function (r) { return r.item.id === flowSelectedId && !r.rows[0].hidden; });
+      if (restored) restored.toggle();
+    }
     return records;
   }
 
@@ -1113,7 +1206,9 @@ function markdown(text, target) {
       { name: "Conversation", cls: "", width: null, value: function (p) { return String(p.text || "").toLowerCase(); } },
       { name: "Topic", cls: "", width: 70, value: function (p) { return p.topic && p.topic.id ? Number(p.topic.id.slice(6)) : 0; }, num: true },
       { name: "Model", cls: "", width: 150, value: function (p) { return (p.provider || "") + " " + (p.model || ""); } },
+      { name: "Run", cls: "num", width: 55, value: function (p) { return p.toolCalls || 0; }, num: true },
       { name: "Context ≈tok", cls: "num", width: 105, value: function (p) { return p.contextSize ? p.contextSize.estimatedTokens : -1; }, num: true },
+
       { name: "New in", cls: "num", width: 70, value: function (p) { return newInput(p.usage); }, num: true },
       { name: "Out", cls: "num", width: 65, value: function (p) { return p.usage.output || 0; }, num: true },
       { name: "Cache read", cls: "num", width: 90, value: function (p) { return p.usage.cacheRead || 0; }, num: true },
@@ -1198,6 +1293,7 @@ function markdown(text, target) {
       identity.appendChild(modelLabel);
       if (p.branch && p.branch !== "main") identity.appendChild(el("div", "muted", "Branch " + p.branch));
       row.appendChild(identity);
+      row.appendChild(el("td", "num", n(p.toolCalls)));
       var context = el("td", "num", p.contextSize ? "≈" + n(p.contextSize.estimatedTokens) : "—");
       context.title = p.contextSize ? "Prepared context before sending: " + n(p.contextSize.characters) + " characters. Approximate tokens = characters / 4; not model-tokenizer counts. Includes instructions, history, current prompt, tools and answer schema. Excludes provider-added wrappers, binary images and later tool steps."
         : "Context size was not recorded in this log. Cumulative usage cannot reconstruct it.";

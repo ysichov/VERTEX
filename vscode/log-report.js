@@ -86,7 +86,7 @@ function parseSession(text, file) {
   // The file's name without folder or extension, read as text: Eclipse parses logs in its browser, without Node's path.
   const name = String(file).replace(/^.*[\\/]/, "").replace(/\.jsonl$/, "");
   const provider = name.replace(/_\d{8}_\d{6}(?:_[0-9a-f]+)?$/, "");
-  const session = { id: name, provider, conversation: null, context: null, start: null, end: null, usage: emptyUsage(), prompts: [], models: [] };
+  const session = { id: name, provider, conversation: null, context: null, start: null, end: null, usage: emptyUsage(), prompts: [], models: [], toolCalls: 0 };
   const seen = new Set();
   const toolCalls = new Map();
   const nativeCosts = new Map(), reportedCosts = new Set();
@@ -184,7 +184,7 @@ function parseSession(text, file) {
         for (const block of content) if (block?.type === "tool_result") {
           const call = toolCalls.get(block.tool_use_id);
           const reference = !block.is_error && recordingReference(block.vertex_recording || block.content);
-          const detail = { type: "tool result", tool_id: block.tool_use_id || "", text: prettyJson(block.content || "") };
+          const detail = { type: "tool result", tool_id: block.tool_use_id || "", text: prettyJson(block.content || ""), ...(block.is_error ? { failed: true } : {}) };
           if (block.vertex_objects?.length) detail.objects = block.vertex_objects;
           if (reference) (call || detail).recording = reference;
           current.details.push(detail);
@@ -225,6 +225,7 @@ function parseSession(text, file) {
           if (block.vertex_objects?.length) detail.objects = block.vertex_objects;
           if (detail.tool_id) toolCalls.set(detail.tool_id, detail);
           current.details.push(detail);
+          session.toolCalls++;
           current.timeline.push({ kind: "tool", tool_id: detail.tool_id });
         }
       }
@@ -323,8 +324,10 @@ function conversationList(report, place) {
     group.prompts.sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key));
     const first = group.prompts[0], last = group.prompts[group.prompts.length - 1];
     const preview = text => String(text || "").replace(/\s+/g, " ").slice(0, 180);
+    const models = [...new Set(group.prompts.map(prompt => String(prompt.model || "").trim()).filter(Boolean))];
     return { id: last.sessionId, title: preview(first.text), lastQuestion: preview(last.text),
-      time: last.time, count: group.prompts.length, providers: [...group.providers].join(" · ") };
+      time: last.time, count: group.prompts.length, providers: [...group.providers].join(" · "),
+      model: models.length > 1 ? "multi use" : (models[0] || "") };
   }).sort((a, b) => (b.time || 0) - (a.time || 0));
 }
 
@@ -441,7 +444,7 @@ async function tagTopics(vscode, sessionId) {
 /** The report as the list shows it: every prompt without the parts only an opened prompt needs. */
 function listReport(report) {
   return { ...report, sessions: report.sessions.map(session => ({ ...session,
-    prompts: session.prompts.map(({ details, timeline, decision, ...prompt }) => ({ ...prompt, text: require("./topic-routing").observations(prompt.text).question.slice(0,2000),
+    prompts: session.prompts.map(({ details, timeline, decision, ...prompt }) => ({ ...prompt, flow: require("./log-flow").summary({ ...prompt, details, timeline, decision }), toolCalls: (details || []).filter(d => d.type === "tool").length, text: require("./topic-routing").observations(prompt.text).question.slice(0,2000),
       sections: ["User",...(details?.some(d=>d.type==="answer")?["Model answer"]:[]),
         ...(details?.some(d=>d.type==="tool"||d.type==="tool result")||timeline?.some(t=>t.kind==="model")?["Steps"]:[]),
         ...(details||[]).filter(d=>!["answer","tool","tool result"].includes(d.type)).map(d=>d.snapshot?(d.snapshot.kind==="uml"?"Recorded UML":"Recorded metrics"):d.type==="Model request and context"?"Request and context":d.type)], lazy: true })) })) };
@@ -470,6 +473,7 @@ function open(vscode, options = {}) {
   const nonce = crypto.randomBytes(16).toString("hex");
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
+    .replace("</head>", () => '<script nonce="' + nonce + '">' + fs.readFileSync(path.join(__dirname, "resources", "three.min.js"), "utf8").replace(/<\/script/gi, "<\\/script") + '</script><script nonce="' + nonce + '">' + fs.readFileSync(path.join(__dirname, "log-flow.js"), "utf8").replace(/<\/script/gi, "<\\/script") + '</script></head>')
     .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
     .replace("</head>", () => '<script nonce="' + nonce + '">' + require("./usage-report").browserEngine() + 'window.vertexCanContinue = true;window.vertexCanReadVersions = ' + Boolean(options.readVersion) + ';window.vertexCanTagTopics = ' + require("./review-jev").enabled(vscode) + ';</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.

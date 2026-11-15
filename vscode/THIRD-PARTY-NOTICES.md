@@ -436,6 +436,516 @@ their `LICENSE` and `COPYING` texts accompany them.
 - Licence: `MIT`.
 - Licence/notice text: `node_modules/xpath/LICENSE`.
 
+## @eslint-community/eslint-utils 4.10.1
+
+- Installed version: `4.10.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/@eslint-community/eslint-utils/LICENSE`.
+
+## @eslint-community/regexpp 4.12.3
+
+- Installed version: `4.12.3`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/@eslint-community/regexpp/LICENSE`.
+
+## @eslint/config-array 0.21.2
+
+- Installed version: `0.21.2`.
+- Licence: `Apache-2.0`.
+- Licence/notice text: `node_modules/@eslint/config-array/LICENSE`.
+
+## @eslint/config-helpers 0.4.2
+
+- Installed version: `0.4.2`.
+- Licence: `Apache-2.0`.
+- Licence/notice text: `node_modules/@eslint/config-helpers/LICENSE`.
+
+## @eslint/core 0.17.0
+
+- Installed version: `0.17.0`.
+- Licence: `Apache-2.0`.
+- Licence/notice text: `node_modules/@eslint/core/LICENSE`.
+
+## @eslint/eslintrc 3.3.7
+
+- Installed version: `3.3.7`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/@eslint/eslintrc/LICENSE`.
+
+## @eslint/js 9.39.1
+
+- Installed version: `9.39.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/@eslint/js/LICENSE`.
+
+## @eslint/object-schema 2.1.7
+
+- Installed version: `2.1.7`.
+- Licence: `Apache-2.0`.
+- Licence/notice text: `node_modules/@eslint/object-schema/LICENSE`.
+
+## @eslint/plugin-kit 0.4.1
+
+- Installed version: `0.4.1`.
+- Licence: `Apache-2.0`.
+- Licence/notice text: `node_modules/@eslint/plugin-kit/LICENSE`.
+
+## @humanfs/core 0.19.2
+
+- Installed version: `0.19.2`.
+- Licence: `Apache-2.0`.
+- Licence/notice text: `node_modules/@humanfs/core/LICENSE`.
+
+## @humanfs/node 0.16.8
+
+- Installed version: `0.16.8`.
+- Licence: `Apache-2.0`.
+- Licence/notice text: `node_modules/@humanfs/node/LICENSE`.
+
+## @humanfs/types 0.15.0
+
+- Installed version: `0.15.0`.
+- Licence: `Apache-2.0`.
+- Licence/notice text: see the package metadata.
+
+## @humanwhocodes/module-importer 1.0.1
+
+- Installed version: `1.0.1`.
+- Licence: `Apache-2.0`.
+- Licence/notice text: `node_modules/@humanwhocodes/module-importer/LICENSE`.
+
+## @humanwhocodes/retry 0.4.3
+
+- Installed version: `0.4.3`.
+- Licence: `Apache-2.0`.
+- Licence/notice text: `node_modules/@humanwhocodes/retry/LICENSE`.
+
+## @types/estree 1.0.10
+
+- Installed version: `1.0.10`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/@types/estree/LICENSE`.
+
+## @types/json-schema 7.0.15
+
+- Installed version: `7.0.15`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/@types/json-schema/LICENSE`.
+
+## acorn 8.19.0
+
+- Installed version: `8.19.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/acorn/LICENSE`.
+
+## acorn-jsx 5.3.2
+
+- Installed version: `5.3.2`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/acorn-jsx/LICENSE`.
+
+## ajv 6.15.0
+
+- Installed version: `6.15.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/ajv/LICENSE`.
+
+## ansi-styles 4.3.0
+
+- Installed version: `4.3.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/ansi-styles/license`.
+
+## argparse 2.0.1
+
+- Installed version: `2.0.1`.
+- Licence: `Python-2.0`.
+- Licence/notice text: `node_modules/argparse/LICENSE`.
+
+## balanced-match 1.0.2
+
+- Installed version: `1.0.2`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/balanced-match/LICENSE.md`.
+
+## brace-expansion 1.1.22
+
+- Installed version: `1.1.22`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/brace-expansion/LICENSE`.
+
+## callsites 3.1.0
+
+- Installed version: `3.1.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/callsites/license`.
+
+## chalk 4.1.2
+
+- Installed version: `4.1.2`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/chalk/license`.
+
+## color-convert 2.0.1
+
+- Installed version: `2.0.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/color-convert/LICENSE`.
+
+## color-name 1.1.4
+
+- Installed version: `1.1.4`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/color-name/LICENSE`.
+
+## concat-map 0.0.1
+
+- Installed version: `0.0.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/concat-map/LICENSE`.
+
+## cross-spawn 7.0.6
+
+- Installed version: `7.0.6`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/cross-spawn/LICENSE`.
+
+## deep-is 0.1.4
+
+- Installed version: `0.1.4`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/deep-is/LICENSE`.
+
+## escape-string-regexp 4.0.0
+
+- Installed version: `4.0.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/escape-string-regexp/license`.
+
+## eslint 9.39.1
+
+- Installed version: `9.39.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/eslint/LICENSE`.
+
+## eslint-scope 8.4.0
+
+- Installed version: `8.4.0`.
+- Licence: `BSD-2-Clause`.
+- Licence/notice text: `node_modules/eslint-scope/LICENSE`.
+
+## eslint-visitor-keys 3.4.3
+
+- Installed version: `3.4.3`.
+- Licence: `Apache-2.0`.
+- Licence/notice text: `node_modules/@eslint-community/eslint-utils/node_modules/eslint-visitor-keys/LICENSE`.
+
+## eslint-visitor-keys 4.2.1
+
+- Installed version: `4.2.1`.
+- Licence: `Apache-2.0`.
+- Licence/notice text: `node_modules/eslint-visitor-keys/LICENSE`.
+
+## espree 10.4.0
+
+- Installed version: `10.4.0`.
+- Licence: `BSD-2-Clause`.
+- Licence/notice text: `node_modules/espree/LICENSE`.
+
+## esquery 1.7.0
+
+- Installed version: `1.7.0`.
+- Licence: `BSD-3-Clause`.
+- Licence/notice text: `node_modules/esquery/license.txt`.
+
+## esrecurse 4.3.0
+
+- Installed version: `4.3.0`.
+- Licence: `BSD-2-Clause`.
+- Licence/notice text: see the package metadata.
+
+## estraverse 5.3.0
+
+- Installed version: `5.3.0`.
+- Licence: `BSD-2-Clause`.
+- Licence/notice text: `node_modules/estraverse/LICENSE.BSD`.
+
+## esutils 2.0.3
+
+- Installed version: `2.0.3`.
+- Licence: `BSD-2-Clause`.
+- Licence/notice text: `node_modules/esutils/LICENSE.BSD`.
+
+## fast-deep-equal 3.1.3
+
+- Installed version: `3.1.3`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/fast-deep-equal/LICENSE`.
+
+## fast-json-stable-stringify 2.1.0
+
+- Installed version: `2.1.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/fast-json-stable-stringify/LICENSE`.
+
+## fast-levenshtein 2.0.6
+
+- Installed version: `2.0.6`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/fast-levenshtein/LICENSE.md`.
+
+## file-entry-cache 8.0.0
+
+- Installed version: `8.0.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/file-entry-cache/LICENSE`.
+
+## find-up 5.0.0
+
+- Installed version: `5.0.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/find-up/license`.
+
+## flat-cache 4.0.1
+
+- Installed version: `4.0.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/flat-cache/LICENSE`.
+
+## flatted 3.4.4
+
+- Installed version: `3.4.4`.
+- Licence: `ISC`.
+- Licence/notice text: `node_modules/flatted/LICENSE`.
+
+## glob-parent 6.0.2
+
+- Installed version: `6.0.2`.
+- Licence: `ISC`.
+- Licence/notice text: `node_modules/glob-parent/LICENSE`.
+
+## globals 14.0.0
+
+- Installed version: `14.0.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/@eslint/eslintrc/node_modules/globals/license`.
+
+## globals 16.5.0
+
+- Installed version: `16.5.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/globals/license`.
+
+## has-flag 4.0.0
+
+- Installed version: `4.0.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/has-flag/license`.
+
+## ignore 5.3.2
+
+- Installed version: `5.3.2`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/ignore/LICENSE-MIT`.
+
+## import-fresh 3.3.1
+
+- Installed version: `3.3.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/import-fresh/license`.
+
+## imurmurhash 0.1.4
+
+- Installed version: `0.1.4`.
+- Licence: `MIT`.
+- Licence/notice text: see the package metadata.
+
+## is-extglob 2.1.1
+
+- Installed version: `2.1.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/is-extglob/LICENSE`.
+
+## is-glob 4.0.3
+
+- Installed version: `4.0.3`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/is-glob/LICENSE`.
+
+## isexe 2.0.0
+
+- Installed version: `2.0.0`.
+- Licence: `ISC`.
+- Licence/notice text: `node_modules/isexe/LICENSE`.
+
+## js-yaml 4.3.2
+
+- Installed version: `4.3.2`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/js-yaml/LICENSE`.
+
+## json-buffer 3.0.1
+
+- Installed version: `3.0.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/json-buffer/LICENSE`.
+
+## json-schema-traverse 0.4.1
+
+- Installed version: `0.4.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/json-schema-traverse/LICENSE`.
+
+## json-stable-stringify-without-jsonify 1.0.1
+
+- Installed version: `1.0.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/json-stable-stringify-without-jsonify/LICENSE`.
+
+## keyv 4.5.4
+
+- Installed version: `4.5.4`.
+- Licence: `MIT`.
+- Licence/notice text: see the package metadata.
+
+## levn 0.4.1
+
+- Installed version: `0.4.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/levn/LICENSE`.
+
+## locate-path 6.0.0
+
+- Installed version: `6.0.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/locate-path/license`.
+
+## lodash.merge 4.6.2
+
+- Installed version: `4.6.2`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/lodash.merge/LICENSE`.
+
+## minimatch 3.1.5
+
+- Installed version: `3.1.5`.
+- Licence: `ISC`.
+- Licence/notice text: `node_modules/minimatch/LICENSE`.
+
+## natural-compare 1.4.0
+
+- Installed version: `1.4.0`.
+- Licence: `MIT`.
+- Licence/notice text: see the package metadata.
+
+## optionator 0.9.4
+
+- Installed version: `0.9.4`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/optionator/LICENSE`.
+
+## p-limit 3.1.0
+
+- Installed version: `3.1.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/p-limit/license`.
+
+## p-locate 5.0.0
+
+- Installed version: `5.0.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/p-locate/license`.
+
+## parent-module 1.0.1
+
+- Installed version: `1.0.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/parent-module/license`.
+
+## path-exists 4.0.0
+
+- Installed version: `4.0.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/path-exists/license`.
+
+## path-key 3.1.1
+
+- Installed version: `3.1.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/path-key/license`.
+
+## prelude-ls 1.2.1
+
+- Installed version: `1.2.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/prelude-ls/LICENSE`.
+
+## punycode 2.3.1
+
+- Installed version: `2.3.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/punycode/LICENSE-MIT.txt`.
+
+## resolve-from 4.0.0
+
+- Installed version: `4.0.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/resolve-from/license`.
+
+## shebang-command 2.0.0
+
+- Installed version: `2.0.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/shebang-command/license`.
+
+## shebang-regex 3.0.0
+
+- Installed version: `3.0.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/shebang-regex/license`.
+
+## strip-json-comments 3.1.1
+
+- Installed version: `3.1.1`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/strip-json-comments/license`.
+
+## supports-color 7.2.0
+
+- Installed version: `7.2.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/supports-color/license`.
+
+## type-check 0.4.0
+
+- Installed version: `0.4.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/type-check/LICENSE`.
+
+## uri-js 4.4.1
+
+- Installed version: `4.4.1`.
+- Licence: `BSD-2-Clause`.
+- Licence/notice text: `node_modules/uri-js/LICENSE`.
+
+## which 2.0.2
+
+- Installed version: `2.0.2`.
+- Licence: `ISC`.
+- Licence/notice text: `node_modules/which/LICENSE`.
+
+## word-wrap 1.2.5
+
+- Installed version: `1.2.5`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/word-wrap/LICENSE`.
+
+## yocto-queue 0.1.0
+
+- Installed version: `0.1.0`.
+- Licence: `MIT`.
+- Licence/notice text: `node_modules/yocto-queue/license`.
+
 ## Vendored open-abap-core
 
 The vendored DDIC subset is from `open-abap/open-abap-core`, revision

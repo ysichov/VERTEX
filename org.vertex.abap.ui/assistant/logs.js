@@ -29,7 +29,7 @@ var require=__vertexRequire;
 "use strict";
 // What the Eclipse Session Logs page calls as window.vertexLogs: VS Code's log reading (log-report.js), its snapshot
 // page (log-snapshot.js) and its reading of a logged object (session-log.js). Java reads and deletes the files.
-module.exports = { parseUsage: __vertexRequire(1).parseUsage, aggregate: __vertexRequire(1).aggregate, renderUsage: __vertexRequire(1).renderUsage, parseSession: __vertexRequire(5).parseSession, snapshotHtml: __vertexRequire(7).html,
+module.exports = { parseUsage: __vertexRequire(1).parseUsage, aggregate: __vertexRequire(1).aggregate, renderUsage: __vertexRequire(1).renderUsage, parseSession: __vertexRequire(5).parseSession, snapshotHtml: __vertexRequire(8).html,
   objectReference: __vertexRequire(2).objectReference,
   loggedSource: ((() => {function loggedSource(sql) {
   if (typeof sql !== "string" || sql.length > 100000 || !/^\s*SELECT\b/i.test(sql)) throw new Error("The log does not contain a SELECT.");
@@ -172,7 +172,7 @@ function renderUsage(root,rows,range,aggregate){
     th.onclick=toggle;th.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();toggle();}};head.appendChild(th);});table.appendChild(head);
    const shown=sort?[...data].sort((a,b)=>{const x=cols[sort.index][1](a),y=cols[sort.index][1](b),d=typeof x==="string"?x.localeCompare(String(y||"")):x-y;return sort.desc?-d:d;}):data;
   for(const row of shown){const tr=make("tr");[row.provider,...(model?[row.model]:[]),number(row.calls),number(row.input),number(row.output),number(row.cacheRead),number(row.cacheWrite),money(row),number(row.missing)].forEach((value,index)=>{const cell=make("td",value);if(index>=(model?2:1))cell.className="num";tr.appendChild(cell);});table.appendChild(tr);}
-  scroll.appendChild(table);root.appendChild(scroll);
+  const foot=make("tfoot"),totalRow=make("tr");totalRow.style.fontWeight="700";["Total",...(model?[""]:[]),number(total.calls),number(total.input),number(total.output),number(total.cacheRead),number(total.cacheWrite),money(total),number(total.missing)].forEach((value,index)=>{const cell=make("td",value);if(index>=(model?2:1))cell.className="num";totalRow.appendChild(cell);});foot.appendChild(totalRow);table.appendChild(foot);scroll.appendChild(table);root.appendChild(scroll);
  }
 }
 function browserEngine(){return "window.vertexUsage={aggregate:"+aggregate.toString()+",renderUsage:"+renderUsage.toString()+"};const costKind="+costKind.toString()+";";}
@@ -190,8 +190,8 @@ const n=value=>Number(value||0).toLocaleString(),money=row=>row.known?(row.estim
 const iso=input=>input.value;
 ${dateScript}
 const sorts={};
-function table(target,data,model,firstLabel='Provider'){target.replaceChildren();const t=document.createElement('table'),head=document.createElement('tr'),sort=sorts[target.id]||null;const cols=[[firstLabel,r=>r.provider],...(model?[['Model',r=>r.model]]:[]),['Records',r=>r.calls],['Input',r=>r.input],['Output',r=>r.output],['Cache read',r=>r.cacheRead],['Cache write',r=>r.cacheWrite],['Recorded USD',r=>r.known?r.cost:-1],['Missing cost',r=>r.missing]];cols.forEach(([label],index)=>{const active=sort&&sort.index===index,th=document.createElement('th');th.textContent=label+(active?(sort.desc?' ▼':' ▲'):'');th.style.cursor='pointer';th.tabIndex=0;th.title='Sort by '+label;th.setAttribute('aria-sort',active?(sort.desc?'descending':'ascending'):'none');const toggle=()=>{sorts[target.id]={index,desc:active?!sort.desc:index>=(model?2:1)};render();};th.onclick=toggle;th.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();toggle();}};head.appendChild(th);});t.appendChild(head);const shown=sort?[...data].sort((a,b)=>{const x=cols[sort.index][1](a),y=cols[sort.index][1](b),d=typeof x==='string'?x.localeCompare(String(y||'')):x-y;return sort.desc?-d:d;}):data;shown.forEach(row=>{const tr=document.createElement('tr');[row.provider,...(model?[row.model]:[]),n(row.calls),n(row.input),n(row.output),n(row.cacheRead),n(row.cacheWrite),money(row),n(row.missing)].forEach((value,i)=>{const td=document.createElement('td');td.textContent=value;if(model&&i===1)td.className='model';tr.appendChild(td);});t.appendChild(tr);});target.appendChild(t);}
-function render(){const from=iso($('from')),to=iso($('to'));if(from===null||to===null||from&&to&&from>to){$('error').textContent='From date must be on or before To date.';return;}$('error').textContent='';const result=aggregate(rows,{from,to,provider:$('provider').value,operation:$('operation').value}),t=result.total;$('total').textContent='Total: '+n(t.input+t.output+t.cacheRead+t.cacheWrite)+' tokens · in '+n(t.input)+' · out '+n(t.output)+' · cache read '+n(t.cacheRead)+' · cache write '+n(t.cacheWrite)+' · '+money(t)+' · Models: '+money(result.costs.model)+' · Jev: '+money(result.costs.jev)+' · missing cost: '+n(t.missing);table($('activities'),result.activities,false,'Activity');table($('providers'),result.providers,false);table($('models'),result.models,true);}
+function table(target,data,model,firstLabel='Provider',totalRow){target.replaceChildren();const t=document.createElement('table'),head=document.createElement('tr'),sort=sorts[target.id]||null;const cols=[[firstLabel,r=>r.provider],...(model?[['Model',r=>r.model]]:[]),['Records',r=>r.calls],['Input',r=>r.input],['Output',r=>r.output],['Cache read',r=>r.cacheRead],['Cache write',r=>r.cacheWrite],['Recorded USD',r=>r.known?r.cost:-1],['Missing cost',r=>r.missing]];cols.forEach(([label],index)=>{const active=sort&&sort.index===index,th=document.createElement('th');th.textContent=label+(active?(sort.desc?' ▼':' ▲'):'');th.style.cursor='pointer';th.tabIndex=0;th.title='Sort by '+label;th.setAttribute('aria-sort',active?(sort.desc?'descending':'ascending'):'none');const toggle=()=>{sorts[target.id]={index,desc:active?!sort.desc:index>=(model?2:1)};render();};th.onclick=toggle;th.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();toggle();}};head.appendChild(th);});t.appendChild(head);const shown=sort?[...data].sort((a,b)=>{const x=cols[sort.index][1](a),y=cols[sort.index][1](b),d=typeof x==='string'?x.localeCompare(String(y||'')):x-y;return sort.desc?-d:d;}):data;shown.forEach(row=>{const tr=document.createElement('tr');[row.provider,...(model?[row.model]:[]),n(row.calls),n(row.input),n(row.output),n(row.cacheRead),n(row.cacheWrite),money(row),n(row.missing)].forEach((value,i)=>{const td=document.createElement('td');td.textContent=value;if(model&&i===1)td.className='model';tr.appendChild(td);});t.appendChild(tr);});const foot=document.createElement('tfoot'),tr=document.createElement('tr');tr.style.fontWeight='700';['Total',...(model?['']:[]),n(totalRow.calls),n(totalRow.input),n(totalRow.output),n(totalRow.cacheRead),n(totalRow.cacheWrite),money(totalRow),n(totalRow.missing)].forEach((value,i)=>{const td=document.createElement('td');td.textContent=value;if(model&&i===1)td.className='model';tr.appendChild(td);});foot.appendChild(tr);t.appendChild(foot);target.appendChild(t);}
+function render(){const from=iso($('from')),to=iso($('to'));if(from===null||to===null||from&&to&&from>to){$('error').textContent='From date must be on or before To date.';return;}$('error').textContent='';const result=aggregate(rows,{from,to,provider:$('provider').value,operation:$('operation').value}),t=result.total;$('total').textContent='Total: '+n(t.input+t.output+t.cacheRead+t.cacheWrite)+' tokens · in '+n(t.input)+' · out '+n(t.output)+' · cache read '+n(t.cacheRead)+' · cache write '+n(t.cacheWrite)+' · '+money(t)+' · Models: '+money(result.costs.model)+' · Jev: '+money(result.costs.jev)+' · missing cost: '+n(t.missing);table($('activities'),result.activities,false,'Activity',t);table($('providers'),result.providers,false,'Provider',t);table($('models'),result.models,true,'Provider',t);}
 vertexDateRange($('date-range'),render);['provider','operation'].forEach(id=>$(id).addEventListener('input',render));$('refresh').onclick=()=>api.postMessage({action:'refresh'});$('folder').onclick=()=>api.postMessage({action:'chooseFolder'});$('logs').onclick=()=>api.postMessage({action:'logs'});
 window.addEventListener('message',event=>{const m=event.data||{};if(m.error){$('error').textContent=m.error;return;}if(m.data){rows=m.data.rows||[];$('source').textContent=m.data.configured?rows.length+' usage records in '+m.data.folder:'Choose the AI log folder to view recorded usage.';const selected=$('provider').value;$('provider').replaceChildren(new Option('All providers',''));[...new Set(rows.map(row=>row.provider))].sort().forEach(provider=>$('provider').add(new Option(provider,provider)));$('provider').value=selected;const selectedOperation=$('operation').value;$('operation').replaceChildren(new Option('All activities',''));[...new Set(rows.map(row=>row.operation||'Chat'))].sort().forEach(value=>$('operation').add(new Option(value,value)));$('operation').value=selectedOperation;render();if(m.data.errors?.length)$('error').textContent=m.data.errors.join('\n');}});api.postMessage({action:'ready'});
 </script></body></html>`;}
@@ -903,7 +903,7 @@ function parseSession(text, file) {
   // The file's name without folder or extension, read as text: Eclipse parses logs in its browser, without Node's path.
   const name = String(file).replace(/^.*[\\/]/, "").replace(/\.jsonl$/, "");
   const provider = name.replace(/_\d{8}_\d{6}(?:_[0-9a-f]+)?$/, "");
-  const session = { id: name, provider, conversation: null, context: null, start: null, end: null, usage: emptyUsage(), prompts: [], models: [] };
+  const session = { id: name, provider, conversation: null, context: null, start: null, end: null, usage: emptyUsage(), prompts: [], models: [], toolCalls: 0 };
   const seen = new Set();
   const toolCalls = new Map();
   const nativeCosts = new Map(), reportedCosts = new Set();
@@ -1001,7 +1001,7 @@ function parseSession(text, file) {
         for (const block of content) if (block?.type === "tool_result") {
           const call = toolCalls.get(block.tool_use_id);
           const reference = !block.is_error && recordingReference(block.vertex_recording || block.content);
-          const detail = { type: "tool result", tool_id: block.tool_use_id || "", text: prettyJson(block.content || "") };
+          const detail = { type: "tool result", tool_id: block.tool_use_id || "", text: prettyJson(block.content || ""), ...(block.is_error ? { failed: true } : {}) };
           if (block.vertex_objects?.length) detail.objects = block.vertex_objects;
           if (reference) (call || detail).recording = reference;
           current.details.push(detail);
@@ -1042,6 +1042,7 @@ function parseSession(text, file) {
           if (block.vertex_objects?.length) detail.objects = block.vertex_objects;
           if (detail.tool_id) toolCalls.set(detail.tool_id, detail);
           current.details.push(detail);
+          session.toolCalls++;
           current.timeline.push({ kind: "tool", tool_id: detail.tool_id });
         }
       }
@@ -1140,8 +1141,10 @@ function conversationList(report, place) {
     group.prompts.sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key));
     const first = group.prompts[0], last = group.prompts[group.prompts.length - 1];
     const preview = text => String(text || "").replace(/\s+/g, " ").slice(0, 180);
+    const models = [...new Set(group.prompts.map(prompt => String(prompt.model || "").trim()).filter(Boolean))];
     return { id: last.sessionId, title: preview(first.text), lastQuestion: preview(last.text),
-      time: last.time, count: group.prompts.length, providers: [...group.providers].join(" · ") };
+      time: last.time, count: group.prompts.length, providers: [...group.providers].join(" · "),
+      model: models.length > 1 ? "multi use" : (models[0] || "") };
   }).sort((a, b) => (b.time || 0) - (a.time || 0));
 }
 
@@ -1312,7 +1315,7 @@ function observations(content,images=[]){
 /** The report as the list shows it: every prompt without the parts only an opened prompt needs. */
 function listReport(report) {
   return { ...report, sessions: report.sessions.map(session => ({ ...session,
-    prompts: session.prompts.map(({ details, timeline, decision, ...prompt }) => ({ ...prompt, text: ((() => {const clip=(s,n)=>String(s||'').slice(0,n);
+    prompts: session.prompts.map(({ details, timeline, decision, ...prompt }) => ({ ...prompt, flow: __vertexRequire(6).summary({ ...prompt, details, timeline, decision }), toolCalls: (details || []).filter(d => d.type === "tool").length, text: ((() => {const clip=(s,n)=>String(s||'').slice(0,n);
 function observations(content,images=[]){
  const text=String(content||''),marker=text.indexOf('\n\nScreenshot observations (');
  let descriptions=Array.isArray(images)?images.map(x=>x?.description).filter(x=>typeof x==='string'&&x.trim()):[];
@@ -1395,10 +1398,11 @@ function open(vscode, options = {}) {
   const nonce = crypto.randomBytes(16).toString("hex");
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
-    .replace("</head>", () => "<style>" + __vertexRequire(6).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
+    .replace("</head>", () => '<script nonce="' + nonce + '">' + fs.readFileSync(path.join(__dirname, "resources", "three.min.js"), "utf8").replace(/<\/script/gi, "<\\/script") + '</script><script nonce="' + nonce + '">' + fs.readFileSync(path.join(__dirname, "log-flow.js"), "utf8").replace(/<\/script/gi, "<\\/script") + '</script></head>')
+    .replace("</head>", () => "<style>" + __vertexRequire(7).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
     .replace("</head>", () => '<script nonce="' + nonce + '">' + __vertexRequire(1).browserEngine() + 'window.vertexCanContinue = true;window.vertexCanReadVersions = ' + Boolean(options.readVersion) + ';window.vertexCanTagTopics = ' + (new Proxy({}, {get: () => () => {throw new Error('Decision provider selection belongs to the host');}})).enabled(vscode) + ';</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
-    .replace("</head>", () => "<style>" + __vertexRequire(6).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
+    .replace("</head>", () => "<style>" + __vertexRequire(7).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
   // The page gets the list only - each prompt without its details, steps and Jev input - and asks for one prompt's
   // full record when it is opened: the whole log folder can be tens of megabytes, too much to hold in a webview.
   let full = null, promptIndex = new Map();
@@ -1444,7 +1448,7 @@ function open(vscode, options = {}) {
       } catch(error){vscode.window.showErrorMessage("VERTEX: "+error.message);}
     }
     if (message?.action === "openSnapshot") {
-      try { __vertexRequire(7).open(vscode, message.snapshot); }
+      try { __vertexRequire(8).open(vscode, message.snapshot); }
       catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }
     if (message?.action === "openScreenshot") {
@@ -1508,6 +1512,168 @@ function register(vscode, context, options) {
 }
 
 module.exports = { listReport, tagTopics, parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns, conversationList, currentPlace, placeKey };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+
+// The log's lightweight graphical index and browser renderer. No source/answer bodies
+// are copied into the index; details use the existing promptDetail bridge.
+(function (root) {
+  function summary(prompt) {
+    const details = prompt.details || [], timeline = prompt.timeline || [];
+    const calls = details.filter(d => d.type === "tool");
+    const checks = calls.filter(d => /^(?:Verification|Lint|Tests?)$/i.test(d.name || ""));
+    const reviews = calls.filter(d => d.name === "Review");
+    const jev = details.filter(d => /Jev|Orchestrator.*(?:plan|selection)/i.test(d.type || ""));
+    if (!jev.length && prompt.decision) jev.push({ type: "Jev decision", section: "Model answer" });
+    const resultOf = call => details.find(d => d.type === "tool result" && d.tool_id === call.tool_id);
+    const stateOf = call => {
+      const result = resultOf(call), text = result?.text || "";
+      if (/automatic checks: FAILED/.test(text)) return "failed";
+      if (/automatic checks: UNVERIFIED/.test(text)) return "unverified";
+      if (/automatic checks: PASSED/.test(text)) return "passed";
+      if (result?.failed) return "failed";
+      return result ? "recorded" : "unknown";
+    };
+    const models = timeline.filter(t => t.kind === "model");
+    return {
+      jev: jev.map(d => ({ label: d.type, ...(d.section ? { section: d.section } : {}) })),
+      models: models.length, cliTurns: models.filter(t => t.usageScope === "cli_turn").length,
+      tools: calls.filter(d => !checks.includes(d) && !reviews.includes(d)).length,
+      checks: checks.map(d => ({ id: d.tool_id, label: d.name, state: stateOf(d) })),
+      reviews: reviews.map(d => ({ id: d.tool_id, label: "Review", state: "recorded" })),
+      answer: details.some(d => d.type === "answer"), failed: Boolean(prompt.failed)
+    };
+  }
+
+  function stages(prompt) {
+    const flow = prompt.flow || summary(prompt);
+    const finalCheck = flow.checks[flow.checks.length - 1];
+    return [
+      { kind: "prompt", present: true, title: "Prompt", label: String(prompt.text || "(prompt text not logged)").replace(/\s+/g, " ").slice(0, 110), section: "User", state: "recorded" },
+      { kind: "jev", present: flow.jev.length > 0, title: "Jev", label: flow.jev.map(x => x.label).join(" · "), section: flow.jev[0]?.section || flow.jev[0]?.label, state: "recorded" },
+      { kind: "steps", present: flow.models > 0 || flow.tools > 0, title: "LLM steps", label: (flow.cliTurns ? flow.cliTurns + " Codex turn(s) · internal calls unknown" : flow.models + " model call(s)") + " · " + flow.tools + " tools", section: "Steps", state: "recorded" },
+      { kind: "checks", present: flow.checks.length > 0, title: "Checks", label: finalCheck ? (finalCheck.state === "unknown" ? "Result not logged" : finalCheck.state.toUpperCase()) + " · " + flow.checks.length + " run(s)" : "", section: "Steps", state: finalCheck?.state || "unknown" },
+      { kind: "answer", present: flow.failed || flow.answer, title: "Answer", label: flow.failed ? "Request failed" : "Model answer", section: "Model answer", state: flow.failed ? "failed" : "recorded" },
+      { kind: "review", present: flow.reviews.length > 0, title: "Review", label: flow.reviews.length + " recorded decision(s)", section: "Steps", state: "recorded" }
+    ].filter(node => node.present);
+  }
+
+  function mount(rootElement, session, options) {
+    const doc = rootElement.ownerDocument, win = doc.defaultView;
+    const make = (tag, cls, text) => { const node = doc.createElement(tag); node.className = cls || ""; if (text !== undefined) node.textContent = text; return node; };
+    const shell = make("div", "log-flow"), toolbar = make("div", "list-tools");
+    const previous = make("button", "", "←"), next = make("button", "", "→"), range = make("span", "muted");
+    previous.title = "Previous prompts"; next.title = "Next prompts";
+    const fit = make("button", "", "Fit"), zoomOut = make("button", "", "−"), zoomIn = make("button", "", "+");
+    fit.title = "Fit prompts to the viewport"; zoomOut.title = "Zoom out"; zoomIn.title = "Zoom in";
+    [previous, next, range, zoomOut, zoomIn, fit].forEach(node => { node.type = "button"; toolbar.appendChild(node); });
+    shell.appendChild(toolbar);
+    const hint = make("div", "muted flow-hint", "Top → bottom: recorded stages. Left → right: prompts. Click a block for details. Actual tool/model order is in Steps.");
+    shell.appendChild(hint);
+    const stage = make("div", "flow-stage"), viewport = make("div", "flow-viewport"), world = make("div", "flow-world");
+    viewport.tabIndex = 0; viewport.setAttribute("aria-label", "Conversation flow; scroll horizontally for prompts");
+    const space = make("div", "flow-space"); space.appendChild(world); viewport.appendChild(space); stage.appendChild(viewport); shell.appendChild(stage);
+    const inspector = make("div", "flow-inspector"); inspector.setAttribute("aria-live", "polite"); shell.appendChild(inspector);
+    rootElement.appendChild(shell);
+    let renderer = null, scene = null, camera = null, geometry = null, frame = 0, disposed = false, page = 0, zoom = 1, selectedKey = "";
+    const pageSize = 12, prompts = session.prompts || [], meshes = [], nodes = [];
+    const colors = { prompt: "--vscode-charts-blue", jev: "--vscode-charts-purple", steps: "--vscode-charts-orange", checks: "--vscode-charts-green", answer: "--vscode-charts-green", review: "--vscode-charts-purple" };
+    function color(variable, fallback) {
+      const probe = make("span"); probe.style.color = "var(" + variable + ",var(" + (fallback || "--vscode-editor-foreground") + "))"; shell.appendChild(probe);
+      const value = win.getComputedStyle(probe).color; probe.remove(); return value;
+    }
+    function release() {
+      if (scene) { meshes.forEach(mesh => { scene.remove(mesh); mesh.material.dispose(); }); }
+      meshes.length = 0;
+    }
+    function plane(x, y, width, height, fill, opacity) {
+      if (!scene) return;
+      const mesh = new win.THREE.Mesh(geometry, new win.THREE.MeshBasicMaterial({ color: fill, transparent: true, opacity, depthTest: false, depthWrite: false }));
+      mesh.scale.set(width, height, 1); mesh.position.set(x + width / 2, -y - height / 2, 0); mesh.renderOrder = meshes.length; scene.add(mesh); meshes.push(mesh);
+    }
+    function paint() {
+      frame = 0;
+      if (disposed || !renderer) return;
+      const width = stage.clientWidth, height = stage.clientHeight;
+      if (!width || !height) return;
+      renderer.setSize(width, height, false);
+      camera.left = viewport.scrollLeft / zoom; camera.right = (viewport.scrollLeft + width) / zoom;
+      camera.top = viewport.scrollTop / zoom; camera.bottom = (viewport.scrollTop + height) / zoom;
+      // World y is negative so camera sees the same coordinates as the DOM overlay.
+      camera.top *= -1; camera.bottom *= -1; camera.updateProjectionMatrix(); renderer.render(scene, camera);
+    }
+    const schedule = () => { if (!frame && !disposed) frame = win.requestAnimationFrame(paint); };
+    function choose(prompt, node, button) {
+      selectedKey = String(prompt.key || prompt.time) + ":" + node.kind;
+      world.querySelectorAll(".flow-node").forEach(item => item.classList.toggle("selected", item === button));
+      inspector.replaceChildren(make("strong", "", node.title + " · " + String(prompt.text || "").slice(0, 100)));
+      options.details(prompt, node, inspector);
+    }
+    function layout() {
+      release(); world.replaceChildren(); nodes.length = 0;
+      const shown = prompts.slice(page * pageSize, (page + 1) * pageSize), width = Math.max(1, shown.length) * 280 + 24, height = 672;
+      const surface = color("--vscode-editorWidget-background"), border = color("--vscode-panel-border");
+      shown.forEach((prompt, index) => {
+        const x = 16 + index * 280;
+        plane(x, 12, 260, 644, surface, 1);
+        const lane = make("div", "flow-lane"); lane.style.left = x + "px"; lane.style.width = "260px";
+        const head = make("div", "flow-lane-heading");
+        head.appendChild(make("strong", "", "Prompt " + (page * pageSize + index + 1)));
+        head.appendChild(make("span", "muted", [prompt.topic?.id, prompt.provider, prompt.model].filter(Boolean).join(" · ")));
+        lane.appendChild(head);
+        const recordedStages = stages(prompt);
+        recordedStages.forEach((node, row) => {
+          const y = 76 + row * 92, accent = color(node.state === "failed" ? "--vscode-errorForeground" : node.state === "unknown" || node.state === "unverified" ? "--vscode-descriptionForeground" : colors[node.kind]);
+          if (row < recordedStages.length - 1) plane(x + 24, y + 70, 2, 22, border, 1);
+          plane(x + 12, y, 236, 72, accent, node.state === "unknown" ? .05 : .12);
+          plane(x + 12, y, 3, 72, accent, 1);
+          const button = make("button", "flow-node " + node.state); button.type = "button";
+          button.classList.toggle("selected", selectedKey === String(prompt.key || prompt.time) + ":" + node.kind);
+          button.style.top = y + "px"; button.style.setProperty("--flow-accent", accent);
+          button.setAttribute("aria-label", "Prompt " + (page * pageSize + index + 1) + ": " + node.title + ", " + node.label);
+          button.title = node.title + ": " + node.label;
+          button.appendChild(make("strong", "", node.title)); button.appendChild(make("span", "", node.label));
+          button.onclick = () => choose(prompt, node, button); lane.appendChild(button); nodes.push({ node, button });
+        });
+        world.appendChild(lane);
+        if (index) plane(x - 20, 38, 20, 2, border, 1);
+      });
+      world.style.width = width + "px"; world.style.height = height + "px"; world.style.transform = "scale(" + zoom + ")";
+      space.style.width = width * zoom + "px"; space.style.height = height * zoom + "px";
+      previous.disabled = page === 0; next.disabled = (page + 1) * pageSize >= prompts.length;
+      range.textContent = prompts.length ? (page * pageSize + 1) + "–" + Math.min((page + 1) * pageSize, prompts.length) + " / " + prompts.length + " prompts" : "No prompts";
+      schedule();
+    }
+    try {
+      if (!win.THREE) throw Error("Three.js is unavailable");
+      scene = new win.THREE.Scene(); geometry = new win.THREE.PlaneGeometry(1, 1);
+      camera = new win.THREE.OrthographicCamera(0, 1, 0, -1, .1, 10); camera.position.z = 5;
+      renderer = new win.THREE.WebGLRenderer({ alpha: true, antialias: true }); renderer.setPixelRatio(Math.min(win.devicePixelRatio || 1, 2));
+      renderer.domElement.className = "flow-canvas"; stage.prepend(renderer.domElement);
+    } catch (error) {
+      hint.textContent = "Three.js unavailable; showing accessible flow blocks. " + error.message;
+      shell.classList.add("flow-fallback");
+      if (renderer) renderer.dispose(); renderer = null;
+    }
+    function changeZoom(value) { zoom = Math.max(.45, Math.min(1.5, value)); layout(); }
+    previous.onclick = () => { page--; viewport.scrollLeft = 0; inspector.replaceChildren(); layout(); };
+    next.onclick = () => { page++; viewport.scrollLeft = 0; inspector.replaceChildren(); layout(); };
+    zoomOut.onclick = () => changeZoom(zoom / 1.15); zoomIn.onclick = () => changeZoom(zoom * 1.15);
+    fit.onclick = () => changeZoom(stage.clientWidth / (Math.min(pageSize, prompts.length) * 280 + 24));
+    viewport.addEventListener("scroll", schedule);
+    const resize = new win.ResizeObserver(schedule); resize.observe(stage);
+    const theme = new win.MutationObserver(layout); theme.observe(doc.body, { attributes: true, attributeFilter: ["class", "style"] });
+    const lost = event => { event.preventDefault(); shell.classList.add("flow-fallback"); hint.textContent = "Graphics context lost; flow blocks and details remain available."; };
+    renderer?.domElement.addEventListener("webglcontextlost", lost);
+    layout();
+    return () => { disposed = true; if (frame) win.cancelAnimationFrame(frame); resize.disconnect(); theme.disconnect(); viewport.removeEventListener("scroll", schedule); release(); geometry?.dispose(); renderer?.domElement.removeEventListener("webglcontextlost", lost); renderer?.dispose(); renderer?.forceContextLoss(); shell.remove(); };
+  }
+  const api = { summary, stages, mount };
+  if (typeof module === "object" && module.exports) module.exports = api; else root.vertexLogFlow = api;
+})(typeof window === "object" ? window : globalThis);
 
 },
 function(module,exports,__vertexRequire){

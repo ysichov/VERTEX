@@ -21,6 +21,7 @@ fs.writeFileSync(path.join(target, "value-origin.js"), require("./value-origin-b
 fs.writeFileSync(path.join(target, "abaplint.js"), require("./frontend-bundle").abaplint(root));
 fs.copyFileSync(path.join(root, "vscode", "value-origin.css"), path.join(target, "value-origin.css"));
 // The pages that ask their view carry its one-request bridge (eclipse-calls.js), put in by eclipse/pages.js.
+fs.copyFileSync(path.join(root, "vscode", "log-flow.js"), path.join(target, "log-flow.js"));
 const { page } = require("./pages");
 fs.writeFileSync(path.join(target, "value-origin.html"), page("value-origin.html"));
 console.log("Prepared Eclipse Value origin.");

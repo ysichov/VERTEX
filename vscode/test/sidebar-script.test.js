@@ -2,6 +2,30 @@
 const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 
+test('Enter sends successive chat requests and clears the prompt', () => {
+  const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};
+  vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.render=html;',sandbox);
+  const script=sandbox.module.exports.render('send-test').match(/<script nonce="send-test">([\s\S]*?)<\/script>/)[1];
+  const nodes=new Map(),posted=[];
+  const make=()=>({value:'',hidden:true,children:[],handlers:{},addEventListener(name,fn){this.handlers[name]=fn;},appendChild(child){this.children.push(child);}});
+  const get=id=>{if(!nodes.has(id))nodes.set(id,make());return nodes.get(id);};
+  get('chat').requestSubmit=()=>get('chat').handlers.submit({preventDefault(){}});
+  get('model-select').value='test-model';
+  const context={document:{getElementById:get,createElement:make,querySelector:()=>null},api:{postMessage:m=>posted.push(m)},modelCatalog:[],images:[],chatRunning:false,historyOpening:false,progressItems:new Map(),setChatRunning(value){context.chatRunning=value;},drawImages(){},fitPrompt(){}};
+  const start=script.indexOf("document.getElementById('system-select').addEventListener('change'");
+  vm.runInNewContext(script.slice(start,script.indexOf('// Screenshots pasted',start)),context);
+  const keyStart=script.indexOf("document.getElementById('prompt').addEventListener('keydown'");
+  vm.runInNewContext(script.slice(keyStart,script.indexOf('let lastCopy',keyStart)),context);
+  for(const text of ['first question','second question']) {
+    context.chatRunning=false;get('prompt').value=text;
+    get('prompt').handlers.keydown({key:'Enter',preventDefault(){}});
+    assert.equal(posted.at(-1).action,'chat');assert.equal(posted.at(-1).text,text);
+    assert.equal(get('prompt').value,'');assert.equal(context.chatRunning,true);
+  }
+  assert.equal(posted[1].requestId,posted[0].requestId+1);
+  assert.equal(context.progressItems.size,2);
+});
+
 test("sidebar HTML contains an executable chat script", () => {
   const folder = path.join(__dirname, "..");
   const source = fs.readFileSync(path.join(folder, "sidebar.js"), "utf8");

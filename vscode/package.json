@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.94",
+  "version": "0.9.96",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -1083,6 +1083,21 @@
           "scope": "resource",
           "markdownDescription": "The command that builds or tests this folder's project after the Code Agent's changes are applied (for example `npm test`, `mvn -q package`, `./build.ps1`). VERTEX runs it in the folder after **Apply** and sends a failure's output back to the assistant. Set by **Run & remember** in the review, or by hand per folder. On Windows it runs in PowerShell."
         },
+        "vertex.ai.verification.commands": {
+          "type": "array",
+          "default": [],
+          "scope": "resource",
+          "items": {
+            "type": "object",
+            "required": ["glob", "command"],
+            "additionalProperties": false,
+            "properties": {
+              "glob": { "type": "string", "description": "Changed file glob relative to the repository root, for example **/*.py." },
+              "command": { "type": "string", "description": "Project check command in the agent working folder; uses the existing shell permission setting." }
+            }
+          },
+          "markdownDescription": "Required project checks after Code Agent edits, before review. Matching commands run once in the working copy with existing command permissions and a two-minute timeout. Failed checks go back to the model for one repair attempt. Declined/unavailable checks are reported as unverified. Built-in JavaScript/JSON/webview checks run without shell commands."
+        },
         "vertex.ai.shellWithoutAsking": {
           "type": "boolean",
           "default": false,
@@ -1642,6 +1657,8 @@
     "@mcp-abap-adt/auth-providers": "^6.0.2",
     "@mcp-abap-adt/auth-stores": "^5.0.1",
     "@mcp-abap-adt/connection": "^17.1.0",
-    "abap-adt-api": "8.4.3"
+    "abap-adt-api": "8.4.3",
+    "eslint": "9.39.1",
+    "globals": "16.5.0"
   }
 }

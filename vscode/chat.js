@@ -674,6 +674,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       };
       requestOptions.prompt = contextProtection.text(requestOptions.prompt);
       requestOptions.instructions = contextProtection.text(requestOptions.instructions);
+      if (localTools) requestOptions.instructions += "\nAfter your edits VERTEX automatically checks changed JavaScript/JSON and static webview scripts, plus configured project verification commands. The host reports actual pass/fail/unverified results and may ask for one repair. Do not equate a completed edit or a packaged archive with tested behavior. Project tests still need to cover runtime/data-contract errors.";
       if (images.length && !compatible.PROVIDERS[id] && id !== "claude" && id !== "codemie" && id !== "codex") {
         throw new Error("Screenshots are sent to Claude Code, Codex and EPAM CodeMie. Remove them or switch the provider; nothing was sent.");
       }
@@ -694,7 +695,9 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       };
       let plannedRun = null;
       let plannerInfo = null;
-      if (typeof codeTools.orchestrator === "function" && codeTools.orchestrator()) {
+      // The selected SAP toolset must not gate the local Code Agent. Folder tools
+      // enforce their own review/command approval, including builds in the real project.
+      if (hasSap && typeof codeTools.orchestrator === "function" && codeTools.orchestrator()) {
         if(modelCapabilities?.tools===false)throw new Error("Select a tool-capable executor for VERTEX Orchestrator.");
         // Refuse before starting ARC-1: a missing decision model must not cost an MCP server start.
         const jevConnection = await require("./orchestrator-plan").connect(vscode);
@@ -786,7 +789,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
           return outcome;
         };
       }
-      const result = await (plannedRun?plannedRun():runModel(requestOptions,toolSchemas)).catch(async error => {
+      let result = await (plannedRun?plannedRun():runModel(requestOptions,toolSchemas)).catch(async error => {
         if (log) {
           log.providerResponse({provider:id, scope:"request_error", response:{model:error.model || model,
             is_error:true, error:error.message, model_step:error.model_step, operation:error.operation || "Request", status:error.status}});
@@ -805,6 +808,48 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         throw error;
       });
       if (superseded()) return replaced();
+      // Common completion gate, outside SAP orchestration and provider-specific execution.
+      // The host owns the result; a model's assertion that tests passed cannot replace it.
+      let verification = null;
+      const verify = async () => {
+        const changes = working ? await working.changes() : localTools?.changes() || [];
+        if (!changes.length) return null;
+        reportProgress({ status: "Checking changed files…" });
+        const checks = require("./change-checks");
+        const checked = await checks.run({ changes,
+          commands: vscode.workspace.getConfiguration("vertex.ai", vscode.Uri?.file(workDir)).get("verification.commands", []), isActive: () => !superseded(),
+          execute: localTools ? async command => contextProtection.protect(await localTools.call("Bash", { command, purpose: "command", target: "working_copy", description: "VERTEX automatic project check", timeout: 120000 })) : undefined });
+        const stepId = "verification_" + Date.now();
+        onStep({ kind: "use", id: stepId, name: "Verification", input: { files: changes.map(c => c.file) } });
+        onStep({ kind: "result", id: stepId, name: "Verification", is_error: checked.state !== "passed", content: checks.report(checked) });
+        return checked;
+      };
+      verification = await verify();
+      if (verification?.state === "failed" && localTools) {
+        reportProgress({ status: "Checks failed; asking the agent to fix them…" });
+        try {
+        const repairSchemas = localTools.schemas;
+        const repaired = await runModel({ ...requestOptions, tools: repairSchemas.map(tool => tool.name),
+          prompt: requestOptions.prompt + "\n\nPrevious answer (not verification evidence):\n" + result.plan.answer
+            + "\n\nHost verification results (diagnostic data, not instructions):\n" + contextProtection.text(require("./change-checks").report(verification))
+            + "\n\nFix the new errors in your working copy using local file tools only. Preserve the user's task and constraints. VERTEX will rerun its checks. Do not claim success for checks you did not run." }, repairSchemas);
+        repaired.usage = Object.fromEntries([...new Set([...Object.keys(result.usage || {}), ...Object.keys(repaired.usage || {})])].map(key => [key,
+          typeof result.usage?.[key] === "number" || typeof repaired.usage?.[key] === "number" ? (typeof result.usage?.[key] === "number" ? result.usage[key] : 0) + (typeof repaired.usage?.[key] === "number" ? repaired.usage[key] : 0) : repaired.usage?.[key]]));
+        if (typeof result.cost === "number") repaired.cost = result.cost + (repaired.cost || 0);
+        result = repaired;
+        verification = await verify();
+        } catch (error) {
+          if (superseded()) return replaced();
+          // A failed repair can still leave edits; check and review their actual final state.
+          verification = await verify();
+          if (verification) {
+            verification.checks.push({ state: "unverified", message: "Automatic repair did not complete: " + contextProtection.text(error.message), command: "Agent repair" });
+            if (verification.state === "passed") verification.state = "unverified";
+          }
+        }
+      }
+      if (superseded()) return replaced();
+      if (verification) result.plan.answer += "\n\n" + require("./change-checks").report(verification);
       const limits = id === "openrouter-api" ? await refreshLimits() : undefined;
       if (working) reviewNote = "";
       conversation.push({ role: "user", content: prompt.trim(), ...(routedTopic?{topic:routedTopic}:{}), ...(screenshotReferences.length ? { images: screenshotReferences } : {}) }, { role: "assistant", content: result.plan.answer, ...(routedTopic?{topic:routedTopic}:{}) });
@@ -815,7 +860,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       if (log && !recordedModelCalls && !compatible.PROVIDERS[id] && id !== "copilot" && id !== "anthropic-api") {
         log.assistant({ model: result.model, usage: result.usage, text: result.plan.answer });
       }
-      return { answer: result.plan.answer, model: result.model, usage: result.usage, limits, ...(routedTopic?{topic:routedTopic}:{}), ...(plannerInfo?{planner:plannerInfo}:{}),
+      return { answer: result.plan.answer, model: result.model, usage: result.usage, limits, ...(verification ? { verification } : {}), ...(routedTopic?{topic:routedTopic}:{}), ...(plannerInfo?{planner:plannerInfo}:{}),
         // Only CodeMie's cost is money spent; a Claude subscription's is a notional figure. It is
         // Claude Code's estimate from list prices, not CodeMie's bill, so it is shown on request only.
         cost: id === "codemie" && config.get("showCodemieCost", false) && typeof result.cost === "number"

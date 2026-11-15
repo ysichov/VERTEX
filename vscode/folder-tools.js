@@ -67,6 +67,7 @@ function create(vscode, options) {
   }
   const approve = approval.set(vscode);
   const seen = new Map();
+  const written = new Map();
   const controller = new AbortController();
   let serial = Promise.resolve();
   const active = () => {
@@ -185,6 +186,7 @@ function create(vscode, options) {
       if (current !== before) throw new Error("File changed while waiting for review; read it again.");
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, change.after);
+      if (!written.has(file)) written.set(file, before);
       seen.set(file, change.after);
       return { file_path: file, changed: true, review: options.reviewAfter ? "pending after this turn" : "approved" };
     }
@@ -209,6 +211,7 @@ function create(vscode, options) {
   }
   return {
     schemas,
+    changes() { return [...written].map(([file, before]) => ({ file: path.relative(root, file).replace(/\\/g, "/"), before: before || "", after: read(file), status: before === null ? "added" : "changed" })); },
     dispose() { controller.abort(); approve.dispose(); },
     call(name, args = {}) {
       const run = serial.then(async () => {
@@ -268,4 +271,4 @@ function environment(cwd) {
   }) + "\n\n";
 }
 
-module.exports = { schemas, create, environment, projectRules };
+module.exports = { schemas, create, environment, projectRules, glob };
