@@ -29,6 +29,16 @@ test("a Glob pattern ending in / lists folders, not files", async t => {
 });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test("successful VSIX build returns compact artifact proof while retaining its log",t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-vsix-proof-"));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const file=path.join(root,"vscode","vertex-abap-0.9.99.vsix");fs.mkdirSync(path.dirname(file));fs.writeFileSync(file,"archive");
+ const result=tools.compactVerifiedVsix({purpose:"build",code:0,verified_vsix_line:"Verified VSIX: "+file,
+   output_file:path.join(root,"output.log"),output_bytes:417314,stdout:"noise".repeat(1000),stderr:"warnings",highlights:["noise"]},root);
+ assert.deepEqual(result.verified_vsix,{file});
+ assert.equal(result.stdout,undefined);assert.equal(result.stderr,undefined);assert.equal(result.output_bytes,417314);
+ assert.equal(tools.compactVerifiedVsix({purpose:"build",code:1,verified_vsix_line:"Verified VSIX: "+file,stdout:"failure"},root).stdout,"failure");
+});
+
 test("noisy shell commands finish without a buffer limit and their persistent logs can only be read",async t=>{
  const {agent,root}=fixture(t,{allow:true});
  fs.writeFileSync(path.join(root,'noisy.js'),"process.stdout.write('PREFIX\\n'+'x'.repeat(200000)+'\\nSUFFIX\\n');process.stderr.write('diagnostic\\n');");

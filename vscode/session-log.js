@@ -128,7 +128,21 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
     toolSelection(report) { write({type:"vertex_tool_selection",report:on.questions?report:{elapsedMs:report.elapsedMs,selected:report.selected}}); },
     taskVerification(report) { write({type:"vertex_task_verification",report}); },
     taskRecovery(report) { write({type:"vertex_task_recovery",report}); },
-    routing(report) { write({type:"vertex_topic_routing",report:on.questions?protection.protect(report):{status:report.status,basis:report.basis,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage}}); },
+    routing(report) {
+      const reduction=report.contextReduction;
+      const contextReduction=reduction?{beforeCharacters:reduction.beforeCharacters,topicAfterCharacters:reduction.topicAfterCharacters,
+        afterCharacters:reduction.afterCharacters,skillCharacters:reduction.skillCharacters,currentPromptCharacters:reduction.currentPromptCharacters,
+        estimatedSavedTokens:reduction.estimatedSavedTokens,estimatedTopicSavedTokens:reduction.estimatedTopicSavedTokens,
+        estimatedDuplicateSavedTokens:reduction.estimatedDuplicateSavedTokens,method:reduction.method,
+        blocks:(reduction.blocks||[]).map(block=>({index:block.index,role:block.role,sourcePromptNumber:block.sourcePromptNumber,topicId:block.topicId,
+          included:block.included,reason:block.reason,preferredPromptNumber:block.preferredPromptNumber,estimatedTokens:block.estimatedTokens,
+          ...(on.questions?{topic:block.topic,preview:block.preview}:{})}))}:undefined;
+      write({type:"vertex_topic_routing",report:on.questions?{...report,contextReduction}:
+        {status:report.status,basis:report.basis,skill:report.skill,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage,contextReduction}});
+    },
+    contextOptimization(report) { write({type:"vertex_context_optimization",report:{status:report.status,reason:report.reason,
+      candidates:report.candidates,verifiedCandidates:report.verifiedCandidates,representative:report.representative,
+      beforeMessages:report.beforeMessages,afterMessages:report.afterMessages,dropped:report.dropped,usage:report.usage,model:report.model}}); },
     providerResponse({ provider, scope, response }) {
       // Preserve provider counters verbatim, before normalization. These records
       // are diagnostic evidence, never assistant records (no double counting).

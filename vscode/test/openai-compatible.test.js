@@ -395,6 +395,20 @@ test('OpenRouter multi-round costs survive logs without double counting, includi
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
+test('skill request rejects an unlisted Read and continues with the supplied Bash',async()=>{
+ let rounds=0;const called=[];
+ const result=await api.ask({assistant:'vercel-api',apiKey:'key',model:'test',prompt:'пересобери',instructions:'Run Bash once',schema:{type:'object'},
+  tools:[{name:'Bash',description:'build',inputSchema:{type:'object'}}],recoverUnavailableTools:true,
+  callTool:async name=>{called.push(name);return {code:0,verified_vsix:{file:'vertex-abap.vsix'}};},request:async(_id,_key,_route,body)=>{
+   rounds++;assert.deepEqual(body.tools.map(tool=>tool.function.name),['Bash','submit_vertex_answer']);
+   if(rounds===2)assert.match(body.messages.at(-1).content,/unavailable tool: Read/);
+   if(rounds===1)return {choices:[{message:{tool_calls:[{id:'read',function:{name:'Read',arguments:'{}'}}]}}]};
+   if(rounds===2)return {choices:[{message:{tool_calls:[{id:'bash',function:{name:'Bash',arguments:'{}'}}]}}]};
+   return {choices:[{message:{tool_calls:[{id:'final',function:{name:'submit_vertex_answer',arguments:JSON.stringify({answer:'Built'})}}]}}]};
+  }});
+ assert.equal(rounds,3);assert.deepEqual(called,['Bash']);assert.equal(result.plan.answer,'Built');
+});
+
 test('probe accepts empty reasoning-only messages and retains billed usage and diagnostics',async()=>{
  let call,event;
  await api.probe('openrouter-api','key','reasoner',async()=>({id:'gen_empty',usage:{cost:0.00012,completion_tokens:16,completion_tokens_details:{reasoning_tokens:16}},choices:[{finish_reason:'length',message:{content:'',reasoning:'private reasoning'}}]}),{onModelCall:e=>call=e,onProviderResponse:e=>event=e});

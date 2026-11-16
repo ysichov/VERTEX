@@ -13,10 +13,11 @@ function directory(vscode) {
 // The model gets a bounded preview, while the command itself has no output-size limit.
 function collect(options = {}) {
   const root = path.resolve(options.directory || directory()); roots.add(root);
-  let chunks = [], bytes = 0, stdout = "", stderr = "", file = null, logError = null;
+  let chunks = [], bytes = 0, stdout = "", stderr = "", file = null, logError = null, verifiedVsixLine = "";
   const highlights = [];
   const pending = { stdout: "", stderr: "" };
   const note = line => {
+    if (/^Verified VSIX:\s*\S+/i.test(line.trim())) verifiedVsixLine = line.trim();
     if (/\b(error|failed|failure|exception|fatal|warning|verified|success|passed)\b/i.test(line)) {
       highlights.push(line.slice(0, 400));
       if (highlights.length > 8) highlights.shift();
@@ -49,6 +50,7 @@ function collect(options = {}) {
   return { write, finish() {
     note(pending.stdout); note(pending.stderr);
     return { output_bytes: bytes, output_truncated: bytes > INLINE_BYTES,
+      ...(verifiedVsixLine ? { verified_vsix_line: verifiedVsixLine } : {}),
       ...(file ? { output_file: file } : {}), ...(logError ? { log_error: logError } : {}),
       ...(bytes > INLINE_BYTES ? { highlights, output_note: "Preview only. Read output_file with Read (offset/limit) for full details; highlights are text matches, not a success verdict." } : {}),
       stdout: bytes > INLINE_BYTES ? stdout.slice(-2000) : stdout,

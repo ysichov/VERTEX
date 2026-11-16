@@ -8,6 +8,38 @@ const path = require("node:path");
 const vm = require("node:vm");
 const report = require("../log-report");
 
+test('matched skill is labeled Skill search in the recorded chronology',()=>{
+ const rows=[{type:'user',message:{content:'собери всикс'}},{type:'vertex_topic_routing',report:{status:'skill',skill:'build-vertex-vsix',beforeMessages:6,afterMessages:0}}];
+ const session=report.parseSession(rows.map(row=>JSON.stringify({timestamp:'2026-11-16T18:41:51Z',...row})).join('\n'),'codex_skill.jsonl');
+ assert.equal(session.prompts[0].details[0].type,'Skill search');
+});
+test('skill search audit from an older log joins its parent conversation',()=>{
+ const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+ const source=page.slice(page.indexOf('    var internal = function (s)'),page.indexOf('    var parents ='));
+ const context={};vm.createContext(context);vm.runInContext(source+'\nthis.internal=internal;',context);
+ assert.equal(context.internal({prompts:[{operation:'Skill match with Jev'}]}),true);
+});
+
+test('question links expose recorded prompt parts in assembly order for older and skill logs',()=>{
+ const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+ const source=page.slice(page.indexOf('  function promptSources('),page.indexOf('  function promptSourceLinks('));
+ const context={};vm.createContext(context);vm.runInContext(source,context);
+ const parts=context.promptSources({details:[
+  {type:'VERTEX instructions',text:'Context mode: folder.\nVERTEX Code Agent (alpha): rules\nYou are VERTEX, an AI code agent: answer'},
+  {type:'Model request and context',text:'Previous conversation:\n[]\n\nMatched project skill (instructions for this request):\nbuild\n\nCurrent local project access:\n{"project_rules":[{"path":"AGENTS.md","text":"project rule"}]}\n\nRequest:\nпересобери'},
+  {type:'Available tools',text:'Bash'}, {type:'Answer schema',text:'answer'}]});
+ assert.deepEqual(Array.from(parts,p=>p.label),[
+  'System · Environment and host rules','System · Code Agent','System · VERTEX agent',
+  'Prompt · Previous conversation','Prompt · Matched project skill (instructions for this request)',
+  'Prompt · Current local project access','Project rule · AGENTS.md','Prompt · Request',
+  'Tools · available functions','Output · answer schema']);
+ const skill=context.promptSources({details:[{type:'VERTEX instructions',text:'You are VERTEX. Run Bash once.'},
+  {type:'Model request and context',text:'Matched local skill:\nBuild VSIX\n\nProject root: C:\\soft\\GitHub\\VERTEX\n\nCurrent request: пересобери'},
+  {type:'Available tools',text:'Bash'}]});
+ assert.deepEqual(Array.from(skill,p=>p.label),['System · Environment and host rules','Prompt · Matched local skill',
+  'Prompt · Project root','Prompt · Current request','Tools · available functions']);
+});
+
 test('lazy prompt starts with chronological disclosures instead of repeated legacy sections', () => {
  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
  const element=()=>({children:[],appendChild(child){this.children.push(child);},addEventListener(){}});

@@ -21,3 +21,9 @@ test("log persistence errors are explicit and do not discard the command preview
  const capture=output.collect({directory:file});capture.write("stderr","error!".repeat(2000));
  const result=capture.finish();assert.ok(result.log_error);assert.equal(result.output_file,undefined);assert.match(result.stderr,/error!/);
 });
+test("verified VSIX line survives a long restore log",t=>{
+ const directory=fixture(t),capture=output.collect({directory});
+ capture.write("stdout","Verified VSIX: C:\\project\\vscode\\vertex-abap-0.9.99.vsix\n");
+ capture.write("stdout","restoring dependencies\n".repeat(1000));
+ assert.equal(capture.finish().verified_vsix_line,"Verified VSIX: C:\\project\\vscode\\vertex-abap-0.9.99.vsix");
+});

@@ -149,7 +149,7 @@ function parseSession(text, file) {
     if(record.type==="vertex_tool_selection"){if(current)current.details.push({type:"Orchestrator tool selection",text:prettyJson(record.report)});continue;}
     if(record.type==="vertex_task_recovery" || record.type==="vertex_task_verification" && record.report?.recovery){if(current)current.details.push({type:"Recovery: "+(record.report?.recovery||"state"),text:[record.report?.attempt?"Attempt "+record.report.attempt:"",record.report?.status?"Last verdict: "+record.report.status:"",record.report?.error||""].filter(Boolean).join("\n"),failed:record.report?.recovery==="error"});continue;}
     if(record.type==="vertex_task_verification"){if(current)current.details.push({type:record.report?.scope==="changes"?"Change verification with Jev":"Task verification with Jev",verification:record.report,text:prettyJson(record.report),failed:record.report?.status==="failed"});continue;}
-    if(record.type==="vertex_topic_routing"){if(current){current.topic=record.report?.topic||null;current.details.push({type:"Topic routing (Jev)",routing:record.report&&typeof record.report==="object"?record.report:null,text:prettyJson(record.report)});}continue;}
+    if(record.type==="vertex_topic_routing"){if(current){if(record.report?.topic)current.topic=record.report.topic;current.details.push({type:record.report?.kind==="skill_search"||record.report?.status==="skill"?"Skill search":"Topic routing (Jev)",routing:record.report&&typeof record.report==="object"?record.report:null,text:prettyJson(record.report)});}continue;}
     if (record.type === "vertex_context_optimization") {
       if(current) current.details.push({type:"Context optimization (Jev)",text:prettyJson(record.report)});
       continue;
@@ -315,7 +315,41 @@ function readSessions(root) {
     const tags = tagged.get(session.conversation);
     for (const prompt of session.prompts) if (!prompt.topic && tags[prompt.key]) prompt.topic = tags[prompt.key];
   }
+  restoreContextSelections(sessions);
   return { configured: true, folder, sessions };
+}
+
+// Older routing records kept the exact message indices but not block sizes. Rebuild a
+// read-only view only when the saved turns reproduce the recorded history length.
+function restoreContextSelections(sessions) {
+  const routing = require("./topic-routing"), conversations = new Map();
+  for (const session of sessions) for (const prompt of session.prompts) if (prompt.operation === "Chat") {
+    const key = session.conversation || session.id;
+    if (!conversations.has(key)) conversations.set(key, []);
+    conversations.get(key).push(prompt);
+  }
+  for (const prompts of conversations.values()) {
+    prompts.sort((a,b)=>(a.time||0)-(b.time||0)||a.key.localeCompare(b.key));
+    for (const prompt of prompts) {
+      const report = prompt.details.find(detail => detail.routing?.keptIndices)?.routing;
+      if (!report || report.contextReduction || !Number.isInteger(report.beforeMessages)) continue;
+      const earlier = prompts.filter(item => item.time < prompt.time && item.branch === prompt.branch);
+      const history = earlier.flatMap(item => {
+        const topic = item.topic && typeof item.topic === "object" ? item.topic : null;
+        const answer = item.details.filter(detail => detail.type === "answer").at(-1)?.text;
+        const sourcePromptNumber = prompts.indexOf(item) + 1;
+        return [{ role: "user", content: item.text, topic, sourcePromptNumber }, ...(answer ? [{ role: "assistant", content: answer, topic, sourcePromptNumber }] : [])];
+      });
+      if (history.length !== report.beforeMessages || !history.every(message => message.content && message.content !== "[not logged]")) continue;
+      const kept = new Set(report.keptIndices);
+      if ([...kept].some(index => !Number.isInteger(index) || index < 0 || index >= history.length)) continue;
+      const serialized = messages => routing.serialize(messages.map(({sourcePromptNumber,...message})=>message)).length;
+      const before = serialized(history), after = serialized(history.filter((_,index)=>kept.has(index)));
+      prompt.contextReduction = { beforeCharacters: before, afterCharacters: after, estimatedSavedTokens: Math.max(0,Math.round((before-after)/4)),
+        method: "characters/4", reconstructed: true, blocks: history.map((message,index)=>({index,role:message.role,sourcePromptNumber:message.sourcePromptNumber,topicId:message.topic?.id||"",topic:message.topic?.label||"",
+          included:kept.has(index),estimatedTokens:Math.ceil(serialized([message])/4),preview:String(message.content).replace(/\s+/g," ").slice(0,100)})) };
+    }
+  }
 }
 
 /* The questions and answers of the conversation SESSION belongs to, in the order they were asked: every file that

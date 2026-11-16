@@ -9,6 +9,8 @@ const { spawnSync } = require("node:child_process");
 const targets = ["universal", "win32-x64", "darwin-arm64"];
 const required = [
     "extension/topic-routing.js",
+    "extension/context-dedup.js",
+    "extension/skill-match.js",
     "extension/THIRD-PARTY-NOTICES.md",
     "extension/package.json",
     "extension/node_modules/abap-adt-api/package.json",
@@ -62,6 +64,7 @@ const required = [
     "extension/resources/three.min.js",
     "extension/resources/three-LICENSE.txt",
     "extension/pages/sap-debug-runs.html",
+    "extension/sap-debug-history.js",
     "extension/assistant-debug-recording.js",
     "extension/resources/log-report.html",
     "extension/resources/metrics.html",

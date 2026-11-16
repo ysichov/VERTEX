@@ -1,3 +1,53 @@
+The VSIX build skill now uses one packaging command for an unchanged version. On success VERTEX returns the verified artifact path without sending the noisy packaging preview to the agent; the full output stays in VERTEX Build and its log file. Failed builds keep diagnostic previews.
+
+Flow now shows actual new input, cache-read input, output tokens, and available cost for each request lane. It marks unavailable or partial prices instead of treating the context-saving estimate as money spent. Skill matching remains an extra decision; normal Jev topic routing still assigns the topic, then the skill takes priority over conversation history sent to the model.
+
+Flow Context now hides excluded history blocks for every request, including topic and duplicate routing. It keeps the included blocks and summarizes omitted history by percentage. Skill-matched requests continue to show a single percentage card.
+
+Logs now shows Previous/Next beneath each 30-question page as well as above it, so later questions remain reachable after scrolling through a long conversation.
+
+Experimental VERTEX project skill: Jev matches the current request against skill names and descriptions. When the VSIX build skill matches, VERTEX sends its procedure and the current request with no previous chat prompts. Flow attributes estimated conversation-history reduction to the skill separately from topic and duplicate selection. No VSIX was built.
+
+Replay of the actual 15:24 Jev answer found the runtime bug: binary noul answers have a Yes probability but no separate confidence field. Removing the nonexistent-field requirement yields 20 excluded exchanges. The first failed build had 67% replacement probability, so a narrower resolved-failure rule (failed-success probability <=20%, representative-success >=90%, replacement >=65%) removes it while the ordinary threshold remains 80%. The final replay retains exchanges 1, 2, 4 and 25: review, fix, version change and one successful build. It excludes 21 of 25 exchanges, saving approximately 2,672 history tokens. The --recorded --assert-vsix replay gate passes; 55 targeted tests pass. A fresh extension run is still needed to confirm the installed build reflects this fix.
+
+The latest saved Jev audit exposed a binary-answer integration bug: Jev returned Yes probabilities but no separate confidence field. Requiring both made verifiedCandidates=0 and kept all 25 exchanges. The selector now uses the Yes probability for binary decisions. Replaying that actual recorded Jev response selects exchange 25, drops exchanges 5–24, retains five exchanges, and estimates 2,542 history tokens saved. The previous successful audit removed nine exchanges; this replay improves the same repeated-build case. A regression test covers responses without confidence. A fresh extension run is still needed to verify the corrected runtime path.
+
+The duplicate audit now asks independent binary Jev questions for verified success and supersession, then selects the best verified representative in code. This avoids a low-confidence choice among many similar successful exchanges. The saved 22-exchange build replay presents 22 candidates, including unanswered and untagged attempts; the human-labelled oracle removes 14 build repeats and retains only exchange 22 of the 15 build-related exchanges. The live Jev response remains to be measured with a configured key.
+
+The replay stand now includes incomplete attempts and legacy untagged exchanges. On the saved 22-exchange build history, human-labelled Jev decisions remove 14 repeated build attempts and leave one verified build result (exchange 22), while retaining eight exchanges in total. Jev now receives separate binary success and replacement questions, avoiding a low-confidence choice among many similar successes. Future assistant turns record their tool-step count so a verified result with fewer steps can be preferred; older logs do not have that count. This is still an offline oracle, not a live Jev outcome.
+
+The duplicate audit now asks Jev to select one verified successful representative before making binary replacement decisions for the other exchanges. It prefers fewer documented attempts or steps when that evidence exists, then stronger verification and recency. It does not infer an iteration count from a short answer. The saved VSIX audit replays with nine human-labelled duplicate build attempts removed; this is an offline oracle, not a live Jev result.
+
+The saved 2026-11-16 VSIX-build audit had 22 exchanges, 17 comparable candidates and zero high-confidence removals in its latest run. Added a local replay harness for that decision input and a nine-exchange human oracle. The Jev decision now validates the latest completed result and uses independent binary replacement questions, reducing 17-way choice ambiguity; an unverified reference cannot erase history. The oracle replay removes nine repeated build exchanges and retains 13; live Jev quality is not asserted by that offline result.
+
+Context savings now separates topic selection, duplicate removal, and older reconstructed estimates. The Jev duplicate audit treats repeated attempts at one task as superseded by the latest verified success or best-supported result, while preserving distinct requirements and unresolved errors. Earlier audit logs showed only one removal among 14–15 candidates per check; the previous aggregate 27% mixed topic pruning with duplicate removal.
+
+The Context summary now emphasizes total saved tokens and percent with a comparison bar. Each prompt shows its own savings bar; included content has a green section and green cards, then excluded content has a red section and red dashed cards.
+
+Flow Context now totals estimated LLM context savings above the graph. Each request column separates included and excluded content into vertical sections with block counts and token estimates.
+
+## 2026-11-16 — Flow Context
+
+Flow now has a Context view beside Steps. It shows which earlier conversation messages Jev included or excluded for each request, with topic colors, proportional block heights, token figures and the existing Flow zoom controls. Savings compare selected history with the full history for that request.
+
+Older conversations with recorded Jev routing indices and matching saved questions and answers can now display a reconstructed Context view. It is marked as reconstructed; incomplete histories remain unavailable.
+
+Flow now shows a zoom percentage and supports Ctrl + wheel or trackpad pinch around the pointer, from 25% to 300%. Context columns show their request number, topic and question above the token comparison.
+
+Context includes the current question in each column. A first request with no earlier history shows 100% included and zero saved tokens.
+
+Flow Steps now numbers the complete chronological sequence within each user request, matching Logs: linked Jev calls, tools and their paired results, request snapshots, responses, checks and review.
+
+Flow now shows up to 48 requests together in one horizontally scrollable strip, so ordinary conversations no longer stop after 12 columns. Paging remains for longer conversations.
+
+The Logs table now numbers questions within a conversation, continuing from 31 on the second page of a 36-question conversation. Sorting renumbers the displayed order.
+
+Context blocks now identify the source prompt number for each included or excluded user message and answer. The current question carries its own prompt number.
+
+The top of every Flow column now names the prompt number and question. Steps keep the user input and the prepared LLM request as separate numbered blocks. Context numbers its content blocks before showing the source prompt and included/excluded status.
+
+When a topic contains multiple completed exchanges, an additional Jev check can identify repeated attempts and retain the best-supported exchange. Distinct requirements and uncertain comparisons stay in context. Context marks omitted repetitions as Duplicate and links them to the prompt retained in their place.
+
 ## 2026-11-16 — 0.9.99: Release
 
 Advanced the VS Code and Eclipse version metadata to 0.9.99.
@@ -3993,3 +4043,6 @@ Selecting a variable on the left side of an assignment includes that assignment 
 ## VS Code 0.9.19 — Command Palette cleanup
 
 Reduced the Command Palette to five global VERTEX entries: Open Transpiler Run..., Open Panel, VERTEX Tools, Add the VERTEX MCP server to Claude Code or Codex, and Get Started. ABAP editor actions remain available from their context menus; debugger stepping and system management remain in their dedicated UI.
+# 2026-11-16 — Flow Context
+
+Flow now has a Context view beside Steps. It shows which earlier conversation messages Jev included or excluded for each request, with a per-request estimate of tokens saved.

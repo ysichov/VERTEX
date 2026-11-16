@@ -1,5 +1,14 @@
 "use strict";
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),os=require("node:os"),vm=require("node:vm"),usage=require("../usage-report");
+test('activity subtables keep model and Jev usage and totals separate',()=>{
+ const result=usage.aggregate([{provider:'codex',model:'gpt',operation:'Chat',input:100,output:10,cacheRead:20,cost:null},
+  {provider:'typesafe-api',model:'jev',operation:'Topic routing with Jev',costKind:'jev',input:7,output:2,cacheRead:0,cost:0.001,estimated:true}]);
+ assert.deepEqual(result.activitiesByKind.model.map(row=>row.provider),['Chat']);
+ assert.deepEqual(result.activitiesByKind.jev.map(row=>row.provider),['Topic routing with Jev']);
+ assert.equal(result.costs.model.input,100);assert.equal(result.costs.jev.input,7);
+ assert.equal(result.costs.model.output,10);assert.equal(result.costs.jev.output,2);
+ const page=usage.html('split');assert.match(page,/<h2>LLM activities<\/h2>/);assert.match(page,/<h2>Jev activities<\/h2>/);
+});
 test('usage report deduplicates raw and normalized usage and preserves per-model cost',()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-usage-'));try{
  const folder=path.join(root,'claude_compatible');fs.mkdirSync(folder);

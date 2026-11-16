@@ -299,6 +299,15 @@ test('a FORM or METHOD line in a review block is omitted but is not taken for an
 });
 test('routing metadata respects question-logging privacy',()=>{const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-topic-private-'));try{const log=sessionLog.create(root,'test','routing-private',{questions:false,answers:false});log.routing({status:'routed',basis:'manual',topic:{id:'topic_0001',label:'PRIVATE_TASK_LABEL',scope:'PRIVATE_PROJECT_PATH'},topics:[{lastQuestion:'PRIVATE_QUESTION'}],usage:{input_tokens:4}});const file=fs.readFileSync(log.file,'utf8');assert.doesNotMatch(file,/PRIVATE_TASK_LABEL|PRIVATE_PROJECT_PATH|PRIVATE_QUESTION/);assert.match(file,/topic_0001/);}finally{fs.rmSync(root,{recursive:true,force:true});}});
 
+test('routing keeps context selection counts without logging message text',()=>{const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-context-private-'));try{
+ const log=sessionLog.create(root,'test','context-private',{});log.user('PRIVATE_QUESTION');log.routing({status:'routed',contextReduction:{beforeCharacters:1200,afterCharacters:400,estimatedSavedTokens:200,method:'characters/4',blocks:[{index:0,role:'user',sourcePromptNumber:1,topicId:'topic_0001',topic:'PRIVATE_TOPIC',included:false,estimatedTokens:200,preview:'PRIVATE_TEXT'}]}});
+ const raw=fs.readFileSync(log.file,'utf8'),parsed=require('../log-report').parseSession(raw,log.file);
+ assert.doesNotMatch(raw,/PRIVATE_QUESTION|PRIVATE_TOPIC|PRIVATE_TEXT/);
+ assert.equal(parsed.prompts[0].details[0].routing.contextReduction.blocks[0].included,false);
+ assert.equal(parsed.prompts[0].details[0].routing.contextReduction.blocks[0].sourcePromptNumber,1);
+ assert.equal(require('../log-flow').summary(parsed.prompts[0]).contextReduction.estimatedSavedTokens,200);
+}finally{fs.rmSync(root,{recursive:true,force:true});}});
+
 
 test('prepared context size is recorded without logging private request text and survives report parsing',()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-context-size-'));

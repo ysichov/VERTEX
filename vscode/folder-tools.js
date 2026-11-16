@@ -13,6 +13,20 @@ const MAX_FILE = 2 * 1024 * 1024;
 const MAX_TEXT = 16000;
 const SKIP = new Set([".git", "node_modules", ".next", "dist", "build", "target"]);
 const str = description => ({ type: "string", description });
+
+function compactVerifiedVsix(result, project) {
+  if (result.purpose !== "build" || result.code !== 0 || typeof result.verified_vsix_line !== "string") return result;
+  const match = /^Verified VSIX:\s*(.+\.vsix)\s*$/i.exec(result.verified_vsix_line);
+  if (!match) return result;
+  const file = path.resolve(match[1]), expected = path.resolve(project, "vscode", path.basename(file));
+  if ((process.platform === "win32" ? file.toLowerCase() !== expected.toLowerCase() : file !== expected)
+    || !/^vertex-abap-\d+\.\d+\.\d+\.vsix$/i.test(path.basename(file))) return result;
+  let size;
+  try { const stat = fs.statSync(file); if (stat.isFile()) size = stat.size; } catch (_) { return result; }
+  if (!size) return result;
+  const { stdout, stderr, highlights, output_note, ...brief } = result;
+  return { ...brief, verified_vsix: { file }, output_note: (brief.output_file ? "Full build output remains in output_file and VERTEX Build." : "Full build output remains in VERTEX Build.") + " This summary is valid only with exit code 0." };
+}
 const integer = description => ({ type: "integer", description });
 const schema = (name, description, properties, required) => ({ name, description,
   annotations: { readOnlyHint: ["Read", "Glob", "Grep"].includes(name),
@@ -244,7 +258,7 @@ function create(vscode, options) {
         } catch (error) { projectSnapshotError = error.message; }
       }
       if (projectSnapshotError) commandResult.project_diff_error = "Could not verify changes in the real project: " + projectSnapshotError;
-      return commandResult;
+      return compactVerifiedVsix(commandResult, project);
     }
     throw new Error("Unknown local tool: " + name);
   }
@@ -316,4 +330,4 @@ function environment(cwd) {
   }) + "\n\n";
 }
 
-module.exports = { schemas, create, environment, projectRules, glob };
+module.exports = { schemas, create, environment, projectRules, glob, compactVerifiedVsix };

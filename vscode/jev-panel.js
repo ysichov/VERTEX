@@ -153,7 +153,8 @@ function showDecisionResult(result){
   const root=document.getElementById('jev-result');root.replaceChildren();const table=document.createElement('table'),head=document.createElement('tr');
   const columns=['Question','Answer','Confidence','Probabilities'];head.className='jev-result-head';
   columns.forEach(label=>{const th=document.createElement('th');th.textContent=label;th.setAttribute('scope','col');head.appendChild(th);});table.appendChild(head);
-  const percent=v=>(Number(v)*100).toFixed(1).replace(/\\.0$/,'')+'%';
+  const percent=v=>(Number(v)*100).toFixed(6).replace(/(?:\\.0+|0+)$/,'').replace(/\\.$/,'')+'%';
+  const cost=value=>'$'+Number(value).toFixed(6).replace(/(?:\\.0+|0+)$/,'').replace(/\\.$/,'');
   for(const [name,answer] of Object.entries(result.answers||{})){
     const label=jevSubmittedLabels[name]||{},row=document.createElement('tr');row.className='jev-result-row';
     const optionLabel=key=>answer.type==='score'?(label.levels?.[Number(key)]||answer.legend?.[key]||key):(label.choices?.[key]||key);
@@ -161,7 +162,7 @@ function showDecisionResult(result){
     const distribution=answer.type==='noul'?'Yes: '+percent(answer.noul)+' · No: '+percent(1-answer.noul):Object.entries(answer.probabilities||{}).map(([key,p])=>optionLabel(key)+': '+percent(p)).join('\\n');
     [label.instructions||name,value,answer.confidence==null?'—':percent(answer.confidence),distribution].forEach((text,index)=>{const cell=document.createElement('td');cell.setAttribute('data-label',columns[index]);cell.textContent=text;row.appendChild(cell);});table.appendChild(row);
   }root.appendChild(table);
-  const usage=result.usage||{};document.getElementById('jev-status').textContent=result.model+' · '+result.elapsedMs+' ms · input '+(usage.input_tokens??'unknown')+' · output '+(usage.output_tokens??'unknown')+' · cost '+(usage.cost_usd!=null?'$'+usage.cost_usd:usage.cost!=null?'$'+usage.cost:usage.estimated_cost_usd!=null?'estimated $'+usage.estimated_cost_usd+' (input $'+usage.input_usd_per_million+'/1M; output free)':'not reported');
+  const usage=result.usage||{};document.getElementById('jev-status').textContent=result.model+' · '+result.elapsedMs+' ms · input '+(usage.input_tokens??'unknown')+' · output '+(usage.output_tokens??'unknown')+' · cost '+(usage.cost_usd!=null?cost(usage.cost_usd):usage.cost!=null?cost(usage.cost):usage.estimated_cost_usd!=null?'estimated '+cost(usage.estimated_cost_usd)+' (input '+cost(usage.input_usd_per_million)+'/1M; output free)':'not reported');
 }
 `;
 module.exports = {html, css, script, buildQuestions};
