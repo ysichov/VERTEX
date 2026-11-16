@@ -597,7 +597,6 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       // Topic routing is a Jev call: with Jev switched off in LLM Providers there is none.
       if(require("./review-jev").enabled(vscode)&&(options.routeTopics ?? config.get("context.routeTopics",false))){
         const scope=require("./topic-routing").scopeOf(vscode,mode,workDir);
-        options.onProgress?.({status:"JEV is routing the topic…"});
         const selection=await require("./topic-routing").route(vscode,prompt,history,scope,{signal:turn.controller.signal,continuationTopic:initialTopic,turnId});
         if(superseded()||turn.controller.signal.aborted)return replaced();
         contextHistory=selection.history;routedTopic=selection.topic;

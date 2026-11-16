@@ -40,6 +40,22 @@ const BUDGET = 60000;
 /* ---------- the tools ---------- */
 
 const TOOLS = [
+  ...[
+    { name: "sap_bsp_list", description: "List files and folders in a UI5/BSP application on the connected SAP system.", required: ["app"], properties: { app: { type: "string" }, path: { type: "string" } } },
+    { name: "sap_bsp_read", description: "Read a BSP text resource such as manifest.json, i18n/i18n.properties, a view or controller. Use nextStart for long files.", required: ["app", "path"], properties: { app: { type: "string" }, path: { type: "string" }, start: { type: "integer" }, limit: { type: "integer" } } },
+    { name: "sap_bsp_find_text", description: "Find a label or i18n key in BSP text files; returns paths and line numbers.", required: ["app", "query"], properties: { app: { type: "string" }, query: { type: "string" }, path: { type: "string" }, maxFiles: { type: "integer" } } }
+  ].map(tool => ({ name: tool.name, description: tool.description,
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: { type: "object", properties: tool.properties, required: tool.required } })),
+  {
+    name: "sap_bsp_search",
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    description: "Find BSP/UI5 applications by technical name or description on the connected SAP system. Use this when a Launchpad title or intent does not reveal the BSP name. Returns concise application names and descriptions.",
+    inputSchema: { type: "object", properties: {
+      query: { type: "string", description: "Part of the BSP name or description, for example GRC_RM or Manage Risks." },
+      limit: { type: "integer", minimum: 1, maximum: 100, description: "Maximum matching applications (default 30)." }
+    }, required: ["query"] }
+  },
   {
     name: "sap_transport_changes",
     annotations: { readOnlyHint: true, destructiveHint: false },
@@ -269,6 +285,24 @@ function mask(ops) {
 /* ---------- what a tool call does ---------- */
 
 async function callTool(deps, name, args) {
+  if (["sap_bsp_list", "sap_bsp_read", "sap_bsp_find_text"].includes(name)) {
+    const action = name === "sap_bsp_list" ? "list" : name === "sap_bsp_read" ? "read" : "search";
+    const params = new URLSearchParams({ action, app: String(args?.app || ""), path: String(args?.path || "") });
+    if (action === "search") params.set("query", String(args?.query || ""));
+    for (const key of ["start", "limit", "maxFiles"]) if (args?.[key] !== undefined) params.set(key, String(args[key]));
+    const answer = await read(deps, "/sap/bc/adt/vertex/bsp-resource?" + params);
+    return answer.error ? fail(answer.error) : ok(JSON.stringify(answer.data));
+  }
+  if (name === "sap_bsp_search") {
+    const query = String(args?.query || "").trim();
+    const limit = args?.limit === undefined ? 30 : args.limit;
+    if (!query || !Number.isInteger(limit) || limit < 1 || limit > 100) return fail("Name a BSP search query and use limit 1..100.");
+    const answer = await read(deps, "/sap/bc/adt/vertex/bsp-search?query=" + encodeURIComponent(query) + "&limit=" + limit);
+    if (answer.error) return fail(answer.error);
+    const data = answer.data || {};
+    const lines = (data.apps || []).map(app => app.name + " — " + app.description);
+    return ok(lines.length ? lines.join("\n") + (data.truncated ? "\nMore matches exist; narrow the query." : "") : "No BSP application matched " + query + ".");
+  }
   const request = (args && args.request ? String(args.request) : "").trim();
   if (!request) {
     return fail("Name the transport request, for example DEVK900123.");

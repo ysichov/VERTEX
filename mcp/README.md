@@ -29,12 +29,12 @@ node mcp/http-server.js
 
 Do not expose the port directly to the internet. Put TLS and access control in
 the tunnel/proxy, then register the resulting HTTPS `/mcp` URL in ChatGPT or
-Claude's connector settings. The server remains read-only and exposes only the
-two transport-review tools.
+Claude's connector settings. The server remains read-only and exposes the
+transport-review tools and the `sap_bsp_*` read tools.
 
 Claude Code, Codex, or another MCP client launches `server.js` as a child process
 and communicates over stdio. The process reads SAP over ADT, using the same
-`sap_transport_changes` and `sap_transport_diff` implementations and the same reading of the review
+`sap_transport_changes`, `sap_transport_diff`, and `sap_bsp_*` implementations and the same reading of the review
 as the VS Code extension. VS Code can be closed. Use Node.js 22 or newer and keep this repository
 checkout available, with the extension's packages installed once: `npm ci` in `vscode/`.
 
@@ -42,6 +42,12 @@ With VS Code open, the extension serves the same tools itself, and Copilot finds
 them without any setup: see
 [the extension's README](../vscode/README.md#review-transports-with-copilot-claude-code-or-codex).
 The **Assistant** panels in SelecTor and Versions need no MCP setup at all.
+
+For a Fiori screen whose BSP name is unknown, ask `sap_bsp_search` with part of
+the title or technical name, such as `Manage Risks` or `GRC_RM`. It returns
+matching BSP names and descriptions from the connected SAP system's catalog.
+Use `sap_bsp_list` to walk its folders, `sap_bsp_read` to inspect a text file,
+and `sap_bsp_find_text` to locate a label or i18n key in the application.
 
 ```text
 Claude Code / Codex / MCP client

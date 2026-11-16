@@ -38,6 +38,17 @@ function fixture(kind = "PROG") {
     setWorking: v => { working = v; }, localLock: value => { localLock = value; }, absent: () => { exists = false; }, present: () => { exists = true; } };
 }
 
+test("UI5 resource reader uses the ADT filestore with encoded BSP path", async () => {
+  const { repo, client } = fixture();
+  client.httpClient = { request: async (path, options) => {
+    assert.equal(path, "/sap/bc/adt/filestore/ui5-bsp/objects/GRC_RM_RISK%2Fi18n%2Fi18n.properties/content");
+    assert.equal(options.method, "GET");
+    return { body: "appTitle=Manage Risks" };
+  } };
+  assert.equal(await repo.ui5Resource("GRC_RM_RISK", "i18n/i18n.properties"), "appTitle=Manage Risks");
+  await assert.rejects(repo.ui5Resource("GRC_RM_RISK", "../secret.txt"), /Invalid BSP/);
+});
+
 test('package Metrics discovery includes programs but not standalone includes',async()=>{
   const {repo,client}=fixture();
   client.nodeContents=async()=>({nodes:[

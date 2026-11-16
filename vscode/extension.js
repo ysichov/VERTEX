@@ -285,7 +285,7 @@ async function fetch(context, requestPath, body, progress, cancelled) {
   }
   // SelecTor's table and join are read through ADT's data preview, not the VERTEX resource on SAP; a pivot still
   // goes to the resource.
-  if (body == null && frontendTableRequest && /^\/sap\/bc\/adt\/vertex\/((table|fields|join|versions|review)\/|requests(\?|$))/.test(requestPath)) {
+  if (body == null && frontendTableRequest && /^\/sap\/bc\/adt\/vertex\/((table|fields|join|versions|review)\/|requests(\?|$)|bsp-(?:search|resource)(\?|$))/.test(requestPath)) {
     let answer;
     try { answer = await frontendTableRequest(requestPath, progress, cancelled); }
     catch (error) { return 'ERROR:' + error.message; }

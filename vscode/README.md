@@ -585,6 +585,8 @@ an MCP server, since none of them publishes.
 
 The chat can also read table contents itself: its `run_sap_select` tool runs one SELECT through the same ADT data preview as Run Select, read only, and returns the rows (100 by default, at most 1,000) - for customizing, texts and repository tables.
 
+With **MCP: VERTEX** selected, ask the chat to find a BSP by its Fiori screen title or technical name. `sap_bsp_search` lists matching applications and descriptions; for example, `Manage Risks` finds `GRC_RM_RISK`. The chat can then list its folders with `sap_bsp_list`, read `manifest.json`, i18n bundles, views and controllers with `sap_bsp_read`, and locate a label or key with `sap_bsp_find_text`. These read from the selected SAP system through ADT.
+
 The panel's chat can reach every system in `vertex.systems`. Name one in the question — *copy
 ZCL_FOO from E19 to QAS* — and the SAP tools run against it; without a name they use the system
 chosen in the panel. A copy is a read in one system and a change in the other: it goes into the

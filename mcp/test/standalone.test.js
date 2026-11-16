@@ -54,7 +54,7 @@ test("the review of a request is read over ADT, without VERTEX's ABAP", async ()
   const part = JSON.parse(await read(null, "/sap/bc/adt/vertex/review/DEVK900593?part=" + encodeURIComponent(name) + "&ptype=METH"));
   assert.deepEqual(part.ops, [{ op: "+", text: "WRITE 'standalone'." }]);
   assert.ok(asked.every(sql => /^SELECT /.test(sql)), "nothing but the data preview is asked");
-  await assert.rejects(read(null, "/sap/bc/adt/vertex/versions/X"), /only supports the review of a request/);
+  await assert.rejects(read(null, "/sap/bc/adt/vertex/versions/X"), /supports transport reviews and BSP resources/);
 });
 
 test("invalid configuration fails on stderr without exposing password", async () => {

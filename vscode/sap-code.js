@@ -660,6 +660,15 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
   // The active source of an object, or of one of a class's includes (definitions, implementations, macros, testclasses).
   const currentSource = (objectUrl, include) => client.getObjectSource(adtPath(objectUrl)
     + (include && include !== "main" ? "/includes/" + include : "/source/main"), { version: "active" });
+  const ui5Resource = async (app, resource = "") => {
+    if (!/^[A-Z0-9_/$]{1,40}$/i.test(app) || resource.split("/").some(part => part === "." || part === "..")
+        || /[\\?#\x00-\x1f]/.test(resource) || resource.length > 240) throw new Error("Invalid BSP application or resource path.");
+    const segments = resource.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
+    const path = "/sap/bc/adt/filestore/ui5-bsp/objects/"
+      + encodeURIComponent(app.toUpperCase() + "/" + segments.join("/")) + "/content";
+    const response = await client.httpClient.request(path, { method: "GET", headers: { Accept: "*/*" } });
+    return String(response.body || "");
+  };
   // Whether VERTEX's ABAP on this system can store a review (ZCL_VX_ADT_RES_STORE): its about answer lists the
   // service as active. Asked once a session; a system without VERTEX's ABAP answers 404, which is a plain no.
   // /ui2/cl_json writes ZCL_VX_ADT_RES_ABOUT's ABAP_BOOL as true; an older one as "X".
@@ -685,7 +694,7 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
   const classComponents = url => client.classComponents(adtPath(url));
   // ADT's object types with their descriptions, as the New Object wizard lists them: [{ name: "CLAS/OC", description }].
   const objectTypes = () => client.objectTypes();
-  return { classComponents, objectTypes, ddicVersions, ddicVersion, execute, apply, query, publishBinding, bindingState, revisions, revisionSource, currentSource, canStore, storeReview, language: () => client.language, user: () => client.username, draft, analysisReader, packageObjects, objectNavigator, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, textElements, dataElement, discard: id => drafts.delete(id),
+  return { classComponents, objectTypes, ddicVersions, ddicVersion, execute, apply, query, ui5Resource, publishBinding, bindingState, revisions, revisionSource, currentSource, canStore, storeReview, language: () => client.language, user: () => client.username, draft, analysisReader, packageObjects, objectNavigator, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, textElements, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath, dataPreviewLines };

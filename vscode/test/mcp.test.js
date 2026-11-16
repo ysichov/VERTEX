@@ -29,7 +29,7 @@ test("MCP authenticates, lists tools, reads a transport and survives reload", as
     assert.equal(init.body.id, 0);
     assert.equal(init.body.result.protocolVersion, "2025-03-26");
     const listed = await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" });
-    assert.deepEqual(listed.body.result.tools.map(t => t.name), ["sap_transport_changes", "sap_transport_diff"]);
+    assert.deepEqual(listed.body.result.tools.map(t => t.name), ["sap_bsp_list", "sap_bsp_read", "sap_bsp_find_text", "sap_bsp_search", "sap_transport_changes", "sap_transport_diff"]);
     const changes = await rpc({ jsonrpc: "2.0", id: 3, method: "tools/call", params: {
       name: "sap_transport_changes", arguments: { request: "devk900578" }
     } });
@@ -56,7 +56,7 @@ test("per-request tool routes are isolated and revoked on disposal", async () =>
   try {
     assert.deepEqual((await (await rpc(a.route)).json()).result.tools.map(t => t.name), ["Read"]);
     assert.deepEqual((await (await rpc(b.route)).json()).result.tools.map(t => t.name), ["Write"]);
-    assert.deepEqual((await (await rpc("/mcp")).json()).result.tools.map(t => t.name), ["sap_transport_changes", "sap_transport_diff"]);
+    assert.deepEqual((await (await rpc("/mcp")).json()).result.tools.map(t => t.name), ["sap_bsp_list", "sap_bsp_read", "sap_bsp_find_text", "sap_bsp_search", "sap_transport_changes", "sap_transport_diff"]);
     a.dispose();
     assert.equal((await rpc(a.route)).status, 404);
     assert.equal((await rpc(b.route)).status, 200);

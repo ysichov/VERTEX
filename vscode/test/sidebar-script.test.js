@@ -2,6 +2,22 @@
 const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 
+test("working logo returns after an Edit scene is cleared", () => {
+  const folder = path.join(__dirname, "..");
+  const sandbox = { module: { exports: {} }, require, __dirname: folder };
+  vm.runInNewContext(fs.readFileSync(path.join(folder, "sidebar.js"), "utf8") + "\nmodule.exports.renderForTest = html;", sandbox);
+  const markup = sandbox.module.exports.renderForTest("test-nonce");
+  const script = markup.slice(markup.indexOf('<script nonce="test-nonce">') + '<script nonce="test-nonce">'.length, markup.indexOf("</script>"));
+  const source = script.slice(script.indexOf("function paintTaskScene("), script.indexOf("let plannerSettings="));
+  const context = { taskVisuals: {}, window: {} };
+  vm.runInNewContext(source + "\nthis.paint = paintTaskScene;", context);
+  const item = { dataset: { taskKind: "edit", taskSubject: "file.js" }, querySelector: () => null, setAttribute() {} };
+  context.paint(item, { kind: null });
+  assert.equal(Object.hasOwn(item.dataset, "taskKind"), false);
+  assert.equal(Object.hasOwn(item.dataset, "taskSubject"), false);
+  assert.match(markup, /\.vertex\.task\[data-task-kind\]::before\{display:none\}/);
+});
+
 test('Enter sends successive chat requests and clears the prompt', () => {
   const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};
   vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.render=html;',sandbox);

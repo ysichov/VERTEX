@@ -191,7 +191,8 @@
 <div class="muted">Enable <code>vertex.ai.log.request</code> to see VERTEX instructions and context for new prompts.</div>
 <div id="date-range" class="list-tools" aria-label="Date range">
 <button data-date="previous" title="Previous period" aria-label="Previous period">←</button>
-<label><select data-date="period" class="log-context"><option value="all">All dates</option><option value="day" selected>Today</option><option value="week">Week</option><option value="month">Month</option><option value="year">Year</option><option value="custom">Custom range</option></select></label>
+<label><select data-date="period" class="log-context"><option value="all">All dates</option><option value="day" selected>Day</option><option value="week">Week</option><option value="month">Month</option><option value="year">Year</option><option value="custom">Custom range</option></select></label>
+<span data-date="label" class="muted" aria-live="polite"></span>
 <button data-date="next" title="Next period" aria-label="Next period">→</button>
 <label>From <input type="date" data-date="from" id="from" class="log-context"></label>
 <label>To <input type="date" data-date="to" id="to" class="log-context"></label>
@@ -202,13 +203,30 @@
 <script id="vertex-date-range" nonce="{{NONCE}}">
 function vertexDateRange(root, changed) {
   var from = root.querySelector('[data-date="from"]'), to = root.querySelector('[data-date="to"]');
-  var period = root.querySelector('[data-date="period"]'), previous = root.querySelector('[data-date="previous"]'), next = root.querySelector('[data-date="next"]');
+  var period = root.querySelector('[data-date="period"]'), previous = root.querySelector('[data-date="previous"]'), next = root.querySelector('[data-date="next"]'), label = root.querySelector('[data-date="label"]');
   function date(value) { var a = value.split('-').map(Number); return new Date(a[0], a[1]-1, a[2], 12); }
   function iso(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   function controls() {
     previous.disabled = next.disabled = period.value === 'all';
     var custom = period.value === 'custom';
     from.parentElement.hidden = to.parentElement.hidden = !custom;
+    var start = from.value ? date(from.value) : null, end = to.value ? date(to.value) : null;
+    var fullDate = function (d, shortYear) { return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + (shortYear ? String(d.getFullYear()).slice(-2) : d.getFullYear()); };
+    Array.prototype.forEach.call(period.options, function (option) {
+      var kind = option.value;
+      if (kind === 'all' || kind === 'custom') return;
+      var anchor = kind === period.value && start ? new Date(start) : new Date();
+      if (kind === 'day') option.textContent = fullDate(anchor);
+      else if (kind === 'month') option.textContent = String(anchor.getMonth()+1).padStart(2,'0') + '.' + anchor.getFullYear();
+      else if (kind === 'year') option.textContent = String(anchor.getFullYear());
+      else if (kind === 'week') {
+        anchor.setDate(anchor.getDate() - (anchor.getDay()+6)%7);
+        var last = new Date(anchor); last.setDate(last.getDate()+6);
+        option.textContent = fullDate(anchor, true) + ' - ' + fullDate(last, true);
+      }
+    });
+    label.textContent = custom && start && end ? fullDate(start) + ' - ' + fullDate(end) : '';
+    label.hidden = !custom;
   }
   function apply(anchor) {
     var start = new Date(anchor), end;
@@ -226,13 +244,13 @@ function vertexDateRange(root, changed) {
     controls(); changed();
   }
   period.onchange = function () { if (period.value !== 'custom') apply(new Date()); else { controls(); changed(); } };
-  [from,to].forEach(function (input) { input.onchange = function () { period.value = 'custom'; controls(); changed(); }; });
+  [from,to].forEach(function (input) { input.onchange = function () { period.value = 'custom'; controls(); changed(); }; input.oninput = function () { period.value = 'custom'; controls(); }; });
   function move(direction) {
     var start = from.value ? date(from.value) : new Date(), end = to.value ? date(to.value) : new Date(start);
     if (period.value === 'custom') {
       var days = Math.max(1, Math.round((Date.UTC(end.getFullYear(),end.getMonth(),end.getDate())-Date.UTC(start.getFullYear(),start.getMonth(),start.getDate()))/86400000)+1);
       start.setDate(start.getDate()+direction*days); end.setDate(end.getDate()+direction*days);
-      from.value=iso(start); to.value=iso(end); changed(); return;
+      from.value=iso(start); to.value=iso(end); controls(); changed(); return;
     }
     if (period.value === 'month') start.setMonth(start.getMonth()+direction);
     else if (period.value === 'year') start.setFullYear(start.getFullYear()+direction);
@@ -1100,7 +1118,13 @@ function markdown(text, target) {
       });
     });
     report = Object.assign({}, report, { sessions: Array.from(groups.values()).map(function (g) {
-      g.provider = g.providers.join(" · ");
+      // The conversation header names providers that answered chat prompts. Linked Jev and
+      // recognition calls remain in the prompt timeline and usage totals, not this label.
+      var chatProviders = [];
+      g.prompts.forEach(function (p) {
+        if ((p.operation === "Chat" || p.operation === "Web search") && !chatProviders.includes(p.provider)) chatProviders.push(p.provider);
+      });
+      g.provider = (chatProviders.length ? chatProviders : g.providers).join(" · ");
       g.prompts.sort(function (a, b) { return a.time - b.time || a.key.localeCompare(b.key); });
       return g;
     }).sort(function (a, b) { return b.end - a.end; }) });

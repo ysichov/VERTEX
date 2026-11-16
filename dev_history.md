@@ -1,4 +1,20 @@
+## 2026-11-16 — 0.9.99: Release
+
+Advanced the VS Code package and lockfile, Eclipse feature, and UI bundle metadata together to 0.9.99. No build was run.
+
+Corrected the shared log-report vertexDateRange control to update the existing select option text, rather than display preset dates in a separate label. Reused the existing period dropdown and navigation in the shared resource consumed by both hosts; searched vscode and org.vertex.abap.ui for its markup and initializer. Presets use numeric dates; the selected preset follows the navigated interval, while other options describe the current day/week/month/year used on selection. The separate label remains only for custom ranges. Actual host rendering and runtime behavior have not been verified; no build or test suite was run for this correction.
+
 ## 2026-11-15 — 0.9.97: shell review boundary
+
+The sidebar previously set `data-task-kind` to an empty string when an Edit/Write scene ended. Its CSS hid the normal rotating VERTEX logo whenever the attribute existed, so an ongoing Bash step could show status text without a working indicator. Clearing the attribute restores the logo; a focused sidebar script test covers the transition.
+
+The shared VERTEX MCP now exposes `sap_bsp_search`. Its VS Code and standalone readers reuse the connected ADT data preview to search O2APPLT by BSP name or description, cap returned rows, and report whether the result was truncated. A live ALC/200 query returned `GRC_RM_RISK` for Manage Risks; the MCP dispatch test covers the tool response.
+
+Extended the same connected ADT repository with read-only UI5 filestore access. `sap_bsp_list`, `sap_bsp_read` and `sap_bsp_find_text` are available in MCP: VERTEX and standalone MCP. The reader encodes the BSP path as one ADT filestore key, validates app/path, rejects binary file reads, bounds returned text and search work, and skips generated preload files in search. Focused tests cover path encoding, directory parsing, reading and text location. Live ALC/200 inspection found `GRC_RM_RISK/i18n/i18n.properties` and `i18n_ru.properties`; no Ukrainian bundle was listed.
+
+Follow-up: the shared log report now derives the conversation Providers label from Chat/Web search prompt providers, rather than every linked technical session. The source is `org.vertex.abap.ui/resources/log-report.html`; the VS Code resource copy is generated during packaging. This corrects the conversation row while retaining service calls in detail and accounting.
+
+The recorded misroute selected the build topic at confidence 0.36 and skipped the screenshot topic even though its recognized text reached Jev. Below 0.6, topic routing retains exchanges for topics related by the current text, uncertain per-topic decisions, and the latest screenshot topic when correcting prior work; it does not retain unrelated history. A regression reproduces the screenshot description and recorded Jev choices with an unrelated topic, and verifies the exact retained exchanges.
 
 Follow-up: source attribution is now applied by VERTEX's local Edit/Write path, rather than requested from the model. In this experimental pass only `.js` files receive `VERTEX CHANGE BEGIN/END` block comments around changed lines, with the request's provider and model. Generated/minified JS and ambiguous template-literal positions are left untouched. The comments enter the same working-copy Review diff as the edit. The project rule and host prompt no longer ask models to add these comments. Builds are now triggered only on explicit user request; their procedures remain in `vsix.md` and `BUILD.md`.
 
@@ -108,7 +124,7 @@ Per the project rule, a plain on/off option is a checkbox, not a toggle — whic
 
 ## 2026-11-14 — Logs & Cost, command targets, rules in the request
 
-Reused the existing `log-report.html` page, `usage-report.js` engine and the shared `vertex-segment-toggle` and date-range block rather than a second window: the Usage & Cost view renders into `#usage-content` of the Logs page, sharing `vertexDateRange` (default Today). The usage rows are sent with the `data` message (`usageRows`, via `readUsage` in VS Code; `parseUsage` in the Eclipse bundle `logs-entry.js`, from the files Java already reads). The `vertex.showLogs` launcher entry was dropped; `vertex.showUsage` is titled Logs & Cost (plugin.xml, LogsView, chat.html renamed likewise).
+Reused the existing `log-report.html` page, `usage-report.js` engine and the shared `vertex-segment-toggle` and date-range block rather than a second window: the Usage & Cost view renders into `#usage-content` of the Logs page, sharing `vertexDateRange`. The date-range label now shows localized real dates for day, week, custom range, localized month/year, or the year number; previous/next updates it with the filter. The usage rows are sent with the `data` message (`usageRows`, via `readUsage` in VS Code; `parseUsage` in the Eclipse bundle `logs-entry.js`, from the files Java already reads). The `vertex.showLogs` launcher entry was dropped; `vertex.showUsage` is titled Logs & Cost (plugin.xml, LogsView, chat.html renamed likewise).
 
 Costs: `parseSession` labels prompts with `costKind`; conversation grouping in the shared report accumulates `costs.{model,jev}`; CLI run totals (`cli_run`) become estimates (`cliEstimates`) applied as cost only, unless the prompt already carries a reported `cost_usd`. CodeMie's result cost is logged as `estimated_cost_usd`. The reader matches canonical model names to CLI `[1m]` entries, deduplicates streamed responses, and adds final costs without adding token counts or calls a second time. The shared renderer retains independent sorting for activity/provider/model tables, rounds displayed USD to six decimal places, and shares dates with the logs view.
 

@@ -44,8 +44,14 @@ function createReader(config, repository0) {
     return api;
   };
   return async function read(_context, resource) {
+    if (resource.startsWith("/sap/bc/adt/vertex/bsp-search?")) {
+      return JSON.stringify(await require("../vscode/bsp-front").request(repository(), resource));
+    }
+    if (resource.startsWith("/sap/bc/adt/vertex/bsp-resource?")) {
+      return JSON.stringify(await require("../vscode/bsp-files").request(repository(), resource));
+    }
     if (!resource.startsWith("/sap/bc/adt/vertex/review/")) {
-      throw new Error("The standalone reader only supports the review of a request.");
+      throw new Error("The standalone reader supports transport reviews and BSP resources.");
     }
     return JSON.stringify(await require("../vscode/review-front").request(repository(), resource));
   };

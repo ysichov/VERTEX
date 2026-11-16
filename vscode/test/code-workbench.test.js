@@ -142,6 +142,28 @@ function host(savedState = {}, authOverride, repositoryRead) {
     writeFile: (uri, source) => fileProvider.writeFile(uri, Buffer.from(source)),
     restoreDocument: uri => vscode.workspace.openTextDocument(uri) };
 }
+
+test("MCP VERTEX chat finds a BSP by its screen title", async () => {
+  const h = host();
+  h.api.query = async (sql, rows) => {
+    assert.match(sql, /text LIKE '%Manage Risks%'/);
+    assert.equal(rows, 31);
+    return { values: [{ APPLNAME: "GRC_RM_RISK", TEXT: "Manage Risks" }] };
+  };
+  assert.ok(h.tools.schemas.some(tool => tool.name === "sap_bsp_search"));
+  const result = await h.tools.execute("sap_bsp_search", { query: "Manage Risks" });
+  assert.deepEqual(JSON.parse(JSON.stringify(result.apps)), [{ name: "GRC_RM_RISK", description: "Manage Risks" }]);
+});
+
+test("MCP VERTEX chat reads BSP resources", async () => {
+  const h = host();
+  h.api.ui5Resource = async (_app, path) => path === "i18n" ? '<atom:feed><atom:entry><atom:category term="file"/><atom:title>GRC_RM_RISK/i18n/i18n.properties</atom:title></atom:entry></atom:feed>' : 'appTitle=Manage Risks';
+  for (const name of ["sap_bsp_list", "sap_bsp_read", "sap_bsp_find_text"]) assert.ok(h.tools.schemas.some(tool => tool.name === name));
+  const listed = await h.tools.execute("sap_bsp_list", { app: "GRC_RM_RISK", path: "i18n" });
+  assert.equal(listed.entries[0].path, "i18n/i18n.properties");
+  const read = await h.tools.execute("sap_bsp_read", { app: "GRC_RM_RISK", path: "i18n/i18n.properties" });
+  assert.equal(read.content, "appTitle=Manage Risks");
+});
 test('logged SELECT opens SelecTor without requiring an active source editor',async()=>{
  const h=host();
  await h.commands.get('vertex.runSelect')({sql:"SELECT a~trkorr,b~obj_name FROM e070 AS a INNER JOIN e071 AS b ON a~trkorr = b~trkorr WHERE a~as4date >= '20261015'",system:'DEV'});

@@ -11,6 +11,38 @@ const withSystem = tool => tool.name === "review_sap_changes" ? tool : { ...tool
   inputSchema: { ...tool.inputSchema, properties: { ...tool.inputSchema.properties, system: SYSTEM } } };
 const openSchema = require("./schemas/sap-code-tools.json").find(t => t.name === "read_sap_object").inputSchema;
 const schemas = require("./schemas/sap-code-tools.json").concat([{
+  name: "sap_bsp_list",
+  description: "List files and folders inside an SAP UI5/BSP application. Start at its root, then inspect i18n, view and controller folders.",
+  annotations: { readOnlyHint: true, destructiveHint: false },
+  inputSchema: { type: "object", additionalProperties: false, required: ["app"], properties: {
+    app: { type: "string", description: "Exact BSP application name, for example GRC_RM_RISK." },
+    path: { type: "string", description: "Folder inside the BSP, empty for the root." }
+  } }
+}, {
+  name: "sap_bsp_read",
+  description: "Read a text file in a SAP UI5/BSP application, including manifest.json, i18n/*.properties, views and controllers. Use nextStart to continue a long file.",
+  annotations: { readOnlyHint: true, destructiveHint: false },
+  inputSchema: { type: "object", additionalProperties: false, required: ["app", "path"], properties: {
+    app: { type: "string" }, path: { type: "string" }, start: { type: "integer", minimum: 0 },
+    limit: { type: "integer", minimum: 1, maximum: 60000 }
+  } }
+}, {
+  name: "sap_bsp_find_text",
+  description: "Find a UI label, i18n key or text reference in a BSP application's text resources, views and controllers. Returns file paths and line numbers.",
+  annotations: { readOnlyHint: true, destructiveHint: false },
+  inputSchema: { type: "object", additionalProperties: false, required: ["app", "query"], properties: {
+    app: { type: "string" }, query: { type: "string" }, path: { type: "string", description: "Optional folder to narrow the search." },
+    maxFiles: { type: "integer", minimum: 1, maximum: 200 }
+  } }
+}, {
+  name: "sap_bsp_search",
+  description: "Find BSP/UI5 applications by technical name or description on the selected SAP system. Use this to identify the BSP behind a Fiori screen title such as Manage Risks.",
+  annotations: { readOnlyHint: true, destructiveHint: false },
+  inputSchema: { type: "object", additionalProperties: false, required: ["query"], properties: {
+    query: { type: "string", description: "Part of the BSP name or description, for example GRC_RM or Manage Risks." },
+    limit: { type: "integer", minimum: 1, maximum: 100, description: "Maximum matches, default 30." }
+  } }
+}, {
   name: "open_sap_object",
   description: "Open SAP source in an editable VS Code tab, a package in Object Navigator, or a table in a VERTEX window on its data (a structure on its fields). Does not save to SAP.",
   // Opens the SAP editor without modifying repository data.
@@ -2772,7 +2804,9 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     selectorQuery: async (sql, rows) => (await repository()).api.query(sql, rows),
     // SelecTor's table and join (the pivot not yet) answered over ADT's data preview; null for what is not theirs.
     tableRequest: async (resource, progress, cancelled) => { const api = (await repository()).api;
-      return await require('./selector-table').request(api, resource) ?? await require('./selector-join').request(api, resource)
+      return await require('./bsp-files').request(api, resource)
+        ?? await require('./bsp-front').request(api, resource)
+        ?? await require('./selector-table').request(api, resource) ?? await require('./selector-join').request(api, resource)
         ?? await require('./versions-front').request(api, resource, /\/vertex\/requests(?:\?|$)/.test(resource) ? await reviewIo(api) : undefined)
         ?? await require('./review-front').request(api, resource, progress, /\/vertex\/review\//.test(resource) ? await reviewIo(api) : undefined, cancelled); },
     // A reviewer's action or the save of a review built from ADT, answered on this side; null for any other write.
@@ -2837,6 +2871,15 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     } };
   async function run(tool, args) {
     const repo = await repository();
+    if (tool === "sap_bsp_list") return require("./bsp-files").list(repo.api, args);
+    if (tool === "sap_bsp_read") return require("./bsp-files").read(repo.api, args);
+    if (tool === "sap_bsp_find_text") return require("./bsp-files").search(repo.api, args);
+    if (tool === "sap_bsp_search") {
+      const query = String(args.query || "").trim();
+      const limit = args.limit === undefined ? 30 : args.limit;
+      return require("./bsp-front").request(repo.api, "/sap/bc/adt/vertex/bsp-search?query="
+        + encodeURIComponent(query) + "&limit=" + encodeURIComponent(limit));
+    }
     if (tool === "read_sap_method") {
       const include = args.include || "main";
       const data = await repo.api.execute("read_sap_object", { object_type: "CLAS",

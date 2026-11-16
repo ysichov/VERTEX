@@ -115,3 +115,40 @@ test('a question Jev cannot place still leaves out the topics it ruled out', () 
     { route: { choice: 'clarify' }, need_topic_0001: { choice: 'clarify' }, need_topic_0002: { choice: 'keep' } });
   assert.deepEqual(unsure.keptIndices, [0, 1, 2, 3]);
 });
+
+test('replays the Providers screenshot misroute: uncertain routing keeps only relevant context', async t => {
+  const description='The screenshot shows a dark interface with a table. The visible column headings are “Prompts” and “Providers.” One row is visible: “1” and “codex · typesafe-api · g…”.';
+  const logTopic=topic('topic_0001','опиши логику добавления провайдеров и ллм в логе');
+  const chatTopic=topic('topic_0002','Если Jev не в основном чате, а как вспомогательная утилита можно ее не писать там?');
+  const buildTopic=topic('topic_0003','собери всикс');
+  const unrelatedTopic=topic('topic_0004','SAP transport release');
+  const history=[
+    {role:'user',content:'опиши логику добавления провайдеров и ллм в логе',images:[{description}],topic:logTopic},
+    {role:'assistant',content:'В разделе Logs в строке показываются все уникальные провайдеры файлов: codex · typesafe-api · …',topic:logTopic},
+    {role:'user',content:'Если Jev не в основном чате, можно ее не писать там?',topic:chatTopic},
+    {role:'assistant',content:'Убрал строку статуса Jev из основного чата.',topic:chatTopic},
+    {role:'user',content:'повтори',topic:buildTopic},
+    {role:'assistant',content:'Предыдущий ответ: строка статуса Jev убрана.',topic:buildTopic},
+    {role:'user',content:'Release transport',topic:unrelatedTopic},
+    {role:'assistant',content:'Transport released.',topic:unrelatedTopic}
+  ];
+  const question='Я просил убрать jev из списка моделей основного чата';
+  const topics=routing.catalog(history,scope);
+  assert.match(topics[0].visualEvidence,/Providers.*codex · typesafe-api/);
+  const answers={route:{choice:'topic_0003',confidence:0.36,probabilities:{topic_0001:0,topic_0002:0.41,topic_0003:0.49}},
+    need_topic_0001:{choice:'skip',confidence:0.89},need_topic_0002:{choice:'keep',confidence:0.46},
+    need_topic_0003:{choice:'keep',confidence:0.91},need_topic_0004:{choice:'skip',confidence:0.9}};
+  assert(!routing.apply(question,history,scope,topics,answers).history.includes(history[0]),'the recorded Jev verdict alone drops the screenshot');
+  const review=require('../review-jev'),jev=require('../jev'),accounting=require('../ai-accounting');
+  t.mock.method(review,'connection',async()=>({key:'fixture',model:'jev-test'}));
+  t.mock.method(accounting,'begin',()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+  t.mock.method(jev,'evaluate',async(_p,_k,_m,state)=>{
+    assert.match(state.topics.find(item=>item.id==='topic_0001').visualEvidence,/Providers.*codex · typesafe-api/);
+    return {model:'jev-test',usage:{},answers};
+  });
+  const result=await routing.route({},question,history,scope);
+  assert.equal(result.report.status,'pruned');
+  assert.match(result.report.reason,/confidence 0.36/);
+  assert.deepEqual(result.history,history.slice(0,4));
+  assert.deepEqual(result.report.keptIndices,[0,1,2,3]);
+});

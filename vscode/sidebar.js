@@ -957,7 +957,7 @@ const progressItems = new Map();
 const taskVisuals=${JSON.stringify(["review", "commit", "search", "mcp", "edit", "recognize"].reduce((all, kind) =>
   Object.assign(all, { [kind]: require(require("path").join(__dirname, "task-visual")).html(kind, true) }), {}))};
 function paintTaskScene(item,update){
-      if(update.kind===null){item.dataset.taskKind='';item.dataset.taskSubject='';}
+      if(update.kind===null){delete item.dataset.taskKind;delete item.dataset.taskSubject;}
       if(['review','commit','search','mcp','edit','recognize'].includes(update.kind))item.dataset.taskKind=update.kind;
       // What a search is looking for travels with the step, so its band can spell the pattern out.
       if(typeof update.subject==='string')item.dataset.taskSubject=update.subject;

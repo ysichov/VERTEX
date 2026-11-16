@@ -1,4 +1,20 @@
+## 2026-11-16 — 0.9.99: Release
+
+Advanced the VS Code and Eclipse version metadata to 0.9.99.
+
+Logs & Cost displays actual dates directly in the period dropdown: DD.MM.YYYY for days, MM.YYYY for months, YYYY for years, and DD.MM.YY - DD.MM.YY for Monday–Sunday weeks. The selected date updates when navigating with the arrows.
+
 ## 2026-11-15 — 0.9.97: reviewed folder commands
+
+The working VERTEX indicator remains visible after an Edit or Write step finishes while the chat continues to run.
+
+VERTEX MCP can now find BSP applications by name or description with `sap_bsp_search`, including the BSP behind a Fiori screen title such as Manage Risks.
+
+The VERTEX chat and standalone MCP can now list BSP folders, read UI5 text resources and find labels or i18n keys in those files. This lets an assistant trace visible text to its source after identifying the BSP.
+
+In Logs, a conversation's Providers column now shows the providers that handled chat prompts. Linked Jev calls remain in the chronological steps and usage totals.
+
+When Jev is unsure which topic a follow-up belongs to, VERTEX retains only the related or uncertain topic exchanges. A correction can also retain its earlier screenshot evidence without pulling in unrelated topics.
 
 VERTEX can now label edited JavaScript blocks with the provider and model that made the change. The markers are added by VERTEX and shown in the normal Review diff. This first pass applies only to `.js` source files.
 
@@ -56,7 +72,7 @@ Recognising a screenshot no longer fails with "Screenshots need the streaming ch
 
 ## 2026-11-14 — Logs & Cost, build targets and project rules for the assistant
 
-**Session Logs and Usage & Cost are one window, Logs & Cost**, in VS Code and Eclipse. A **Logs | Usage & Cost** switch and one date range serve both views: Today by default, calendar inputs, week/month/year or a custom range, and previous/next period. Dates and provider filters survive switching views. Conversation rows show Model and Jev costs separately; CodeMie CLI totals are marked as estimates (≈), not the service bill or project budget spending. Claude subscription estimates are excluded from recorded USD totals. The chat's log button in Eclipse has a new icon and title. Usage & Cost tables support sorting by any column and display USD amounts to at most six decimal places.
+**Session Logs and Usage & Cost are one window, Logs & Cost**, in VS Code and Eclipse. A **Logs | Usage & Cost** switch and one date range serve both views: the selected day, week, month or year is shown as a real date or named period, alongside calendar inputs and a custom range; previous/next moves through periods. Dates and provider filters survive switching views. Conversation rows show Model and Jev costs separately; CodeMie CLI totals are marked as estimates (≈), not the service bill or project budget spending. Claude subscription estimates are excluded from recorded USD totals. The chat's log button in Eclipse has a new icon and title. Usage & Cost tables support sorting by any column and display USD amounts to at most six decimal places.
 
 **Assistant, local folder work.**
 - Bash takes an explicit purpose (`command`, `build`, `artifact`) and target (working copy, real project, or a folder you name). Builds default to the real project and warn that unapplied changes are not included; the log records the folder actually used.
