@@ -1,3 +1,9 @@
+Logs now automatically re-sorts the conversation list by last prompt time after changing the Commit message or other technical-conversation filters. Previously, newly shown conversations appeared in their original order until manual column sorting.
+
+Logs now shows AI Review as one step of the chat question whose changes it reviewed. Open the question and then **Steps (chronological)**. The **AI Review · N questions** step lists the first review and each follow-up, each with its question and answer. Older reviews have no turn link, so they appear under the question asked just before them.
+
+Flow now shows the price of each technical step (screenshot recognition, Jev routing and similar) on its own block, with the token breakdown in the tooltip. Historical logs use the same view, so they show it too when the step recorded usage.
+
 The VSIX build skill now uses one packaging command for an unchanged version. On success VERTEX returns the verified artifact path without sending the noisy packaging preview to the agent; the full output stays in VERTEX Build and its log file. Failed builds keep diagnostic previews.
 
 Flow now shows actual new input, cache-read input, output tokens, and available cost for each request lane. It marks unavailable or partial prices instead of treating the context-saving estimate as money spent. Skill matching remains an extra decision; normal Jev topic routing still assigns the topic, then the skill takes priority over conversation history sent to the model.

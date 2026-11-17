@@ -218,7 +218,10 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       + command + "` ended with exit code " + result.code + ". Result:\n" + JSON.stringify(result) + "\nFix it in your working copy.");
     return result;
   }
-  function showReview(changes, proposed) {
+  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+  // TURNID: the chat turn that produced these changes; an AI Review opened from them is logged as its step.
+  function showReview(changes, proposed, turnId = null) {
+  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
     dropReview();
     const entry = { silent: false }, reviewed = copy;
     const folder = reviewed.folder;
@@ -236,7 +239,9 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       } else if (outcome.applied.length && selectedBuild.automatic) void runBuild(folder, selectedBuild.command);
     }, {
       // A different command for this task overrides the saved command and waits for Run after Apply.
-      build: { command: selectedBuild.automatic ? "" : selectedBuild.command },
+      /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+      build: { command: selectedBuild.automatic ? "" : selectedBuild.command }, turnId,
+      /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
       onBuild: async (command, remember) => {
         if (remember) await buildRunner.remember(vscode, folder, command);
         return runBuild(folder, command);
@@ -904,7 +909,9 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         if (superseded()) return replaced();
         if (working) {
           const pending = await working.changes();
-          if (pending.length) { reviewProvider = id; showReview(pending, ""); }
+          /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+          if (pending.length) { reviewProvider = id; showReview(pending, "", turnId); }
+          /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
         }
         if (id === "openrouter-api") {
           const limits = await refreshLimits();
@@ -997,7 +1004,9 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       recorded = true;
       // The answer is done: whatever Claude changed in its working copy is reviewed now, all of a file's changes at once.
       const pendingReview = working ? await working.changes() : [];
-      if (pendingReview.length) { reviewProvider = id; showReview(pendingReview, result.plan.build_command); }
+      /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+      if (pendingReview.length) { reviewProvider = id; showReview(pendingReview, result.plan.build_command, turnId); }
+      /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
       if (log && !recordedModelCalls && !compatible.PROVIDERS[id] && id !== "copilot" && id !== "anthropic-api") {
         log.assistant({ model: result.model, usage: result.usage, text: result.plan.answer });
       }

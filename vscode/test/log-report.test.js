@@ -49,6 +49,29 @@ test('lazy prompt starts with chronological disclosures instead of repeated lega
  assert.deepEqual(Array.from(holder.children,entry=>entry.label),['User','Steps (chronological)']);
 });
 
+/* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+test('all rounds of one AI Review are one step of the chat turn, each with its question and answer',()=>{
+ const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+ const node=(label,cls)=>({label,cls,children:[],listeners:[],open:false,appendChild(child){this.children.push(child);return child;},
+  addEventListener(_,fn){this.listeners.push(fn);},querySelector(){return null;},expand(){this.open=true;this.listeners.forEach(fn=>fn());}});
+ const answered=[];
+ const context={el:(tag,cls,text)=>node(text,cls),section:(label,cls)=>node(label,cls),richText:text=>node(text,'text'),
+  serviceResult:(round,target)=>{answered.push(round.text);target.appendChild(node('answer:'+round.text));}};vm.createContext(context);
+ vm.runInContext(page.slice(page.indexOf('  function chronology('),page.indexOf('  function conversation(')),context);
+ const round=(text,time,conversation)=>({operation:'AI Review',text,time,sourceConversation:conversation,key:text});
+ const box=context.chronology({time:1000,events:[],details:[],technicalChildren:[round('First review',2000,'r1'),
+  {operation:'Task verification with Jev',time:1500,key:'jev'},round('Follow-up',3000,'r1'),round('Other review',4000,'r2')]},node('User','user'));
+ box.listeners.forEach(fn=>fn());
+ const steps=box.children.map(step=>step.label.replace(/^\d+\. [^·]+· /,''));
+ assert.deepEqual(steps,['User','Task verification with Jev','AI Review · 2 questions','AI Review · 1 question']);
+ const review=box.children[2];review.expand();
+ assert.deepEqual(review.children.map(q=>q.label.replace(/^(\d+)\. [^·]+· /,'$1 ')),['1 First review','2 Follow-up']);
+ review.children[1].expand();
+ assert.deepEqual(review.children[1].children.map(c=>c.label),['Question','Follow-up','Answer','answer:Follow-up']);
+ assert.deepEqual(answered,['Follow-up']);
+});
+
+/* VERTEX CHANGE END: codemie / claude-opus-5-5 */
 test('legacy checks and recovery states retain file order as distinct chronological actors',()=>{
  const rows=[{type:'user',message:{content:'Edit'}},{type:'vertex_topic_routing',report:{topic:{id:'t'}}},{type:'vertex_request',request:{instructions:'Rules',prompt:'Edit',tools:[],schema:null}},
  {type:'assistant',vertex_step:'local',message:{content:[{type:'tool_use',id:'lint',name:'Verification',input:{files:['x.js']}}]}},

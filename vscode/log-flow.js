@@ -403,6 +403,16 @@
           } else {
             button.appendChild(make("strong", "", (view === "steps" && node.stepNumber ? node.stepNumber + ". " : "") + node.title));
             button.appendChild(make("span", "", node.label));
+            /* VERTEX CHANGE BEGIN: codemie / claude-sonnet-5-5 */
+            if (node.prompt && node.prompt !== prompt && node.prompt.usage) {
+              const own = groupUsage({ prompt: node.prompt }, node.prompt.costKind === "jev" ? "jev" : "model");
+              if (own.costReported || own.input || own.output || own.cacheRead || own.cacheWrite) {
+                const [spentText, costText] = usageLines(own);
+                button.appendChild(make("small", "flow-usage", costText));
+                button.title += "\n" + spentText + " · " + costText;
+              }
+            }
+            /* VERTEX CHANGE END: codemie / claude-sonnet-5-5 */
           }
           button.onclick = () => choose(target, node, button); lane.appendChild(button); nodes.push({ node, button });
         });

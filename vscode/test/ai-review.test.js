@@ -55,7 +55,9 @@ test("review chat keeps follow-ups separate, reports stale snapshots, resets and
   const panel = { webview: { onDidReceiveMessage: fn => { receive = fn; }, postMessage: async m => sent.push(m) },
     onDidDispose: fn => { close = fn; } };
   const vscode = { ViewColumn: { Beside: 2 }, window: { createWebviewPanel: () => panel } };
-  const context = { ...aiContext(changes, "project", "Requirement"), isCurrent: async () => false };
+  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+  const context = { ...aiContext(changes, "project", "Requirement"), isCurrent: async () => false, relatedTurnId: "0123456789abcdef" };
+  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
   review.open(vscode, context, async (prompt, options) => { runs.push({ prompt, options }); return { answer: "Review answer", model: "test" }; });
   await receive({ action: "ready" });
   assert.equal(sent.at(-1).stale, true);
@@ -68,6 +70,9 @@ test("review chat keeps follow-ups separate, reports stale snapshots, resets and
   await receive({ action: "send", text: "New review" });
   assert.doesNotMatch(runs[2].prompt, /Review answer/);
   assert.notEqual(runs[1].options.logScope.conversation, runs[2].options.logScope.conversation);
+  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+  assert.ok(runs.every(run => run.options.logScope.relatedTurnId === "0123456789abcdef"), "every round, also after Check again, is a step of the reviewed turn");
+  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
   close();
 });
 

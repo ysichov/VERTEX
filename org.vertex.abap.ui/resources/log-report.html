@@ -39,10 +39,10 @@
   td.num, th.num { text-align: right; white-space: nowrap; }
   td.prompt-cell { overflow: hidden; }
   td.identity { white-space: nowrap; }
-  .identity-label { width: 150px; display: flex; align-items: baseline; white-space: nowrap; }
+  .identity-label { width: 100%; display: flex; align-items: baseline; white-space: nowrap; }
   .identity-label .model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .identity-label .jev-link { flex: none; margin-left: 4px; padding: 0; }
-  td.identity > .muted { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+  td.identity > .muted { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .conversation { min-width: 240px; }
   /* The prompt's time takes only the width it needs: the date is in the session line above. */
   td.time, th.time { white-space: nowrap; }
@@ -833,13 +833,35 @@ function markdown(text, target) {
         var result=resultEvent&&p.details[resultEvent.detail];if(resultEvent)paired.add(resultEvent.detail);
         items.push({time:event.time||p.time||0,order:index,event:event,detail:detail,result:result});
       });
-      (p.technicalChildren||[]).forEach(function(step,index){items.push({time:step.time||0,order:-1000+index,service:step});});
+      // One AI Review is one step: its rounds (first review, follow-up questions) stay together inside it.
+      var reviews=new Map();
+      (p.technicalChildren||[]).forEach(function(step,index){
+        if(step.operation==="AI Review"){
+          var reviewKey=step.sourceConversation||step.key,review=reviews.get(reviewKey);
+          if(review){review.review.push(step);return;}
+          review={time:step.time||0,order:-1000+index,review:[step]};reviews.set(reviewKey,review);items.push(review);return;
+        }
+        items.push({time:step.time||0,order:-1000+index,service:step});
+      });
       items.sort(function(a,b){return a.time-b.time||a.order-b.order;});
       items.forEach(function(item,index){
         var event=item.event,detail=item.detail,step=item.service,clock=new Date(item.time).toLocaleTimeString();
         var prefix=(index+1)+". "+clock+" · ",entry;
         if(item.user){
           entry=item.user;var heading=entry.querySelector("summary");if(heading)heading.textContent=prefix+heading.textContent;
+        } else if(item.review){
+          var rounds=item.review;
+          entry=section(prefix+"AI Review · "+rounds.length+" question"+(rounds.length===1?"":"s"),"technical tool");
+          var reviewLoaded=false;entry.addEventListener("toggle",function(){if(!entry.open||reviewLoaded)return;reviewLoaded=true;
+            rounds.forEach(function(round,roundIndex){
+              var question=section((roundIndex+1)+". "+new Date(round.time||0).toLocaleTimeString()+" · "+(round.text||"Review"),"technical tool");
+              var roundLoaded=false;question.addEventListener("toggle",function(){if(!question.open||roundLoaded)return;roundLoaded=true;
+                question.appendChild(el("div","kind","Question"));question.appendChild(richText(round.text||""));
+                question.appendChild(el("div","kind","Answer"+(round.model?" · "+round.model:"")));serviceResult(round,question);
+              });
+              entry.appendChild(question);
+            });
+          });
         } else if(step){
           entry=section(prefix+(step.operation==="Skill match with Jev"?"Skill search":step.operation),/Jev/i.test(step.operation)?"technical jev":/Recovery|Orchestrator/i.test(step.operation)?"technical vertex":"technical tool");
           var serviceLoaded=false;entry.addEventListener("toggle",function(){if(entry.open&&!serviceLoaded){serviceLoaded=true;serviceResult(step,entry);}});
@@ -1201,7 +1223,7 @@ function markdown(text, target) {
       (source.models || []).forEach(function (model) { if (!group.models.includes(model)) group.models.push(model); });
       group.toolCalls += source.toolCalls || 0;
        group.prompts.push.apply(group.prompts, source.prompts.map(function (p, index) {
-        return Object.assign({}, p, { provider: source.provider, key: p.key || source.id + ":" + index });
+        return Object.assign({}, p, { provider: source.provider, key: p.key || source.id + ":" + index, sourceConversation: source.conversation || null });
       }));
       source.prompts.forEach(function (prompt) {
         var kind=prompt.costKind === "jev" ? "jev" : "model",part = group.costs[kind], usage = prompt.usage || {},byKind=group.usageByKind[kind];
@@ -1261,7 +1283,7 @@ function markdown(text, target) {
     // Technical conversations by kind (topic tagging, context optimization...): a checkbox each shows or hides that kind.
     var kindOf = function (s) { return String((s.prompts[0] && s.prompts[0].operation) || "Technical").replace(/ with Jev.*$/, ""); };
     var kinds = {};
-    report.sessions.forEach(function (s) { if (!s.prompts.some(chat) && !internal(s)) kinds[kindOf(s)] = (kinds[kindOf(s)] || 0) + 1; });
+    report.sessions.forEach(function (s) { if (!s.prompts.some(chat)) kinds[kindOf(s)] = (kinds[kindOf(s)] || 0) + 1; });
     var kindBoxes = {};
     Object.keys(kinds).sort().forEach(function (kind) {
       if (!Object.prototype.hasOwnProperty.call(listState.hiddenKinds, kind)) listState.hiddenKinds[kind] = kind !== "Jev evaluation" && kind !== "Orchestrator tool selection";
@@ -1419,6 +1441,13 @@ function markdown(text, target) {
         if (show) shown++;
         r.rows[0].hidden = !show; r.rows[1].hidden = !show || !r.open;
       });
+      // Re-sort visible rows by last prompt time after filter changes (newly shown commit messages, context switches)
+      var visible = records.filter(function (r) { return !r.rows[0].hidden; });
+      visible.sort(function (a, b) { return b.item.lastPromptTime - a.item.lastPromptTime; });
+      visible.forEach(function (r) {
+        list.appendChild(r.rows[0]);
+        list.appendChild(r.rows[1]);
+      });
       // Naming the place keeps an empty list readable: nothing here yet, rather than something broken.
       var where = want === "none" ? "without a recorded place" : want && held[want] ? contextLabel(held[want].context) : "";
       status.textContent = (shown === records.length ? records.length : shown + " of " + records.length)
@@ -1470,15 +1499,19 @@ function markdown(text, target) {
     var rows = [];
     var chronological=s.prompts.slice().sort(function(a,b){return (a.time||0)-(b.time||0)||a.key.localeCompare(b.key);});
     var chatPrompts=chronological.filter(function(p){return p.operation==="Chat"||p.operation==="Web search";});
-    var technicalByChat=new Map(),unlinkedTechnical=[];
+    var technicalByChat=new Map(),unlinkedTechnical=[],reviewOwners=new Map();
     if(chatPrompts.length) chronological.forEach(function(p){
       if(p.operation==="Chat"||p.operation==="Web search")return;
+      // Every round of one AI Review belongs to the turn its first round was placed under, so it stays one step.
+      var reviewKey=p.operation==="AI Review"&&p.sourceConversation,reviewOwner=reviewKey&&reviewOwners.get(reviewKey);
+      if(reviewOwner){if(reviewOwner==="unlinked")unlinkedTechnical.push(p);else technicalByChat.get(reviewOwner).push(p);return;}
       var next=chatPrompts.find(function(q){return (q.time||0)>=(p.time||0);});
       var previous=chatPrompts.slice().reverse().find(function(q){return (q.time||0)<(p.time||0);});
       var exact=p.relatedTurnId&&chatPrompts.find(function(q){return q.turnId===p.relatedTurnId;});
-      if(p.relatedTurnId&&!exact){unlinkedTechnical.push(p);return;}
-      var owner=exact||(next&&previous?((p.time||0)-(previous.time||0)<=(next.time||0)-(p.time||0)?previous:next):next||previous);
-      if(owner){if(!technicalByChat.has(owner))technicalByChat.set(owner,[]);technicalByChat.get(owner).push(p);}
+      if(p.relatedTurnId&&!exact){unlinkedTechnical.push(p);if(reviewKey)reviewOwners.set(reviewKey,"unlinked");return;}
+      // A review is asked after the answer it reviews, so without an exact turn it belongs to the previous question.
+      var owner=exact||(reviewKey?previous||next:next&&previous?((p.time||0)-(previous.time||0)<=(next.time||0)-(p.time||0)?previous:next):next||previous);
+      if(owner){if(!technicalByChat.has(owner))technicalByChat.set(owner,[]);technicalByChat.get(owner).push(p);if(reviewKey)reviewOwners.set(reviewKey,owner);}
     });
     var source=chatPrompts.length?chatPrompts.concat(unlinkedTechnical):s.prompts.slice(),pageNumber=0,pageSize=30;
     function childrenOf(p){return technicalByChat.get(p)||[];}
