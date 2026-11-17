@@ -154,7 +154,7 @@
   .flow-world { position: absolute; left: 0; top: 0; transform-origin: top left; }
   .flow-lane { position: absolute; top: 0; height: 656px; }
   .flow-lane-heading { position: absolute; top: 24px; left: 12px; right: 12px; display: flex; flex-direction: column; gap: 3px; }
-  .flow-lane-heading span { font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .flow-lane-heading span { font-size: 1.1em; font-weight: 600; color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .flow-stats { display: block; margin: 8px 0 10px; padding: 12px 14px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editorWidget-background); color: var(--vscode-editor-foreground); }
   .flow-stats-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 18px; }
   .flow-stats-saving { font-size: 1.35em; color: var(--vscode-charts-green, var(--vscode-editor-foreground)); }
@@ -845,7 +845,7 @@ function markdown(text, target) {
       }});
       events.forEach(function(event,index){
         if(duplicates.has(index))return;
-        if(event.kind==="model"||event.kind==="note")return;
+        if(event.kind==="model")return;
         if(event.kind==="tool_result"&&paired.has(event.detail))return;
         var detail=p.details[event.detail], resultEvent=event.kind==="tool"&&detail?results.get(detail.tool_id):null;
         var result=resultEvent&&p.details[resultEvent.detail];if(resultEvent)paired.add(resultEvent.detail);
@@ -861,6 +861,10 @@ function markdown(text, target) {
         } else if(step){
           entry=section(prefix+(step.operation==="Skill match with Jev"?"Skill search":step.operation),/Jev/i.test(step.operation)?"technical jev":/Recovery|Orchestrator/i.test(step.operation)?"technical vertex":"technical tool");
           var serviceLoaded=false;entry.addEventListener("toggle",function(){if(entry.open&&!serviceLoaded){serviceLoaded=true;serviceResult(step,entry);}});
+        } else if(event.kind==="note"){
+          var note=event.model;
+          if(!note||!note.text)return;
+          entry=section(prefix+(note.note==="thinking"?"Thinking":"Assistant text"),"step-note "+note.note,note.text);
         } else if(event.kind==="tool"||event.kind==="tool_result"){
           if(!detail)return;
           entry=section(prefix+(event.kind==="tool"?stepTitle(detail):(event.tool||"Tool")+" result"),

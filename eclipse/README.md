@@ -86,6 +86,8 @@ open in VS Code only. The **Duration** column shows the elapsed time from each p
 The FLOW and Value Origin diagrams can render large graphs with more than 500 edges.
 Opened from the VERTEX submenu of an ADT editor, VERTEX Tools selects that object and follows the cursor; opened from Project Explorer or **Window → Show View → VERTEX → VERTEX Tools**, it shows object type and name fields (a mask such as `ZV*LAB` works) and the Parts list. A method in UML opens its class at that method; Ctrl+click opens it in a tab of its own. VERTEX windows open docked to the right of the editors. Conversation details are rendered when expanded. Offscreen session layout is deferred by the browser. The Conversation column prioritizes prompt text; Model is compact, with the full provider and model available on hover. Table columns retain stable sizing in narrow panels; scroll horizontally to see additional columns.
 
+To see streamed Claude Code/CodeMie reasoning and reply parts, set the log folder and enable answer logging in **Window → Preferences → VERTEX Assistant**. In **Session Logs**, expand a conversation and request, then **Steps (chronological)**. **Thinking** and **Assistant text** parts appear between tool steps, including received partial output from stopped or failed runs. Only reasoning supplied by the provider is available; reload the report to read newly saved parts.
+
 Tool calls are numbered; tabular results appear as tables. Click a SELECT in the log to reopen its joins and filters in SelecTor and read current data. Older clipped results show only complete surviving rows with a partial-result warning.
 
 ## Versions and code review

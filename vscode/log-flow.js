@@ -346,10 +346,11 @@
           const sent=Math.ceil((Number(reduction.afterCharacters||0)+questionCharacters)/4);
           const saved=Math.max(0,full-sent),percent=full?Math.round(100*saved/full):0;
           const gain=make("div","flow-lane-gain");
-          if(reduction.skill)gain.append(make("strong","","−"+(Number(reduction.beforeCharacters||0)?100:0)+"% previous history"));
-          else gain.append(make("strong","","−"+percent+"% previous history"));
+          /* VERTEX CHANGE BEGIN: codemie / claude-sonnet-5-5 */
           const [spent,cost]=usageLines(actualUsage);
-          gain.append(make("span","flow-spend",spent),make("span","flow-spend",cost));
+          gain.append(make("span","flow-spend",spent),make("span","flow-spend",cost),
+            make("span","flow-spend",reduction.skill?"−"+(Number(reduction.beforeCharacters||0)?100:0)+"% previous history":"−"+percent+"% previous history"));
+          /* VERTEX CHANGE END: codemie / claude-sonnet-5-5 */
           const bar=make("div","flow-comparison-bar"),included=make("span","flow-bar-included"),excluded=make("span","flow-bar-excluded");
           included.style.width=(100-percent)+"%";excluded.style.width=percent+"%";bar.append(included,excluded);gain.appendChild(bar);lane.appendChild(gain);
         }

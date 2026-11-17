@@ -17,11 +17,11 @@ li>.row:hover{background:var(--vscode-list-hoverBackground,#8882)}
 .mark{display:inline-block;width:8px;height:8px;flex:none}
 .mark.public{background:#2e9e44}.mark.protected{background:#d9a400;width:7px;height:7px;transform:rotate(45deg)}.mark.private{background:#d33a2c;border-radius:50%}
 li.closed>ul{display:none}
-#options{padding:6px 10px 0}#options[hidden]{display:none}
+#toolbar{display:flex;align-items:center;gap:8px;padding:6px 10px 0}#options[hidden]{display:none}
 body:not(.show-removed) li.removed{display:none}
 li.removed>.row>.label{color:var(--vscode-errorForeground,#d33a2c)}
 </style></head><body>
-<div id="options" hidden><label title="Objects a released task holds that were taken out of the request"><input type="checkbox" id="show-removed"> Show removed objects</label></div>
+<div id="toolbar"><button id="copy-context" type="button" hidden title="Copy the loaded navigator tree for use in an external assistant">Copy context</button><div id="options" hidden><label title="Objects a released task holds that were taken out of the request"><input type="checkbox" id="show-removed"> Show removed objects</label></div></div>
 <div id="status" role="status"></div><div id="tree" role="tree"></div>
 <script>
 const initial = /*INIT*/null/*INIT*/;
@@ -41,6 +41,30 @@ function sdeContext() {
     loading, loaded_nodes, truncated: all.length > loaded_nodes.length,
     partial: all.some(li => li.__vertexNode.expand && !li.__vertexLoaded) };
 }
+function formatContext(view) {
+  const type = view.type === "TR" ? "Transport request" : view.type === "DEVC" ? "Package" : view.type || "Object";
+  const lines = ["Object Navigator context: " + type + " " + (view.name || "")];
+  (view.loaded_nodes || []).forEach(node => {
+    const indent = "  ".repeat(Math.max(0, Number(node.depth) || 0));
+    const object = node.name && node.name !== node.label ? " — " + (node.type ? node.type + " " : "") + node.name : "";
+    lines.push(indent + (node.label || "") + object + (node.removed_from_request ? " [removed from request]" : ""));
+  });
+  if (!view.loaded_nodes || !view.loaded_nodes.length) lines.push("(No navigator tree has loaded yet.)");
+  if (view.loading) lines.push("NOTE: Loading was in progress when this context was copied.");
+  if (view.partial) lines.push("NOTE: Some expandable branches are still folded or not loaded; the context is partial.");
+  if (view.truncated) lines.push("NOTE: The loaded tree exceeds the 100-node context limit; this list is truncated.");
+  return lines.join("\n");
+}
+function copyContext() {
+  const button = document.getElementById("copy-context"), text = formatContext(sdeContext());
+  const failure = typeof window.sdeCopyText === "function" ? window.sdeCopyText(text) : "This window has no clipboard.";
+  const previous = button.textContent;
+  button.textContent = failure ? "Copy failed" : "Copied";
+  if (failure) button.title = failure;
+  setTimeout(() => { button.textContent = previous; }, 1500);
+}
+const copyButton = document.getElementById("copy-context");
+if (copyButton) copyButton.addEventListener("click", copyContext);
 function publishContext() { if (typeof sdeContextUpdate === "function") sdeContextUpdate({ vertex_view: sdeContext() }); }
 /* One answer at a time comes back through sdeReady; each request waits its turn here. */
 const waiting = [];
@@ -97,6 +121,8 @@ function item(node) {
 }
 function show(state) {
   loading = true;
+  const copyButton = document.getElementById("copy-context");
+  if (copyButton) copyButton.hidden = true;
   status.textContent = "Reading " + state.name + "…"; status.classList.add("vertex-busy");
   document.getElementById("tree").replaceChildren();
   publishContext();
@@ -110,6 +136,8 @@ function show(state) {
     const ul = document.createElement("ul"), top = item(root);
     top.classList.remove("closed"); top.querySelector(".twist").textContent = "⌄";
     ul.appendChild(top); document.getElementById("tree").appendChild(ul);
+    const copyButton = document.getElementById("copy-context");
+    if (copyButton) copyButton.hidden = !["TR", "DEVC"].includes(String(state.type).toUpperCase());
     // A request with objects taken out of it offers to show them; others have nothing to offer.
     document.getElementById("options").hidden = !ul.querySelector("li.removed");
     publishContext();

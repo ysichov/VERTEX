@@ -125,6 +125,8 @@ Choose **Flow** in **Logs | Flow | Usage & Cost** to replace the table with a gr
 
 For this repository, a VSIX build request can match the `build-vertex-vsix` project skill with Jev. When the match is confident, VERTEX loads the skill procedure and sends zero previous chat prompts; the current request and project rules still apply. Flow → Context shows the skill match and estimates the history omitted. The estimate is separate from Codex turn usage and cache reads.
 
+To see streamed Claude Code/CodeMie reasoning and reply parts, configure `vertex.ai.logPath` and enable `vertex.ai.log.answers`. Open **$ → Logs**, expand the conversation and request, then **Steps (chronological)**: **Thinking** and **Assistant text** parts appear between tool steps. Parts are saved during generation and before each new tool; received partial output remains after Stop or a provider error. Only reasoning actually supplied by the provider is available. Reload the report to read newly saved parts.
+
 Session Logs numbers tool calls and shows query results as tables. Click a SELECT to reopen it in SelecTor with its joins and filters; this reads current SAP data. Click a revision link to read that historical source through the original SAPRead toolset and open it read-only. Codex turn totals are labelled separately from individual API model calls.
 
 `vertex.chat.queryMaxRows` controls query rows sent to the LLM (default **100**) and the default fetch size. A larger explicit fetch reports provider totals, fetched rows and rows sent to the model separately. Narrow WHERE clauses, necessary columns and server-side aggregates avoid transferring unnecessary data. This setting does not change interactive SelecTor.

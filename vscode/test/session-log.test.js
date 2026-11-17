@@ -210,6 +210,9 @@ test("Claude Code's own steps are logged with the tool option: a command and its
   log.step({ kind: "result", id: "toolu_4", name: "Bash", is_error: true, content: "The user denied this action." });
   const text = require("node:fs").readFileSync(log.file, "utf8");
   const records = text.trim().split("\n").map(line => JSON.parse(line));
+  /* VERTEX CHANGE BEGIN: codemie / gpt-5.6-sol-2026-07-09 */
+  assert.deepEqual(records.map(record => record.vertex_sequence), [1, 2, 3, 4, 5]);
+  /* VERTEX CHANGE END: codemie / gpt-5.6-sol-2026-07-09 */
   assert.equal(records[0].message.content[0].input.command, "npm test");
   assert.equal(records[1].message.content[0].content, "ok 12 tests");
   assert.deepEqual(records[2].message.content[0].input, { file_path: "C:\p\a.js", old_lines: 2, new_lines: 1, old_characters: 15, new_characters: 10 });

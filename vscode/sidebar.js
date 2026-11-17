@@ -445,7 +445,9 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId,
               answer: reply.answer + (reply.navigationError ? "\n\nVERTEX could not open the object: " + reply.navigationError : ""),
-              done: true, ...(reply.topic?{topic:reply.topic}:{}), usage: usageLine(reply)+(reply.planner?" · Jev tools: "+usageLine(reply.planner):""), choices: reply.choices || [],
+              /* VERTEX CHANGE BEGIN: codemie / claude-4-5-sonnet-vertex */
+              done: true, ...(reply.topic?{topic:reply.topic}:{}), model: reply.model, usage: usageLine(reply)+(reply.planner?" · Jev tools: "+usageLine(reply.planner):""), choices: reply.choices || [],
+              /* VERTEX CHANGE END: codemie / claude-4-5-sonnet-vertex */
               runs: (await vscode.commands.executeCommand("vertex.knownEvidenceSessions")) || [] } });
             await view.webview.postMessage({topicList:ask.topics?.()||[]});
             // The answer names a VERTEX function to run - a table's data, a
@@ -1182,7 +1184,7 @@ window.addEventListener('message', event => {
         let details = item.querySelector('.reasoning');
         if (!details) {
           details = document.createElement('details'); details.className = 'reasoning';
-          const summary = document.createElement('summary'); summary.textContent = 'Claude reasoning';
+          const summary = document.createElement('summary'); summary.textContent = (update.model || 'Model') + ' reasoning';
           const pre = document.createElement('pre'); details.append(summary, pre); item.appendChild(details);
         }
         details.querySelector('pre').textContent = update.thinking;

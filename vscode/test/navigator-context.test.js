@@ -2,6 +2,26 @@
 const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 
+/* VERTEX CHANGE BEGIN: codemie / claude-haiku-5-5 */
+test("Navigator context text preserves tree hierarchy and warns about partial or truncated context", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "..", "org.vertex.abap.ui", "resources", "navigator.html"), "utf8");
+  const start = html.indexOf("function formatContext(view)");
+  const end = html.indexOf("function copyContext()", start);
+  const context = {};
+  vm.runInNewContext(html.slice(start, end) + ";this.formatContext=formatContext;", context);
+  const text = context.formatContext({ type: "DEVC", name: "Z_RIG", loaded_nodes: [
+    { depth: 0, label: "Z_RIG" }, { depth: 1, label: "Classes" },
+    { depth: 2, label: "ZCL_A", name: "ZCL_A", type: "CLAS" },
+    { depth: 2, label: "ZOLD", name: "ZOLD", type: "PROG", removed_from_request: true }
+  ], partial: true, truncated: true });
+  assert.match(text, /Object Navigator context: Package Z_RIG/);
+  assert.ok(text.includes("  Classes") && text.includes("ZCL_A") && text.includes("ZOLD [removed from request]"));
+  assert.match(text, /context is partial/);
+  assert.match(text, /100-node context limit/);
+  assert.equal(text.includes("source"), false);
+});
+/* VERTEX CHANGE END: codemie / claude-haiku-5-5 */
+
 test("Navigator reports its loaded tree without source code", () => {
   const html = fs.readFileSync(path.join(__dirname, "..", "..", "org.vertex.abap.ui", "resources", "navigator.html"), "utf8");
   const start = html.indexOf("let loading = false;");
@@ -13,8 +33,10 @@ test("Navigator reports its loaded tree without source code", () => {
     expand: { name: "ZCL_CALC_FACADE", type: "CLAS" } }, __vertexLoaded: false,
     parentElement: { tagName: "UL", parentElement: group } };
   const sent = [];
-  const context = { initial: { name: "Z_RIG", type: "DEVC" }, document: { querySelectorAll: () => [root, group, klass] },
+  /* VERTEX CHANGE BEGIN: codemie / claude-sonnet-5-5 */
+  const context = { initial: { name: "Z_RIG", type: "DEVC" }, document: { querySelectorAll: () => [root, group, klass], getElementById: () => null }, // INS: codemie / gpt-6-luna
     sdeContextUpdate: state => sent.push(state) };
+  /* VERTEX CHANGE END: codemie / claude-sonnet-5-5 */
   vm.runInNewContext(html.slice(start, end), context);
   context.publishContext();
   const view = sent[0].vertex_view;

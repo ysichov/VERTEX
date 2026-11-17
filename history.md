@@ -1,6 +1,16 @@
+## 2026-11-17 — 0.9.101: Release
+
+Advanced the VS Code and Eclipse version metadata to 0.9.101. Rebuilt the VSIX.
+
 ## 2026-11-17 — 0.9.100: Release
 
+Object Navigator for packages and transport requests now has **Copy context**. It copies the loaded tree for pasting into an external assistant on systems without AI; folded branches and truncated output are called out so partial context is clear.
+
 Advanced the VS Code and Eclipse version metadata to 0.9.100.
+
+Session logs now preserve streamed Claude Code/CodeMie reasoning and reply text in chronological parts. Starting a new tool closes the preceding part; long generations save parts every 200 ms, and stopped or failed runs retain received partial output. Logs → Steps (chronological) now displays Thinking and Assistant text parts between tools instead of hiding the recorded notes. Answer logging must be enabled. Every new JSONL record also carries a monotonic sequence number for unambiguous ordering when timestamps are equal.
+
+Logs' Providers column now shows the model's own name. Before, it showed the route a proxy adds to the name, so CodeMie conversations listed `codemie-gpt-6-luna-2026-09-22` or `openai.gpt-5.6-sol` next to the provider that was already shown.
 
 Logs now automatically re-sorts the conversation list by last prompt time after changing the Commit message or other technical-conversation filters. Previously, newly shown conversations appeared in their original order until manual column sorting.
 
