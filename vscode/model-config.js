@@ -205,9 +205,17 @@ async function chooseLogFolder(vscode) {
  * is where its assistant lives, for checking a Claude version; secrets keeps
  * the Anthropic API key.
  */
+/* VERTEX CHANGE BEGIN: codemie / claude-sonnet-5-5 */
+let openPanel;
+
 function open(vscode, full, extensionPath, forget, secrets, executable) {
+  // One window only: when the table is already open, bring it forward instead of opening another.
+  if (openPanel) { openPanel.reveal(); return openPanel; }
   const panel = vscode.window.createWebviewPanel("vertex.modelConfig", "VERTEX: LLM Providers",
     vscode.ViewColumn.Active, { enableScripts: true, localResourceRoots: [] });
+  openPanel = panel;
+  panel.onDidDispose(() => { if (openPanel === panel) { openPanel = undefined; } });
+/* VERTEX CHANGE END: codemie / claude-sonnet-5-5 */
   const nonce = require("crypto").randomBytes(24).toString("hex");
   const active = PROVIDERS.find(p => p.setting === vscode.workspace.getConfiguration("vertex.ai").get("provider", ""));
   panel.webview.html = html(nonce, active ? active.id : PROVIDERS[0].id,
