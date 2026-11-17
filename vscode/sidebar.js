@@ -14,11 +14,22 @@ const ACTIONS = Object.freeze({
 
 function register(vscode, context, active, ask, systems, toolContext, clients = { set: async () => {}, onChange: () => ({ dispose() {} }) }, chatMcp = null) {
   let currentView, ready = false, nextRequest = 0, pendingChat = null, continuing = false;
-  let reviewSurface = null, viewNonce = "";
+  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+  let reviewSurface = null;
+  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
   // ASK AI of a review: the blocks on the chip above the input, attached to the next question only when it is sent.
   let reviewAsk = null;
   const review = require("./code-review");
   const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "", reviewResult: reviewAsk?.review_result ? { ...reviewAsk.review_result, files: reviewAsk.files } : null, draft: reviewAsk && reviewAsk.question || "" }) : undefined;
+  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+  // AI Review lives in the main chat: closing it ends its review conversation; its steps stay in the chat.
+  const closeReview = async () => {
+    if (!reviewSurface) return;
+    const id = reviewSurface.embedding.id;
+    await reviewSurface.dispose(); reviewSurface = null;
+    if (currentView) await currentView.webview.postMessage({ aiReviewClosed: id });
+  };
+  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
   // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.configureOrchestrator", async () => {try{const planner=await ask.configOrchestrator();if(currentView)await currentView.webview.postMessage({planner});return planner;}catch(error){vscode.window.showErrorMessage("VERTEX orchestrator: "+error.message);}}));
@@ -28,7 +39,9 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   // Continue a conversation from Session Logs: a new conversation in the panel whose history is the logged questions
   // and answers; it keeps logging under the same conversation id, so its files stay together.
   context.subscriptions.push(vscode.commands.registerCommand("vertex.continueConversation", async found => {
-    if (pendingChat || continuing) throw new Error("Stop or finish the current request before continuing another conversation.");
+    /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+    if (pendingChat || continuing || reviewSurface?.running) throw new Error("Stop or finish the current request before continuing another conversation.");
+    /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
     if (!found || !Array.isArray(found.turns) || !found.turns.length) throw new Error("No questions to continue from.");
     continuing = true;
     try {
@@ -44,6 +57,9 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     if(selectedTopic)await vscode.workspace.getConfiguration("vertex.ai").update("context.routeTopics",true,vscode.ConfigurationTarget.Global);
     const restoredTopics=ask.topics?.()||[],restoredLabels=new Map(restoredTopics.map(topic=>[topic.id,topic.label]));
     reviewAsk = null;
+    /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+    await closeReview();
+    /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
     const view = currentView;
     await view.webview.postMessage({ cleared: true });
     const first = found.turns.find(turn => turn.time), when = first ? new Date(first.time).toLocaleString() : "";
@@ -99,46 +115,87 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   }));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.askReviewBlock", async blocks => {
     reviewAsk = review.mergeAsk(reviewAsk, blocks);
+    /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+    // One attachment above the input at a time: an open AI Review would take the next question instead.
+    if (!reviewSurface?.running) await closeReview();
     await vscode.commands.executeCommand("vertex.launcher.focus");
     await showReview();
   }));
+  // Discuss in chat: the review closes and its chosen result goes, with its changes, to the next chat question.
   context.subscriptions.push(vscode.commands.registerCommand("vertex.discussAiReview", async attachment => {
     if (!currentView || !ready || !attachment?.review_result || !Array.isArray(attachment.blocks)) return;
+    if (reviewSurface?.running) return;
     reviewAsk = attachment;
-    await currentView.webview.postMessage({ discussReview: true });
+    await closeReview();
     await showReview();
     currentView.show(true);
   }));
+  /* ASK AI on assistant changes: the review opens in the main chat. Its settings (review type, requirements, prompt
+     files, Copy prompt, Check again) sit above the chat input; each question and answer is a step of the chat. The
+     review keeps its own conversation: no main-chat history, no tools (ai-review.js / chat.js reviewChanges). */
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openAiReview", async reviewContext => {
     await vscode.commands.executeCommand("vertex.launcher.focus");
     for (let waited = 0; (!currentView || !ready) && waited < 5000; waited += 100) await new Promise(resolve => setTimeout(resolve, 100));
     if (!currentView || !ready) throw new Error("Open the VERTEX chat and try ASK AI again.");
-    reviewSurface?.dispose();
-    const receive = new Set(), dispose = new Set(), queue = [];
+    /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+    if (pendingChat || continuing || reviewSurface?.running) { vscode.window.showWarningMessage("VERTEX: stop or finish the current request, then select ASK AI again."); return; }
+    /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
+    await closeReview();
+    reviewAsk = null; await showReview();
+    const receive = new Set(), dispose = new Set();
     const id = require("crypto").randomBytes(12).toString("hex");
-    let active = true, childReady = false;
+    let active = true, round = null;
+    const post = message => active && currentView ? currentView.webview.postMessage(message) : undefined;
+    let label = "AI Review";
     const surface = {
-      embedding: { id, nonce: viewNonce },
+      embedding: { id },
+      get running() { return !!round; },
+      render(shown) {
+        label = "AI Review · " + shown.object;
+        return post({ aiReviewOpen: { id, object: String(shown.object || ""), files: [...(shown.files || [])], blocks: (shown.blocks || []).length } });
+      },
       webview: {
-        set html(html) { childReady = false; queue.length = 0; if (active) void currentView?.webview.postMessage({ reviewPage: { id, html } }); },
         onDidReceiveMessage(fn) { receive.add(fn); return { dispose: () => receive.delete(fn) }; },
+        // What the review reports becomes the chat's own progress of the round being asked.
         async postMessage(message) {
-          if (!active) return;
-          if (message.turn || message.done) await currentView?.webview.postMessage({ reviewBusy: !!message.turn });
-          if (childReady) return currentView?.webview.postMessage({ reviewUpdate: { id, message } });
-          queue.push(message);
+          if (!active || !message) return;
+          if (message.draftPrompt) return post({ draftPrompt: message.draftPrompt });
+          if (message.promptFile) return post({ promptFile: message.promptFile });
+          if (typeof message.stale === "boolean") await post({ aiReviewStale: { id, stale: message.stale } });
+          if (!round) {
+            if (message.status) await post({ aiReviewStatus: { id, text: message.status, error: !!message.error } });
+            if (message.done) await post({ aiReviewDone: id });
+            return;
+          }
+          if (message.turn) await post({ progress: { id: round.id, step: "review", kind: "review", user: "You: " + message.turn + "  [" + label + "]", status: message.status || "Reviewing changes…" } });
+          else if (message.reply) { round.answered = true; await post({ progress: { id: round.id, step: "review", answer: message.reply, done: true,
+            usage: "AI Review · " + (message.model || "model") + " · without the main chat history and tools", discuss: message.handoffId ? { review: id, id: message.handoffId } : null } }); }
+          else if (message.status && message.error) { round.answered = true; await post({ progress: { id: round.id, step: "review", answer: "Review failed: " + message.status, done: true } }); }
+          else if (message.status) await post({ progress: { id: round.id, status: message.status } });
+          if (message.done) { const finished = round; round = null; if (!finished.answered) await post({ progress: { id: finished.id, step: "review", stopped: true, done: true } }); await post({ aiReviewDone: id }); }
         }
       },
       onDidDispose(fn) { dispose.add(fn); },
       async receive(message) {
-        if (!active) return;
-        if (message.action === "ready") {
-          childReady = true;
-          for (const update of queue.splice(0)) await currentView?.webview.postMessage({ reviewUpdate: { id, message: update } });
+        if (!active || !message || typeof message !== "object") return;
+        let asked = null;
+        if (message.action === "send") {
+          if (pendingChat || continuing || round) return;
+          const requestId = Number.isInteger(message.requestId) ? message.requestId : ++nextRequest;
+          if (requestId > nextRequest) nextRequest = requestId;
+          asked = round = { id: requestId, answered: false };
         }
         for (const fn of receive) await fn(message);
+        // Not taken (the review was busy refreshing): the waiting step goes.
+        if (asked && round === asked) { round = null; await post({ progress: { id: asked.id, remove: true } }); await post({ aiReviewDone: id }); }
       },
-      dispose() { active = false; for (const fn of dispose) fn(); }
+      stop() { if (round) { void post({ progress: { id: round.id, status: "Stopping…" } }); for (const fn of receive) void fn({ action: "stop" }); } },
+      async dispose() {
+        const open = round; round = null;
+        if (open) await post({ progress: { id: open.id, step: "review", stopped: true, done: true } });
+        active = false; for (const fn of dispose) fn();
+      }
+    /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
     };
     reviewSurface = surface;
     require("./ai-review").open(vscode, reviewContext, (prompt, options) => ask.reviewChanges(prompt, options), surface);
@@ -149,7 +206,6 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
       currentView = view;
       ready = false;
       const nonce = require("crypto").randomBytes(24).toString("hex");
-      viewNonce = nonce;
       view.webview.options = { enableScripts: true, localResourceRoots: [] };
       view.webview.html = html(nonce);
       const refresh = async (fresh = false) => {
@@ -184,10 +240,9 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
       const messages = view.webview.onDidReceiveMessage(async message => {
         if (!message || typeof message !== "object") { return; }
         if (message.action === "closeAiReview") {
-          if (message.id === reviewSurface?.embedding.id) {
-            reviewSurface.dispose(); reviewSurface = null;
-            await view.webview.postMessage({ reviewClosed: message.id });
-          }
+          /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+          if (message.id === reviewSurface?.embedding.id) await closeReview();
+          /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
           return;
         }
         if (message.action === "aiReviewMessage") {
@@ -288,7 +343,10 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if (message.action === "newConversation") {
-          if (pendingChat || continuing) return;
+          /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+          if (pendingChat || continuing || reviewSurface?.running) return;
+          await closeReview();
+          /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
           // A new conversation writes to a new log file.
           require("./session-log").reset();
           await vscode.commands.executeCommand("vertex.resetTranspilerRunNumbers");
@@ -323,6 +381,9 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if (message.action === "stopChat") {
+          /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+          if (reviewSurface?.running) { reviewSurface.stop(); return; }
+          /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
           if (pendingChat && !pendingChat.cancelled) {
             pendingChat.cancelled = true;
             ask.stop();
@@ -331,7 +392,9 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if(message.action === "decision") {
-          if(pendingChat)return;
+          /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+          if(pendingChat||reviewSurface?.running)return;
+          /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
           const pending=pendingChat={id:++nextRequest,cancelled:false,kind:"decision"};
           try{
             await view.webview.postMessage({decisionRunning:true});
@@ -343,7 +406,9 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if (message.action === "chat") {
           if (continuing) return;
-          if (pendingChat) return;
+          /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+          if (pendingChat || reviewSurface?.running) return;
+          /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
           const requestId = Number.isInteger(message.requestId) ? message.requestId : ++nextRequest;
           if (requestId > nextRequest) nextRequest = requestId;
           // The window shows the question as written; the review's blocks go to the model with it, unseen.
@@ -464,7 +529,9 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         vscode.workspace.onDidChangeWorkspaceFolders(() => { void showFolder(); })];
       const clientSwitch = clients.onChange(() => { void refresh(); });
       const mcpUpdates = chatMcp ? chatMcp.onUpdates(() => { void refresh(); }) : { dispose() {} };
-      view.onDidDispose(() => { reviewSurface?.dispose(); reviewSurface=null; currentView = undefined; ready = false; messages.dispose(); changes.dispose(); folderWatch.forEach(watch => watch.dispose()); clientSwitch.dispose(); mcpUpdates.dispose(); });
+      /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+      view.onDidDispose(() => { void reviewSurface?.dispose(); reviewSurface=null; currentView = undefined; ready = false; messages.dispose(); changes.dispose(); folderWatch.forEach(watch => watch.dispose()); clientSwitch.dispose(); mcpUpdates.dispose(); });
+      /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
     }
   };
   // The panel holds the chat: switching to Explorer and back must not wipe the conversation on screen.
@@ -541,6 +608,7 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #chat #review-chip button { flex: none; width: auto; margin: 0; padding: 0 6px; line-height: 18px; border-radius: 3px; background: transparent; color: var(--vscode-foreground); opacity: .7; }
 #chat #review-chip button:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); box-shadow: none; }
 #messages .copy-answer { margin: -0.6em 0 1em; padding: 2px 8px; font-size: 11px; }
+#messages .review-discuss { margin-left: 6px; }
 #messages p.usage { font-size: 11px; opacity: .7; margin: -0.6em 0 1em; white-space: pre-line; }
 #messages p.tool-status { font-size: 11px; opacity: .8; }
 #messages p.you { color: var(--vscode-charts-blue); }
@@ -637,14 +705,26 @@ body.vscode-dark[data-provider="codemie"] #tools:hover, body.vscode-light[data-p
 body[data-provider="codemie"] #provider-select option { color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground)); background: var(--vscode-dropdown-background, var(--vscode-input-background)); }
 .chat-head { margin-bottom: 4px; }
 #new-conversation { margin-left: auto; }
-#chat-modes{flex:none;align-self:center}
 #chat-header{flex:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-#review-navigation{flex:none}#review-navigation[hidden]{display:none!important}
-#ai-review-frame{flex:1 1 auto;min-height:100px;width:100%;border:0;background:var(--vscode-editor-background)}
-#review-empty{flex:1 1 auto}
-body[data-chat-mode="review"] #topic-view,body[data-chat-mode="review"] #context-controls,body[data-chat-mode="review"] #conversation-history,body[data-chat-mode="review"] #messages,body[data-chat-mode="review"] #work-composer,body[data-chat-mode="review"] #new-conversation{display:none!important}
-body:not([data-chat-mode="review"]) #ai-review-frame,body:not([data-chat-mode="review"]) #review-empty,body:not([data-chat-mode="review"]) #new-review{display:none!important}
-#new-review{margin-left:auto}
+/* AI Review in the main chat: its settings above the input, its questions and answers as chat steps. */
+#ai-review-box,.prompt-overlay{--bg:var(--vscode-sideBar-background,var(--vscode-editor-background));--fg:var(--vscode-foreground);--border:var(--vscode-panel-border);--muted:var(--vscode-descriptionForeground)}
+#ai-review-box{margin:0 0 6px;padding:6px 8px;border:1px solid var(--vscode-panel-border);border-left:3px solid var(--vscode-focusBorder);border-radius:4px;background:var(--vscode-editorWidget-background,var(--vscode-sideBar-background))}
+#ai-review-box[hidden]{display:none}
+.ai-review-head{display:flex;align-items:center;gap:6px;min-width:0}
+#ai-review-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ai-review-scope{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#chat #ai-review-box button{width:auto;margin:0}
+#chat #ai-review-close{padding:0 6px;line-height:18px;background:transparent;color:var(--vscode-foreground);opacity:.7}
+#chat #ai-review-close:hover{opacity:1}
+#ai-review-stale{margin:6px 0 0;padding:4px 8px;border-left:3px solid var(--vscode-editorWarning-foreground)}
+#ai-review-stale[hidden]{display:none}
+#ai-review-settings{margin:6px 0 0}#ai-review-settings>summary{cursor:pointer;color:var(--vscode-descriptionForeground)}
+#ai-review-settings .prompt-bar{margin:6px 0}#ai-review-settings .vertex-segment-toggle{max-width:100%;flex-wrap:wrap}
+.ai-review-task{display:flex;flex-direction:column;gap:4px;margin:6px 0;font-size:12px}
+#ai-review-task{max-height:160px}
+#ai-review-status{margin:4px 0 0;white-space:pre-wrap;color:var(--vscode-descriptionForeground)}#ai-review-status:empty{display:none}
+#ai-review-status[data-state="error"]{color:var(--vscode-errorForeground)}
+#messages .review-step{border-left:3px solid var(--vscode-focusBorder);padding-left:8px}
 #topic-view{flex:none}#topic-view[hidden]{display:none}#topic-view-select{flex:1;min-width:0;max-width:100%}
 #topic-now{color:var(--vscode-descriptionForeground,var(--vscode-foreground));font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#topic-picker{max-width:100%}#topic-picker-label{display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;vertical-align:middle}#topic-picker-label[hidden]{display:none}
 #conversation-history{flex:none;margin:6px 0;border-bottom:1px solid var(--vscode-panel-border)}
@@ -660,13 +740,13 @@ button.history-item{display:block;width:100%;text-align:left;margin:3px 0;paddin
 #tools .tools-logo::before { content: ""; position: absolute; inset: 0; background: url("${LOGO}") center/contain no-repeat; transform-origin: center; animation: vertex-task-turn 18s linear infinite; }
 body.vscode-reduce-motion #tools .tools-logo::before { animation: none; }
 @media (prefers-reduced-motion: reduce) { #tools .tools-logo::before { animation: none; } }
+${require(require("path").join(__dirname,"git-prompt-bar")).CSS}
 ${require(require("path").join(__dirname,"code-review")).controlsCss}
 ${require(require("path").join(__dirname,"jev-panel")).css}
 </style></head><body class="${require(require("path").join(__dirname,"motion")).mode()==="auto"?"":"vertex-motion-"+require(require("path").join(__dirname,"motion")).mode()}">
 <dialog id="mcp-start-dialog" aria-labelledby="mcp-start-title"><strong id="mcp-start-title">MCP server</strong><span class="mcp-start-scene" id="mcp-start-scene"></span><div id="mcp-start-status" role="status" aria-live="polite"></div><div id="mcp-start-options"></div><form method="dialog"><button type="button" class="secondary" id="mcp-start-go" hidden>Start</button><button type="button" class="secondary" id="mcp-start-node" hidden>Get Node.js</button><button class="secondary" id="mcp-start-close">Close</button></form></dialog>
 <dialog id="model-details-dialog" aria-labelledby="model-details-title"><strong id="model-details-title">Model details</strong><div id="model-capabilities"></div><form method="dialog"><button class="secondary">Close</button></form></dialog>
-<div id="chat-header"><div class="line" id="review-navigation" hidden><div class="vertex-segment-toggle" id="chat-modes" role="group" aria-label="Chat mode"><button type="button" data-chat-mode="work" class="active" aria-pressed="true">Main</button><button type="button" data-chat-mode="review" aria-pressed="false">AI Review<span id="review-running" hidden> · …</span></button></div><button type="button" class="secondary" id="review-close" title="Close this review and return to Main">Close review</button></div>
-<div class="line" id="context-controls"><span class="vertex-segment-toggle" id="context-mode" role="group" aria-label="Context source"><button type="button" data-context="sap" class="active">SAP</button><button type="button" data-context="folder">Folder</button></span><span id="sap-context-controls"><span>SAP system</span>
+<div id="chat-header"><div class="line" id="context-controls"><span class="vertex-segment-toggle" id="context-mode" role="group" aria-label="Context source"><button type="button" data-context="sap" class="active">SAP</button><button type="button" data-context="folder">Folder</button></span><span id="sap-context-controls"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button><button type="button" class="secondary" id="mcp-servers" title="MCP servers: descriptions, versions, toolsets and tools" aria-label="MCP servers: descriptions, versions, toolsets and tools" hidden>ⓘ</button><button type="button" class="secondary" id="mcp-update" hidden>Update</button>
@@ -674,13 +754,11 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 <details id="conversation-history"><summary>Conversations · Continue a chat<span id="topic-now"></span></summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"><button type="button" class="secondary" id="history-refresh">Refresh</button></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
 <div id="topic-view" class="line" hidden><label for="topic-view-select">Show conversation</label><select id="topic-view-select" aria-label="Visible conversation topic"><option value="current">Current topic</option><option value="all">All topics</option></select></div>
 <main id="messages" aria-live="polite"><p class="chat-empty">Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
-<p id="review-empty">Select ASK AI on assistant changes to attach a file, a block or all changes to this review chat.</p>
-<iframe id="ai-review-frame" title="AI Review chat" hidden></iframe>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model · Ctrl+C / Cmd+C copies the model ID"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <div id="work-composer">
 ${require(require("path").join(__dirname,"jev-panel")).html}
-<form id="chat"><span id="topic-picker-label" title="Which earlier exchanges go with the question: all of them or the ones Jev routes to its topic. Choose the decision model next to Auto." hidden><span class="vertex-segment-toggle" id="history-mode" role="group" aria-label="History"><button type="button" data-history="full" class="active" aria-pressed="true">Full history</button><button type="button" data-history="auto" aria-pressed="false">Auto (Jev)</button></span><select id="topic-picker" hidden aria-hidden="true"><option value="full">Full history</option><option value="auto">Auto (Jev)</option></select><select id="decision-provider" aria-label="Decision model for Auto" title="Decision model for Auto, topic tagging and ASK Jev" hidden></select></span><span id="context-optimization-status" class="note" role="status"></span><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><details id="review-result-preview" hidden><summary>Attached review result</summary><div id="review-result-body"></div></details><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
+<form id="chat"><span id="topic-picker-label" title="Which earlier exchanges go with the question: all of them or the ones Jev routes to its topic. Choose the decision model next to Auto." hidden><span class="vertex-segment-toggle" id="history-mode" role="group" aria-label="History"><button type="button" data-history="full" class="active" aria-pressed="true">Full history</button><button type="button" data-history="auto" aria-pressed="false">Auto (Jev)</button></span><select id="topic-picker" hidden aria-hidden="true"><option value="full">Full history</option><option value="auto">Auto (Jev)</option></select><select id="decision-provider" aria-label="Decision model for Auto" title="Decision model for Auto, topic tagging and ASK Jev" hidden></select></span><span id="context-optimization-status" class="note" role="status"></span><section id="ai-review-box" aria-label="AI Review" hidden><div class="ai-review-head"><strong id="ai-review-title">AI Review</strong><span id="ai-review-scope" class="note"></span><button type="button" class="secondary" id="ai-review-restart" title="Start a new review of the current changes">Check again</button><button type="button" class="secondary" id="ai-review-close" title="Close the review; the next question goes to the chat" aria-label="Close the review">×</button></div><p id="ai-review-stale" hidden>Changes have updated. This review checks the earlier snapshot. Select Check again to start a new review.</p><details id="ai-review-settings" open><summary id="ai-review-settings-label">Review settings · Technical review</summary><label class="ai-review-task">Requirements for this review (optional)<textarea id="ai-review-task" rows="3" placeholder="Enter requirements relevant to these changes"></textarea></label>${require(require("path").join(__dirname,"git-prompt-bar")).html(require(require("path").join(__dirname,"html-escape")).escapeHtml)}</details><p id="ai-review-status" role="status" aria-live="polite"></p></section><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><details id="review-result-preview" hidden><summary>Attached review result</summary><div id="review-result-body"></div></details><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
 <button class="secondary" data-action="tools" id="tools"><span class="tools-logo" aria-hidden="true"></span>VERTEX Tools</button>
 </div>
 </div>
@@ -699,7 +777,8 @@ let topicCatalog=[];
 let topicViewMode='current';
 function refreshTopicView(){
  const box=document.getElementById('messages'),control=document.getElementById('topic-view'),select=document.getElementById('topic-view-select');
- const messages=[...box.children].filter(item=>item.classList.contains('you')||item.classList.contains('vertex'));
+ /* AI Review steps have no topic of their own: they stay visible and do not decide the current topic. */
+ const messages=[...box.children].filter(item=>(item.classList.contains('you')||item.classList.contains('vertex'))&&!item.classList.contains('review-step'));
  const topics=new Map();for(const item of messages){const id=item.dataset.topicId;if(id)topics.set(id,topicCatalog.find(t=>t.id===id)?.label||id);}
  control.hidden=!topics.size;
  select.replaceChildren();for(const [value,label] of [['current','Current topic'],['all','All topics'],['unassigned','Without a topic'],...Array.from(topics,([id,label])=>[id,'T'+Number(id.slice(6))+' · '+label.slice(0,65)])]){const option=document.createElement('option');option.value=value;option.textContent=label;select.appendChild(option);}
@@ -714,22 +793,63 @@ function setTopic(item,topic){if(!topic||!/^topic_\\d{4,8}$/.test(topic.id))retu
    left still groups the pair. */
 const now=document.getElementById('topic-now');if(now){const words=topic.label.split(/\\s+/).filter(Boolean).slice(0,6).join(' ');now.textContent=' · '+topic.id+(words?' · '+words+(words.length<topic.label.trim().length?'…':''):'');now.title=topic.label+(topic.dependencies?.length?' · Dependencies: '+topic.dependencies.join(', '):'');}}
 window.addEventListener('message',event=>{const d=event.data||{};if(d.decisionModels){const decision=document.getElementById('decision-provider');if(decision){decision.replaceChildren();const groups=new Map();for(const m of d.decisionModels.models){let group=groups.get(m.provider);if(!group){group=document.createElement('optgroup');group.label=m.providerLabel;groups.set(m.provider,group);decision.appendChild(group);}const option=document.createElement('option');option.value=JSON.stringify([m.provider,m.model]);option.textContent=m.label;group.appendChild(option);}const selected=d.decisionModels.selected;decision.value=JSON.stringify([selected.provider,selected.model]);decision.disabled=!decision.options.length;}}if(d.progress?.topic&&!topicCatalog.some(t=>t.id===d.progress.topic.id)){topicCatalog=[...topicCatalog,d.progress.topic];drawTopicPicker();}if(typeof d.routeTopics==='boolean'){const picker=document.getElementById('topic-picker');routeMode=d.routeTopics?'auto':'full';drawTopicPicker(routeMode);}if(typeof d.jevOn==='boolean'){/* Jev switched off in LLM Providers: no history choice, the whole history goes. */document.getElementById('topic-picker-label').hidden=!d.jevOn;if(!d.jevOn)drawTopicPicker('full');}if(Array.isArray(d.topicList)){topicCatalog=d.topicList;drawTopicPicker();for(const item of document.querySelectorAll('[data-topic-id]')){const topic=topicCatalog.find(t=>t.id===item.dataset.topicId);if(topic)setTopic(item,topic);}} if(d.progress?.topicRouting){const r=d.progress.topicRouting;document.getElementById('context-optimization-status').textContent=r.topic?'Topic '+r.topic.id+(r.basis==='manual'?' · manual':' · Jev')+(r.exchangesTotal?' · '+r.exchangesKept+' of '+r.exchangesTotal+' exchanges'+(r.savedPercent>=1?' · history '+Math.round(r.savedPercent)+'% shorter':''):''):'Full history: '+r.reason;}});
-let reviewPageId='',reviewLoaded=false;
-const reviewFrame=document.getElementById('ai-review-frame');
-function chatMode(mode){document.body.dataset.chatMode=mode;document.querySelectorAll('[data-chat-mode]').forEach(button=>{const active=button.dataset.chatMode===mode;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});if(mode==='review'&&reviewPageId&&reviewLoaded)api.postMessage({action:'aiReviewMessage',id:reviewPageId,message:{action:'ready'}});}
-document.querySelectorAll('[data-chat-mode]').forEach(button=>button.onclick=()=>chatMode(button.dataset.chatMode));
-document.getElementById('review-close').onclick=()=>{if(reviewPageId)api.postMessage({action:'closeAiReview',id:reviewPageId});};
-function reviewTheme(){if(!reviewPageId||reviewFrame.hidden)return;try{const target=reviewFrame.contentDocument?.documentElement;if(!target)return;const styles=getComputedStyle(document.body);for(let i=0;i<styles.length;i++){const name=styles[i];if(name.startsWith('--vscode-'))target.style.setProperty(name,styles.getPropertyValue(name));}reviewFrame.contentDocument.body.className=document.body.className.replace('review-mode','');}catch(_){}}
-reviewFrame.onload=reviewTheme;
-new MutationObserver(reviewTheme).observe(document.body,{attributes:true,attributeFilter:['class','style']});
-new MutationObserver(reviewTheme).observe(document.documentElement,{attributes:true,attributeFilter:['class','style']});
+/* AI Review in the main chat. While a review is open, the input asks the review (its own conversation, no main-chat
+   history, no tools); the review's settings - type, requirements, prompt files, Copy prompt - sit above the input, and
+   each question and answer is a step of the chat. × closes the review; the next question goes to the chat again. */
+const reviewHost=api;let reviewPageId='',reviewObject='',reviewBusy=false,reviewDrafting=false,reviewDraftSequence=0,reviewMainDraft=null;
+const reviewBox=document.getElementById('ai-review-box');
+const reviewSend=message=>{if(reviewPageId)reviewHost.postMessage({action:'aiReviewMessage',id:reviewPageId,message});};
+function reviewStatus(text,state){const node=document.getElementById('ai-review-status');node.textContent=text||'';node.dataset.state=state||'info';}
+function reviewKind(){return document.querySelector('#prompt-bar [data-kind].active')?.textContent||'Technical review';}
+function reviewIdle(){reviewBusy=false;document.getElementById('ai-review-restart').disabled=false;document.getElementById('ai-review-settings').inert=false;}
+{const api={postMessage:reviewSend,getState:()=>reviewHost.getState?.()||{},setState:value=>reviewHost.setState?.(value)};const operationStatus=(node,text,state)=>reviewStatus(text,state);
+${require(require("path").join(__dirname,"git-prompt-bar")).SCRIPT}}
+function loadReviewPrompt(){
+ document.getElementById('ai-review-settings-label').textContent='Review settings · '+reviewKind();
+ const id=++reviewDraftSequence,field=document.getElementById('prompt'),previous=field.value;reviewDrafting=true;
+ const receive=e=>{const m=e.data||{};if(m.draftPrompt?.id!==id)return;window.removeEventListener('message',receive);if(id!==reviewDraftSequence)return;reviewDrafting=false;
+  if(field.value===previous&&typeof m.draftPrompt.text==='string'){field.value=m.draftPrompt.text;fitPrompt();}if(m.draftPrompt.error)reviewStatus(m.draftPrompt.error,'error');};
+ window.addEventListener('message',receive);reviewSend({action:'draftPrompt',kind:window.promptOptions().kind,id});
+}
+document.getElementById('prompt-bar').addEventListener('click',e=>{if(e.target.closest('[data-kind]'))loadReviewPrompt();});
+document.getElementById('prompt-copy').onclick=()=>reviewSend({action:'copyPrompt',text:document.getElementById('prompt').value,task:document.getElementById('ai-review-task').value,...window.promptOptions()});
+document.getElementById('ai-review-restart').onclick=()=>{if(reviewBusy||chatRunning)return;reviewBusy=true;document.getElementById('ai-review-restart').disabled=true;reviewStatus('Reading the current changes…');reviewSend({action:'restart'});};
+document.getElementById('ai-review-close').onclick=()=>{if(reviewPageId)reviewHost.postMessage({action:'closeAiReview',id:reviewPageId});};
+/* Registered before the chat's own submit handler: with a review open, the question goes to the review. */
+document.getElementById('chat').addEventListener('submit',event=>{
+ if(!reviewPageId)return;
+ event.preventDefault();event.stopImmediatePropagation();
+ if(chatRunning||historyOpening||reviewBusy||reviewDrafting)return;
+ const field=document.getElementById('prompt'),text=field.value.trim(),requestId=++nextRequest;
+ setChatRunning(true);reviewBusy=true;document.getElementById('ai-review-restart').disabled=true;document.getElementById('ai-review-settings').inert=true;reviewStatus('');
+ document.querySelector('#messages .chat-empty')?.remove();
+ const you=document.createElement('p');you.className='you review-step';you.textContent='You: '+(text||reviewKind())+'  [AI Review · '+reviewObject+']';
+ const step=document.createElement('div');step.className='vertex task working review-step';
+ const body=document.createElement('div');body.className='progress-body streaming-answer';body.textContent='VERTEX: Reviewing changes…';step.appendChild(body);
+ document.getElementById('messages').append(you,step);progressItems.set(requestId,step);
+ reviewSend({action:'send',requestId,text,task:document.getElementById('ai-review-task').value,...window.promptOptions()});
+ document.getElementById('ai-review-settings').open=false;field.value='';fitPrompt();
+ field.placeholder='Ask a follow-up question about this review… (Enter to send)';
+ const box=document.getElementById('messages');box.scrollTop=box.scrollHeight;
+});
 window.addEventListener('message',event=>{const data=event.data||{};
- if(event.source===reviewFrame.contentWindow&&data.reviewClient===reviewPageId){if(data.message?.action==='ready')reviewLoaded=true;api.postMessage({action:'aiReviewMessage',id:reviewPageId,message:data.message});return;}
- if(data.reviewPage){document.getElementById('review-navigation').hidden=false;document.getElementById('review-running').hidden=true;reviewLoaded=false;reviewPageId=data.reviewPage.id;reviewFrame.hidden=false;document.getElementById('review-empty').hidden=true;reviewFrame.srcdoc=data.reviewPage.html;chatMode('review');}
- if(data.discussReview)chatMode('work');
- if(data.reviewClosed===reviewPageId){reviewPageId='';reviewLoaded=false;chatMode('work');document.getElementById('review-navigation').hidden=true;document.getElementById('review-running').hidden=true;reviewFrame.removeAttribute('srcdoc');reviewFrame.hidden=true;}
- if(data.reviewUpdate?.id===reviewPageId)reviewFrame.contentWindow?.postMessage(data.reviewUpdate.message,'*');
- if(typeof data.reviewBusy==='boolean')document.getElementById('review-running').hidden=!data.reviewBusy;
+ if(data.aiReviewOpen){const open=data.aiReviewOpen,field=document.getElementById('prompt');
+  document.querySelectorAll('.review-discuss').forEach(button=>{button.disabled=true;button.title='This review was restarted or closed.';});
+  if(reviewMainDraft===null){reviewMainDraft=field.value;field.value='';}
+  reviewPageId=open.id;reviewObject=open.object;reviewIdle();
+  document.getElementById('ai-review-title').textContent='AI Review · '+open.object;
+  const scope=document.getElementById('ai-review-scope');scope.textContent=open.files.length+' file'+(open.files.length===1?'':'s')+' · '+open.blocks+' block'+(open.blocks===1?'':'s');scope.title=open.files.join('\\n');
+  document.getElementById('ai-review-stale').hidden=true;document.getElementById('ai-review-settings').open=true;reviewStatus('');
+  field.placeholder='Edit the selected review prompt or write your own question (Enter to send)';
+  reviewBox.hidden=false;reviewSend({action:'ready'});loadReviewPrompt();field.focus();}
+ if(data.aiReviewStale?.id===reviewPageId)document.getElementById('ai-review-stale').hidden=!data.aiReviewStale.stale;
+ if(data.aiReviewStatus?.id===reviewPageId)reviewStatus(data.aiReviewStatus.text,data.aiReviewStatus.error?'error':'info');
+ if(data.aiReviewDone&&data.aiReviewDone===reviewPageId)reviewIdle();
+ if(data.aiReviewClosed&&data.aiReviewClosed===reviewPageId){const field=document.getElementById('prompt');
+  document.querySelectorAll('.review-discuss').forEach(button=>{button.disabled=true;button.title='This review was closed.';});
+  reviewPageId='';reviewObject='';reviewDrafting=false;reviewDraftSequence++;reviewIdle();reviewBox.hidden=true;
+  field.value=reviewMainDraft||'';reviewMainDraft=null;fitPrompt();
+  field.placeholder='Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)';}
 });
 let contextMode="sap";
 let historyItems=[],historyLoading=false,historyOpening=false;
@@ -1026,11 +1146,11 @@ window.addEventListener('message', event => {
     if (typeof update.user === 'string' && !item) {
       document.querySelector('#messages .chat-empty')?.remove();
       const userItem = document.createElement('p');
-      userItem.className = 'you'; userItem.textContent = update.user;
+      userItem.className = update.step === 'review' ? 'you review-step' : 'you'; userItem.textContent = update.user;
       document.getElementById('messages').appendChild(userItem);
     }
     if (!item && !update.remove) {
-      item = document.createElement('div'); item.className = 'vertex task working';
+      item = document.createElement('div'); item.className = update.step === 'review' ? 'vertex task working review-step' : 'vertex task working';
       document.getElementById('messages').appendChild(item);
       progressItems.set(update.id, item);
     }
@@ -1085,6 +1205,15 @@ window.addEventListener('message', event => {
         copy.className = 'secondary copy-answer'; copy.textContent = 'Copy'; copy.title = 'Copy this answer to the clipboard';
         copy.addEventListener('click', () => { lastCopy = copy; api.postMessage({ action: 'copyAnswer', text: answer }); });
         item.appendChild(copy);
+        // An AI Review answer: Discuss in chat closes the review and attaches this result to the next chat question.
+        if (update.discuss && update.discuss.review && update.discuss.id) {
+          const discuss = document.createElement('button');
+          discuss.type = 'button'; discuss.className = 'secondary copy-answer review-discuss'; discuss.textContent = 'Discuss in chat';
+          discuss.title = 'Close the review and attach this result and its changes to your next chat question';
+          const owner = update.discuss.review, handoff = update.discuss.id;
+          discuss.addEventListener('click', () => api.postMessage({ action: 'aiReviewMessage', id: owner, message: { action: 'discuss', id: handoff } }));
+          item.appendChild(discuss);
+        }
         if (update.usage) {
           const line = document.createElement('p'); line.className = 'usage'; line.textContent = update.usage;
           item.appendChild(line);
@@ -1361,7 +1490,6 @@ function markdown(text, target) {
     inline(line, paragraph);
   }
 }
-window.vertexReviewMarkdown=(text,body)=>{markdown(text,body);linkSapNames(body);linkProjectFiles(body);};
 api.postMessage({ action: 'ready' });
 </script>
 <!-- The scenes' own module, after the page's script so that extracting that script by its tag still finds it: the

@@ -158,6 +158,48 @@ test("AI Review provider request has no tools, working directory or main convers
 });
 
 
+/* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+test("ASK AI opens the review in the main chat: its rounds are chat steps and Discuss hands the result to the chat", async () => {
+  const commands = new Map(), posted = [], runs = [];
+  let receive, provider;
+  const disposable = { dispose() {} };
+  const vscode = {
+    commands: { registerCommand: (name, fn) => { commands.set(name, fn); return disposable; },
+      executeCommand: async (name, ...args) => commands.has(name) ? commands.get(name)(...args) : undefined },
+    window: { registerWebviewViewProvider: (_, value) => { provider = value; return disposable; }, onDidChangeActiveTextEditor: () => disposable,
+      showErrorMessage() {}, showWarningMessage() {} },
+    workspace: { getConfiguration: () => ({ get: (_, fallback) => fallback }), onDidChangeConfiguration: () => disposable,
+      onDidChangeWorkspaceFolders: () => disposable, workspaceFolders: [] }
+  };
+  const ask = Object.assign(async () => assert.fail("the review must not ask the main chat"), {
+    state: () => ({ contextMode: "folder", contextFolder: "/project" }), plannerState: () => ({}), topics: () => [],
+    decisionModels: async () => ({ models: [], selected: {} }), listModels: async () => ({ models: [] }),
+    reviewChanges: async (prompt, options) => { runs.push({ prompt, options }); return { answer: "Finding " + runs.length, model: "reviewer" }; }
+  });
+  require("../sidebar").register(vscode, { subscriptions: [] }, () => ({ error: "none" }), ask, () => [], async () => ({}));
+  const view = { webview: { options: {}, html: "", onDidReceiveMessage: fn => { receive = fn; return disposable; }, postMessage: async m => { posted.push(m); } },
+    onDidDispose() {}, show() {} };
+  provider.resolveWebviewView(view);
+  await receive({ action: "ready" });
+  await vscode.commands.executeCommand("vertex.openAiReview", aiContext(changes, "project", "Original task"));
+  const open = posted.find(m => m.aiReviewOpen).aiReviewOpen;
+  assert.equal(open.blocks, 2);
+  assert.ok(!posted.some(m => m.reviewPage), "no separate review page");
+  await receive({ action: "aiReviewMessage", id: open.id, message: { action: "send", requestId: 41, text: "Is the deletion safe?", task: "", kind: "git-review" } });
+  const steps = posted.filter(m => m.progress?.id === 41).map(m => m.progress);
+  assert.match(steps.find(s => s.user).user, /^You: Is the deletion safe\?  \[AI Review · project\]$/);
+  const answer = steps.find(s => s.done);
+  assert.equal(answer.step, "review"); assert.equal(answer.answer, "Finding 1"); assert.match(answer.usage, /reviewer/);
+  assert.equal(runs[0].options.logScope.conversation.length > 0, true);
+  assert.doesNotMatch(runs[0].prompt, /Original task/);
+  await receive({ action: "aiReviewMessage", id: open.id, message: { action: "send", requestId: 42, text: "And the new file?" } });
+  assert.match(runs[1].prompt, /Finding 1/, "a follow-up keeps the review's own history");
+  await receive({ action: "aiReviewMessage", id: open.id, message: { action: "discuss", id: answer.discuss.id } });
+  assert.ok(posted.some(m => m.aiReviewClosed === open.id));
+  assert.equal(posted.filter(m => typeof m.review === "string").at(-1).reviewResult.answer, "Finding 1");
+});
+
+/* VERTEX CHANGE END: codemie / claude-opus-5-5 */
 test("prompt drafts never run the review and edited text replaces the selected template", async () => {
  let receive;const sent=[],runs=[],copied=[];
  const panel={webview:{onDidReceiveMessage:fn=>receive=fn,postMessage:async m=>sent.push(m)},onDidDispose(){}};

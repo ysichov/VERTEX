@@ -50,25 +50,23 @@ test('lazy prompt starts with chronological disclosures instead of repeated lega
 });
 
 /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
-test('all rounds of one AI Review are one step of the chat turn, each with its question and answer',()=>{
+/* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+test('every AI Review round is a chat step of its own, not a technical step of a question',()=>{
  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
- const node=(label,cls)=>({label,cls,children:[],listeners:[],open:false,appendChild(child){this.children.push(child);return child;},
-  addEventListener(_,fn){this.listeners.push(fn);},querySelector(){return null;},expand(){this.open=true;this.listeners.forEach(fn=>fn());}});
- const answered=[];
- const context={el:(tag,cls,text)=>node(text,cls),section:(label,cls)=>node(label,cls),richText:text=>node(text,'text'),
-  serviceResult:(round,target)=>{answered.push(round.text);target.appendChild(node('answer:'+round.text));}};vm.createContext(context);
- vm.runInContext(page.slice(page.indexOf('  function chronology('),page.indexOf('  function conversation(')),context);
- const round=(text,time,conversation)=>({operation:'AI Review',text,time,sourceConversation:conversation,key:text});
- const box=context.chronology({time:1000,events:[],details:[],technicalChildren:[round('First review',2000,'r1'),
-  {operation:'Task verification with Jev',time:1500,key:'jev'},round('Follow-up',3000,'r1'),round('Other review',4000,'r2')]},node('User','user'));
- box.listeners.forEach(fn=>fn());
- const steps=box.children.map(step=>step.label.replace(/^\d+\. [^·]+· /,''));
- assert.deepEqual(steps,['User','Task verification with Jev','AI Review · 2 questions','AI Review · 1 question']);
- const review=box.children[2];review.expand();
- assert.deepEqual(review.children.map(q=>q.label.replace(/^(\d+)\. [^·]+· /,'$1 ')),['1 First review','2 Follow-up']);
- review.children[1].expand();
- assert.deepEqual(review.children[1].children.map(c=>c.label),['Question','Follow-up','Answer','answer:Follow-up']);
- assert.deepEqual(answered,['Follow-up']);
+ const context={};vm.createContext(context);
+ vm.runInContext(page.slice(page.indexOf('  function chatStep('),page.indexOf('  function chronology('))+'\nthis.promptSteps=promptSteps;',context);
+ const chat={operation:'Chat',text:'Change it',time:1000,key:'a',turnId:'turn1'};
+ const jev={operation:'Task verification with Jev',time:1500,key:'b'};
+ const round=(text,time)=>({operation:'AI Review',text,time,key:text,relatedTurnId:'turn1',sourceConversation:'r1'});
+ const later={operation:'Chat',text:'Next',time:5000,key:'z'};
+ const steps=context.promptSteps([later,round('Follow-up',3000),jev,round('First review',2000),chat]);
+ assert.deepEqual(Array.from(steps.rows,p=>p.text),['Change it','First review','Follow-up','Next']);
+ assert.deepEqual(Array.from(steps.technicalByChat.get(chat),p=>p.operation),['Task verification with Jev']);
+ assert.equal(steps.technicalByChat.has(steps.rows[1]),false);
+ const lone=context.promptSteps([round('Only review',2000)]);
+ assert.deepEqual(Array.from(lone.rows,p=>p.text),['Only review']);
+ assert.doesNotMatch(page,/AI Review · "\+rounds\.length/);
+/* VERTEX CHANGE END: codemie / claude-opus-5-5 */
 });
 
 /* VERTEX CHANGE END: codemie / claude-opus-5-5 */

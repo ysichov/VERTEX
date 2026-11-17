@@ -1,6 +1,10 @@
+## 2026-11-17 — 0.9.100: Release
+
+Advanced the VS Code and Eclipse version metadata to 0.9.100.
+
 Logs now automatically re-sorts the conversation list by last prompt time after changing the Commit message or other technical-conversation filters. Previously, newly shown conversations appeared in their original order until manual column sorting.
 
-Logs now shows AI Review as one step of the chat question whose changes it reviewed. Open the question and then **Steps (chronological)**. The **AI Review · N questions** step lists the first review and each follow-up, each with its question and answer. Older reviews have no turn link, so they appear under the question asked just before them.
+AI Review is now part of the main chat; the separate Main / AI Review mode is gone. ASK AI in Assistant changes opens an **AI Review** box above the chat input. It has the same settings as before: review type with its prompt, requirements, Copy prompt, Prompts… and Check again. Each review question and answer appears in the chat as a step marked **[AI Review · …]**. The review still has its own conversation without the main chat history or tools. **×** closes it, and **Discuss in chat** hands an answer to the next chat question. In Logs, each AI Review question is a row of the conversation, marked **AI Review**, between the chat questions in time order. It is no longer hidden inside a question's Steps.
 
 Flow now shows the price of each technical step (screenshot recognition, Jev routing and similar) on its own block, with the token breakdown in the tooltip. Historical logs use the same view, so they show it too when the step recorded usage.
 

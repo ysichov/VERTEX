@@ -810,6 +810,24 @@ function markdown(text, target) {
         objectLinks(target, d.objects);
       }
 
+  // The rows of a conversation: chat questions and AI Review rounds, each a step of the chat in time order. Every other
+  // request (Jev, recognition, commit message...) is a technical step of the question it belongs to.
+  function chatStep(p){return p.operation==="Chat"||p.operation==="Web search"||p.operation==="AI Review";}
+  function promptSteps(prompts){
+    var chronological=prompts.slice().sort(function(a,b){return (a.time||0)-(b.time||0)||String(a.key||"").localeCompare(String(b.key||""));});
+    var chatPrompts=chronological.filter(chatStep),technicalByChat=new Map(),unlinkedTechnical=[];
+    if(chatPrompts.length) chronological.forEach(function(p){
+      if(chatStep(p))return;
+      var next=chatPrompts.find(function(q){return (q.time||0)>=(p.time||0);});
+      var previous=chatPrompts.slice().reverse().find(function(q){return (q.time||0)<(p.time||0);});
+      var exact=p.relatedTurnId&&chatPrompts.find(function(q){return q.turnId===p.relatedTurnId;});
+      if(p.relatedTurnId&&!exact){unlinkedTechnical.push(p);return;}
+      var owner=exact||(next&&previous?((p.time||0)-(previous.time||0)<=(next.time||0)-(p.time||0)?previous:next):next||previous);
+      if(owner){if(!technicalByChat.has(owner))technicalByChat.set(owner,[]);technicalByChat.get(owner).push(p);}
+    });
+    return {technicalByChat:technicalByChat,rows:chatPrompts.length?chatPrompts.concat(unlinkedTechnical):prompts.slice()};
+  }
+
   function chronology(p,user) {
     var box=section("Steps (chronological)","technical"), loaded=false;
     box.addEventListener("toggle",function(){
@@ -833,35 +851,13 @@ function markdown(text, target) {
         var result=resultEvent&&p.details[resultEvent.detail];if(resultEvent)paired.add(resultEvent.detail);
         items.push({time:event.time||p.time||0,order:index,event:event,detail:detail,result:result});
       });
-      // One AI Review is one step: its rounds (first review, follow-up questions) stay together inside it.
-      var reviews=new Map();
-      (p.technicalChildren||[]).forEach(function(step,index){
-        if(step.operation==="AI Review"){
-          var reviewKey=step.sourceConversation||step.key,review=reviews.get(reviewKey);
-          if(review){review.review.push(step);return;}
-          review={time:step.time||0,order:-1000+index,review:[step]};reviews.set(reviewKey,review);items.push(review);return;
-        }
-        items.push({time:step.time||0,order:-1000+index,service:step});
-      });
+      (p.technicalChildren||[]).forEach(function(step,index){items.push({time:step.time||0,order:-1000+index,service:step});});
       items.sort(function(a,b){return a.time-b.time||a.order-b.order;});
       items.forEach(function(item,index){
         var event=item.event,detail=item.detail,step=item.service,clock=new Date(item.time).toLocaleTimeString();
         var prefix=(index+1)+". "+clock+" · ",entry;
         if(item.user){
           entry=item.user;var heading=entry.querySelector("summary");if(heading)heading.textContent=prefix+heading.textContent;
-        } else if(item.review){
-          var rounds=item.review;
-          entry=section(prefix+"AI Review · "+rounds.length+" question"+(rounds.length===1?"":"s"),"technical tool");
-          var reviewLoaded=false;entry.addEventListener("toggle",function(){if(!entry.open||reviewLoaded)return;reviewLoaded=true;
-            rounds.forEach(function(round,roundIndex){
-              var question=section((roundIndex+1)+". "+new Date(round.time||0).toLocaleTimeString()+" · "+(round.text||"Review"),"technical tool");
-              var roundLoaded=false;question.addEventListener("toggle",function(){if(!question.open||roundLoaded)return;roundLoaded=true;
-                question.appendChild(el("div","kind","Question"));question.appendChild(richText(round.text||""));
-                question.appendChild(el("div","kind","Answer"+(round.model?" · "+round.model:"")));serviceResult(round,question);
-              });
-              entry.appendChild(question);
-            });
-          });
         } else if(step){
           entry=section(prefix+(step.operation==="Skill match with Jev"?"Skill search":step.operation),/Jev/i.test(step.operation)?"technical jev":/Recovery|Orchestrator/i.test(step.operation)?"technical vertex":"technical tool");
           var serviceLoaded=false;entry.addEventListener("toggle",function(){if(entry.open&&!serviceLoaded){serviceLoaded=true;serviceResult(step,entry);}});
@@ -1327,7 +1323,7 @@ function markdown(text, target) {
       { name: "", cls: "select-cell", width: 34, nosort: true },
       { name: "Conversation", cls: "", width: null, value: function (s) { return String(promptPreview(s.prompts) || "").toLowerCase(); } },
       { name: "Prompts", cls: "num", width: 70, num: true, value: function (s) { return s.prompts.filter(chat).length || s.prompts.length; } },
-      { name: "Providers", cls: "", width: 170, value: function (s) { return s.provider + " " + (s.models || []).join(" "); } },
+      { name: "Providers", cls: "", width: 170, value: function (s) { return (s.models || []).join(" ") + " " + s.provider; } },
       { name: "Run", cls: "num", width: 55, num: true, value: function (s) { return s.toolCalls || 0; } },
        { name: "New in", cls: "num", width: 75, num: true, value: function (s) { return newInput(s.usageByKind.model); } },
       { name: "Out", cls: "num", width: 70, num: true, value: function (s) { return s.usageByKind.model.output || 0; } },
@@ -1372,9 +1368,9 @@ function markdown(text, target) {
       var models = s.models || [];
       var who = el("td", "identity");
       var whoLabel = el("div", "identity-label");
-      whoLabel.title = s.provider + (models.length ? " · " + models.join(", ") : "");
+      whoLabel.title = (models.length ? models.join(", ") + " · " : "") + s.provider;
+      if (models.length) { whoLabel.appendChild(el("span", "session-models model-name", models.join(", "))); whoLabel.appendChild(document.createTextNode(" · ")); }
       whoLabel.appendChild(el("span", "provider", s.provider));
-      if (models.length) { whoLabel.appendChild(document.createTextNode(" · ")); whoLabel.appendChild(el("span", "session-models model-name", models.join(", "))); }
       var conversationJev=jevLink(s.usageByKind.jev,s.costs.jev);if(conversationJev){whoLabel.appendChild(document.createTextNode(", "));whoLabel.appendChild(conversationJev);}
       who.appendChild(whoLabel);
       main.appendChild(who);
@@ -1481,7 +1477,7 @@ function markdown(text, target) {
     var columns = [
       { name: "Conversation", cls: "", width: null, value: function (p) { return String(p.text || "").toLowerCase(); } },
       { name: "Topic", cls: "", width: 70, value: function (p) { return p.topic && p.topic.id ? Number(p.topic.id.slice(6)) : 0; }, num: true },
-      { name: "Model", cls: "", width: 150, value: function (p) { return (p.provider || "") + " " + (p.model || ""); } },
+      { name: "Model", cls: "", width: 150, value: function (p) { return (p.model || "") + " " + (p.provider || ""); } },
       { name: "Run", cls: "num", width: 55, value: function (p) { return runsOf(p); }, num: true },
       { name: "Context ≈tok", cls: "num", width: 105, value: function (p) { return p.contextSize ? p.contextSize.estimatedTokens : -1; }, num: true },
 
@@ -1497,23 +1493,8 @@ function markdown(text, target) {
     var hasCost = s.prompts.some(function (p) { return p.usage && p.usage.cost != null; });
     if (!hasCost) columns = columns.filter(function (column) { return column.name !== "Cost USD"; });
     var rows = [];
-    var chronological=s.prompts.slice().sort(function(a,b){return (a.time||0)-(b.time||0)||a.key.localeCompare(b.key);});
-    var chatPrompts=chronological.filter(function(p){return p.operation==="Chat"||p.operation==="Web search";});
-    var technicalByChat=new Map(),unlinkedTechnical=[],reviewOwners=new Map();
-    if(chatPrompts.length) chronological.forEach(function(p){
-      if(p.operation==="Chat"||p.operation==="Web search")return;
-      // Every round of one AI Review belongs to the turn its first round was placed under, so it stays one step.
-      var reviewKey=p.operation==="AI Review"&&p.sourceConversation,reviewOwner=reviewKey&&reviewOwners.get(reviewKey);
-      if(reviewOwner){if(reviewOwner==="unlinked")unlinkedTechnical.push(p);else technicalByChat.get(reviewOwner).push(p);return;}
-      var next=chatPrompts.find(function(q){return (q.time||0)>=(p.time||0);});
-      var previous=chatPrompts.slice().reverse().find(function(q){return (q.time||0)<(p.time||0);});
-      var exact=p.relatedTurnId&&chatPrompts.find(function(q){return q.turnId===p.relatedTurnId;});
-      if(p.relatedTurnId&&!exact){unlinkedTechnical.push(p);if(reviewKey)reviewOwners.set(reviewKey,"unlinked");return;}
-      // A review is asked after the answer it reviews, so without an exact turn it belongs to the previous question.
-      var owner=exact||(reviewKey?previous||next:next&&previous?((p.time||0)-(previous.time||0)<=(next.time||0)-(p.time||0)?previous:next):next||previous);
-      if(owner){if(!technicalByChat.has(owner))technicalByChat.set(owner,[]);technicalByChat.get(owner).push(p);if(reviewKey)reviewOwners.set(reviewKey,owner);}
-    });
-    var source=chatPrompts.length?chatPrompts.concat(unlinkedTechnical):s.prompts.slice(),pageNumber=0,pageSize=30;
+    var steps=promptSteps(s.prompts),technicalByChat=steps.technicalByChat;
+    var source=steps.rows,pageNumber=0,pageSize=30;
     function childrenOf(p){return technicalByChat.get(p)||[];}
     function runsOf(p){return [p].concat(childrenOf(p)).reduce(function(sum,item){return sum+(item.toolCalls||0);},0);}
     function usageOf(p,kind){
@@ -1553,8 +1534,9 @@ function markdown(text, target) {
       if (several) {
         // One narrow line per prompt; its conversation opens under the line.
         var prompt = el("details", "prompt");
-        var line = el("summary", "", number + ". " + (promptPreview([p]) || "(no prompt text)"));
-        line.title = number + ". " + promptPreview([p]);
+        var reviewStep = p.operation === "AI Review" ? "AI Review · " : "";
+        var line = el("summary", "", number + ". " + reviewStep + (promptPreview([p]) || "(no prompt text)"));
+        line.title = number + ". " + reviewStep + promptPreview([p]);
         prompt.appendChild(line);
         var promptLoaded = false;
         prompt.ontoggle = function () {
@@ -1588,7 +1570,11 @@ function markdown(text, target) {
       }
       // A technical request (a commit message, a PR description, a decision...) is not a chat question: muted,
       // with its operation where a topic would be. Continue and Tag topics leave it out.
-      if (p.operation && p.operation !== "Chat" && p.operation !== "Web search") {
+      // An AI Review round is a step of the chat: a regular row, marked with its operation where a topic would be.
+      if (p.operation === "AI Review") {
+        topicCell.textContent = "AI Review";
+        topicCell.title = "AI Review of the assistant's changes: a separate review chat without the main chat history or tools";
+      } else if (p.operation && p.operation !== "Chat" && p.operation !== "Web search") {
         row.classList.add("technical");
         topicCell.textContent = p.operation;
         topicCell.title = "Technical request: " + p.operation + " - not a chat question";
@@ -1596,10 +1582,10 @@ function markdown(text, target) {
       row.appendChild(topicCell);
       var identity = el("td", "identity");
       var modelLabel = el("div", "identity-label");
-      modelLabel.title = p.provider + " · " + p.model;
-      modelLabel.appendChild(el("span", "provider", p.provider));
-      modelLabel.appendChild(document.createTextNode(" · "));
+      modelLabel.title = p.model + " · " + p.provider;
       modelLabel.appendChild(el("span", "prompt-model model-name", p.model));
+      modelLabel.appendChild(document.createTextNode(" · "));
+      modelLabel.appendChild(el("span", "provider", p.provider));
       var promptJev=jevLink(usageOf(p,"jev"),usageOf(p,"jev"));if(promptJev){modelLabel.appendChild(document.createTextNode(", "));modelLabel.appendChild(promptJev);}
       identity.appendChild(modelLabel);
       if (p.branch && p.branch !== "main") identity.appendChild(el("div", "muted", "Branch " + p.branch));

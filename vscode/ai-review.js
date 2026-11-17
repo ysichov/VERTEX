@@ -61,7 +61,11 @@ function open(vscode, initial, run, surface = null) {
   let logScope = { ...require("./session-log").independentScope(), ...turnLink, context: initial.logContext || require("./log-report").currentPlace(vscode) };
   /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
   const post = message => !disposed && panel.webview.postMessage(message);
-  panel.webview.html = page(context, panel.embedding);
+  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+  // The main chat shows the review in its own composer (render); a standalone panel gets the review page.
+  const show = () => { if (typeof panel.render === "function") panel.render(context); else panel.webview.html = page(context, panel.embedding); };
+  show();
+  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
   const stale = async () => {
     if (typeof context.isCurrent !== "function") return;
     try { await post({ stale: !await context.isCurrent() }); }
@@ -82,7 +86,9 @@ function open(vscode, initial, run, surface = null) {
       try {
         if (typeof context.refresh === "function") context = await context.refresh();
         /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
-        if (!disposed) { history = []; handoffs.clear(); logScope = { ...require("./session-log").independentScope(), relatedConversation: logScope.relatedConversation, ...turnLink, context: logScope.context }; panel.webview.html = page(context, panel.embedding); }
+        /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
+        if (!disposed) { history = []; handoffs.clear(); logScope = { ...require("./session-log").independentScope(), relatedConversation: logScope.relatedConversation, ...turnLink, context: logScope.context }; show(); }
+        /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
         /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
       } catch (error) { await post({ status: "Cannot refresh changes: " + error.message, error: true }); }
       finally { controller = null; await post({ done: true }); }
