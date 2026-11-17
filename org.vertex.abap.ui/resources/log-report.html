@@ -38,11 +38,10 @@
   th { color: var(--vscode-descriptionForeground); font-weight: 600; }
   td.num, th.num { text-align: right; white-space: nowrap; }
   td.prompt-cell { overflow: hidden; }
-  td.identity { white-space: nowrap; }
+  td.identity { }
   .identity-label { width: 100%; display: flex; align-items: baseline; white-space: nowrap; }
-  .identity-label .model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .identity-label .jev-link { flex: none; margin-left: 4px; padding: 0; }
-  td.identity > .muted { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .identity-models { display: block; color: var(--vscode-descriptionForeground); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .conversation { min-width: 240px; }
   /* The prompt's time takes only the width it needs: the date is in the session line above. */
   td.time, th.time { white-space: nowrap; }
@@ -1327,7 +1326,7 @@ function markdown(text, target) {
       { name: "", cls: "select-cell", width: 34, nosort: true },
       { name: "Conversation", cls: "", width: null, value: function (s) { return String(promptPreview(s.prompts) || "").toLowerCase(); } },
       { name: "Prompts", cls: "num", width: 70, num: true, value: function (s) { return s.prompts.filter(chat).length || s.prompts.length; } },
-      { name: "Providers", cls: "", width: 170, value: function (s) { return (s.models || []).join(" ") + " " + s.provider; } },
+      { name: "Providers", cls: "", width: 120, value: function (s) { return (s.models || []).join(" ") + " " + s.provider; } },
       { name: "Run", cls: "num", width: 55, num: true, value: function (s) { return s.toolCalls || 0; } },
        { name: "New in", cls: "num", width: 75, num: true, value: function (s) { return newInput(s.usageByKind.model); } },
       { name: "Out", cls: "num", width: 70, num: true, value: function (s) { return s.usageByKind.model.output || 0; } },
@@ -1372,11 +1371,14 @@ function markdown(text, target) {
       var models = s.models || [];
       var who = el("td", "identity");
       var whoLabel = el("div", "identity-label");
-      whoLabel.title = (models.length ? models.join(", ") + " · " : "") + s.provider;
-      if (models.length) { whoLabel.appendChild(el("span", "session-models model-name", models.join(", "))); whoLabel.appendChild(document.createTextNode(" · ")); }
       whoLabel.appendChild(el("span", "provider", s.provider));
       var conversationJev=jevLink(s.usageByKind.jev,s.costs.jev);if(conversationJev){whoLabel.appendChild(document.createTextNode(", "));whoLabel.appendChild(conversationJev);}
       who.appendChild(whoLabel);
+      if (models.length) {
+        var modelsLine = el("span", "identity-models", models.join(", "));
+        modelsLine.title = models.join(", ");
+        who.appendChild(modelsLine);
+      }
       main.appendChild(who);
       main.appendChild(el("td", "num", n(s.toolCalls)));
       main.appendChild(el("td", "num", n(newInput(s.usageByKind.model))));

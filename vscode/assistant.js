@@ -19,6 +19,8 @@ const path = require("path");
 const childProcess = require("child_process");
 
 const TIMEOUT = 180000;
+// After a stop, how long the killed CLI may take to close while its last output is still read.
+const ABORT_DRAIN_MS = 5000;
 const SERVER = "vertex";
 const TOKEN_VAR = "VERTEX_WINDOW_TOKEN";
 
@@ -461,31 +463,26 @@ async function ask(options) {
     const timeout = options.timeout || TIMEOUT;
     const streaming = claudeLike(options.assistant) && typeof options.onProgress === "function";
     let pending = "", resultEvent = null, generated = "", structured = "", thinking = "", lastAnswer = "", lastStatus = "";
-    /* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
-    const toolBlocks = new Map(), steps = new Map(), streamedTextBlocks = new Set();
+    const toolBlocks = new Map(), steps = new Map();
     const runId = require("crypto").randomBytes(8).toString("hex");
-    let noteCount = 0, noteType = "", noteText = "", noteTimer = null;
+    let noteCount = 0, noteType = "", noteText = "";
+    let lastFlushedText = "", lastFlushedNote = "";
     const flushStreamNote = () => {
-      clearTimeout(noteTimer); noteTimer = null;
       const text = noteText, note = noteType;
       noteText = ""; noteType = "";
-      if (text && typeof options.onStep === "function") {
+      // Prevent duplicate logging when CodeMie sends the same streaming events multiple times
+      if (text && typeof options.onStep === "function" && !(text === lastFlushedText && note === lastFlushedNote)) {
+        lastFlushedText = text; lastFlushedNote = note;
         options.onStep({ kind: "note", id: runId + ":" + (++noteCount), note, text });
       }
     };
-    // Keep partial output durable during long generations, and force a boundary
-    // before tools, a different block, results, and process termination.
+    // Accumulate each streamed text/thinking block as one chronological note;
+    // flush only at explicit boundaries or process termination, never on a timer.
     const appendStreamNote = (note, text) => {
       if (!text || typeof options.onStep !== "function") return;
       if (noteType && noteType !== note) flushStreamNote();
       noteType = note; noteText += text;
-      /* VERTEX CHANGE BEGIN: codemie / claude-4-5-sonnet-vertex */
-      // Thinking streams fast and continuously: flush only at explicit boundaries,
-      // not at short intervals that break it into fragments. Text is logged promptly.
-      if (!noteTimer && note !== "thinking") noteTimer = setTimeout(flushStreamNote, 200);
-      /* VERTEX CHANGE END: codemie / claude-4-5-sonnet-vertex */
     };
-    /* VERTEX CHANGE END: codemie / gpt-6.1-sol */
     const emitAnswer = answer => {
       if (answer && answer !== lastAnswer && !lastAnswer.startsWith(answer)) {
         lastAnswer = answer;
@@ -518,16 +515,12 @@ async function ask(options) {
         pending = pending.slice(end + 1);
         let event;
         try { event = JSON.parse(line); } catch (_) { continue; }
-        /* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
         if (["assistant", "user", "result"].includes(event.type)) flushStreamNote();
-        /* VERTEX CHANGE END: codemie / gpt-6.1-sol */
         if (event.type === "result") { resultEvent = event; }
         if (event.type === "assistant" && event.message && options.onProviderResponse) {
           options.onProviderResponse({ provider: options.assistant, scope: "model_response", response: event.message });
         }
-/* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
 
-/* VERTEX CHANGE END: codemie / gpt-6.1-sol */
         // Claude Code's own steps - Read, Edit, Bash and the rest - for the session log: the call, then its result.
         // The SAP tools are logged where VERTEX runs them, and the answer's StructuredOutput is the answer itself.
         if (typeof options.onStep === "function" && (event.type === "assistant" || event.type === "user")
@@ -537,10 +530,8 @@ async function ask(options) {
             // Thinking comes from the stream's deltas instead (the finished message holds it empty).
             if (event.type === "assistant" && block && block.type === "thinking") continue;
             if (event.type === "assistant" && block && block.type === "text") {
-              const text = String(block.text || "").trim();
-              /* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
-              if (text && !streamedTextBlocks.has(index)) options.onStep({ kind: "note", id: runId + ":" + (++noteCount), note: "text", text });
-              /* VERTEX CHANGE END: codemie / gpt-6.1-sol */
+              // Skip: text blocks are already logged via flushStreamNote() when streaming (line 524).
+              // Logging them again from the final event creates duplicates.
               continue;
             }
             if (!options.localTools && block && block.type === "tool_use" && !/^mcp__vertex|^StructuredOutput$/.test(String(block.name || ""))) {
@@ -552,15 +543,10 @@ async function ask(options) {
             }
           }
         }
-        /* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
-        if (event.type === "assistant") streamedTextBlocks.clear();
-        /* VERTEX CHANGE END: codemie / gpt-6.1-sol */
         if (event.type !== "stream_event") { continue; }
         const inner = event.event || {};
         if (inner.type === "message_start" && inner.message?.role === "assistant") {
-          /* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
           flushStreamNote();
-          streamedTextBlocks.clear();
           generated = ""; structured = "";
         } else if (inner.type === "content_block_start") {
           flushStreamNote();
@@ -574,16 +560,12 @@ async function ask(options) {
           }
         } else if (inner.type === "content_block_delta" && inner.delta?.type === "text_delta") {
           const before = /^\s*\{\s*"answer"\s*:/.test(generated) ? partialClaudeAnswer(generated) : generated;
-          /* VERTEX CHANGE END: codemie / gpt-6.1-sol */
           generated += inner.delta.text || "";
           // Claude Code 2.1 streams human-readable text before its structured
           // JSON result. Older CLI builds may stream the JSON directly.
           const answer = /^\s*\{\s*"answer"\s*:/.test(generated)
             ? partialClaudeAnswer(generated) : generated;
-          /* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
-          if (inner.delta.text) streamedTextBlocks.add(inner.index);
           appendStreamNote("text", answer.startsWith(before) ? answer.slice(before.length) : answer);
-          /* VERTEX CHANGE END: codemie / gpt-6.1-sol */
           emitAnswer(answer);
         } else if (inner.type === "content_block_delta" && inner.delta?.type === "input_json_delta") {
           const block = toolBlocks.get(inner.index);
@@ -591,35 +573,28 @@ async function ask(options) {
             block.json += inner.delta.partial_json || "";
             toolStatus(block);
           } else {
-            /* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
             const before = partialClaudeAnswer(structured);
             structured += inner.delta.partial_json || "";
             const answer = partialClaudeAnswer(structured);
             appendStreamNote("text", answer.startsWith(before) ? answer.slice(before.length) : answer);
             emitAnswer(answer);
-            /* VERTEX CHANGE END: codemie / gpt-6.1-sol */
           }
         } else if (inner.type === "content_block_delta" && inner.delta?.type === "thinking_delta") {
           const fragment = inner.delta.thinking || "";
           if (fragment) { thinking += fragment; options.onProgress({ thinking }); }
           // Claude Code's finished message carries its thinking empty: the log keeps the streamed text.
-          /* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
           appendStreamNote("thinking", fragment);
-          /* VERTEX CHANGE END: codemie / gpt-6.1-sol */
           const status = fragment ? "Claude is thinking…" : "Claude is working…";
           if (lastStatus !== status) { lastStatus = status; options.onProgress({ status }); }
-        /* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
         } else if (inner.type === "content_block_stop" || inner.type === "message_stop") {
           flushStreamNote();
           if (toolBlocks.has(inner.index)) {
             toolStatus(toolBlocks.get(inner.index));
             toolBlocks.delete(inner.index);
           }
-        /* VERTEX CHANGE END: codemie / gpt-6.1-sol */
         }
       }
     } : null;
-    /* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
     let result;
     try {
       result = await collect(options.spawn, file, command.args,
@@ -628,7 +603,6 @@ async function ask(options) {
       if (streaming && pending.trim()) onData("\n");
     } finally {
       flushStreamNote();
-    /* VERTEX CHANGE END: codemie / gpt-6.1-sol */
     }
     if (claudeLike(options.assistant) && options.onProviderResponse) {
       let response = resultEvent;
@@ -949,8 +923,19 @@ function collect(spawn, file, args, options) {
       if (options.onData) { options.onData(String(d)); }
     });
     child.stderr.on("data", function (d) { stderr += d; });
-    child.on("error", function (e) { finish(-1, e); });
-    child.on("close", function (code) { finish(code); });
+    // A stop aborts the signal and kills the child, but what it had already written - a finished message with its
+    // usage - still arrives: it is read until the child closes, so the run's accounting is logged before the stop.
+    let aborted = null;
+    child.on("error", function (e) {
+      if (e && e.name === "AbortError") {
+        aborted = e;
+        const wait = setTimeout(function () { finish(-1, e); }, ABORT_DRAIN_MS);
+        if (wait.unref) wait.unref();
+        return;
+      }
+      finish(-1, e);
+    });
+    child.on("close", function (code) { if (aborted) finish(-1, aborted); else finish(code); });
     child.stdin.on("error", function () { /* the child may exit before reading */ });
     child.stdin.end(options.input || "");
   });

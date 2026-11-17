@@ -8,7 +8,6 @@ const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const approval = require("./folder-approval");
 const commandOutput = require("./command-output");
-const sourceChangeMarkers = require("./source-change-markers");
 const MAX_FILE = 2 * 1024 * 1024;
 const MAX_TEXT = 16000;
 const SKIP = new Set([".git", "node_modules", ".next", "dist", "build", "target"]);
@@ -200,7 +199,6 @@ function create(vscode, options) {
       const input = { ...args, file_path: file };
       const change = approval.change(name, input, read);
       if (change.error) throw new Error(change.error);
-      change.after = sourceChangeMarkers.mark(file, change.before, change.after, options.provider, options.model);
       if (Buffer.byteLength(change.after) > MAX_FILE) throw new Error("File exceeds the 2 MB limit.");
       if (!options.reviewAfter) await permission(name, input);
       active(); resolve(args.file_path);

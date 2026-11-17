@@ -14,14 +14,11 @@ const ACTIONS = Object.freeze({
 
 function register(vscode, context, active, ask, systems, toolContext, clients = { set: async () => {}, onChange: () => ({ dispose() {} }) }, chatMcp = null) {
   let currentView, ready = false, nextRequest = 0, pendingChat = null, continuing = false;
-  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
   let reviewSurface = null;
-  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
   // ASK AI of a review: the blocks on the chip above the input, attached to the next question only when it is sent.
   let reviewAsk = null;
   const review = require("./code-review");
   const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "", reviewResult: reviewAsk?.review_result ? { ...reviewAsk.review_result, files: reviewAsk.files } : null, draft: reviewAsk && reviewAsk.question || "" }) : undefined;
-  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
   // AI Review lives in the main chat: closing it ends its review conversation; its steps stay in the chat.
   const closeReview = async () => {
     if (!reviewSurface) return;
@@ -29,7 +26,6 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     await reviewSurface.dispose(); reviewSurface = null;
     if (currentView) await currentView.webview.postMessage({ aiReviewClosed: id });
   };
-  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
   // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.configureOrchestrator", async () => {try{const planner=await ask.configOrchestrator();if(currentView)await currentView.webview.postMessage({planner});return planner;}catch(error){vscode.window.showErrorMessage("VERTEX orchestrator: "+error.message);}}));
@@ -39,9 +35,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   // Continue a conversation from Session Logs: a new conversation in the panel whose history is the logged questions
   // and answers; it keeps logging under the same conversation id, so its files stay together.
   context.subscriptions.push(vscode.commands.registerCommand("vertex.continueConversation", async found => {
-    /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
     if (pendingChat || continuing || reviewSurface?.running) throw new Error("Stop or finish the current request before continuing another conversation.");
-    /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
     if (!found || !Array.isArray(found.turns) || !found.turns.length) throw new Error("No questions to continue from.");
     continuing = true;
     try {
@@ -57,9 +51,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     if(selectedTopic)await vscode.workspace.getConfiguration("vertex.ai").update("context.routeTopics",true,vscode.ConfigurationTarget.Global);
     const restoredTopics=ask.topics?.()||[],restoredLabels=new Map(restoredTopics.map(topic=>[topic.id,topic.label]));
     reviewAsk = null;
-    /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
     await closeReview();
-    /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
     const view = currentView;
     await view.webview.postMessage({ cleared: true });
     const first = found.turns.find(turn => turn.time), when = first ? new Date(first.time).toLocaleString() : "";
@@ -115,7 +107,6 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   }));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.askReviewBlock", async blocks => {
     reviewAsk = review.mergeAsk(reviewAsk, blocks);
-    /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
     // One attachment above the input at a time: an open AI Review would take the next question instead.
     if (!reviewSurface?.running) await closeReview();
     await vscode.commands.executeCommand("vertex.launcher.focus");
@@ -137,9 +128,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     await vscode.commands.executeCommand("vertex.launcher.focus");
     for (let waited = 0; (!currentView || !ready) && waited < 5000; waited += 100) await new Promise(resolve => setTimeout(resolve, 100));
     if (!currentView || !ready) throw new Error("Open the VERTEX chat and try ASK AI again.");
-    /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
     if (pendingChat || continuing || reviewSurface?.running) { vscode.window.showWarningMessage("VERTEX: stop or finish the current request, then select ASK AI again."); return; }
-    /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
     await closeReview();
     reviewAsk = null; await showReview();
     const receive = new Set(), dispose = new Set();
@@ -195,7 +184,6 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         if (open) await post({ progress: { id: open.id, step: "review", stopped: true, done: true } });
         active = false; for (const fn of dispose) fn();
       }
-    /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
     };
     reviewSurface = surface;
     require("./ai-review").open(vscode, reviewContext, (prompt, options) => ask.reviewChanges(prompt, options), surface);
@@ -240,9 +228,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
       const messages = view.webview.onDidReceiveMessage(async message => {
         if (!message || typeof message !== "object") { return; }
         if (message.action === "closeAiReview") {
-          /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
           if (message.id === reviewSurface?.embedding.id) await closeReview();
-          /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
           return;
         }
         if (message.action === "aiReviewMessage") {
@@ -343,10 +329,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if (message.action === "newConversation") {
-          /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
           if (pendingChat || continuing || reviewSurface?.running) return;
           await closeReview();
-          /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
           // A new conversation writes to a new log file.
           require("./session-log").reset();
           await vscode.commands.executeCommand("vertex.resetTranspilerRunNumbers");
@@ -381,9 +365,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if (message.action === "stopChat") {
-          /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
           if (reviewSurface?.running) { reviewSurface.stop(); return; }
-          /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
           if (pendingChat && !pendingChat.cancelled) {
             pendingChat.cancelled = true;
             ask.stop();
@@ -392,9 +374,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if(message.action === "decision") {
-          /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
           if(pendingChat||reviewSurface?.running)return;
-          /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
           const pending=pendingChat={id:++nextRequest,cancelled:false,kind:"decision"};
           try{
             await view.webview.postMessage({decisionRunning:true});
@@ -406,9 +386,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if (message.action === "chat") {
           if (continuing) return;
-          /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
           if (pendingChat || reviewSurface?.running) return;
-          /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
           const requestId = Number.isInteger(message.requestId) ? message.requestId : ++nextRequest;
           if (requestId > nextRequest) nextRequest = requestId;
           // The window shows the question as written; the review's blocks go to the model with it, unseen.
@@ -445,9 +423,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId,
               answer: reply.answer + (reply.navigationError ? "\n\nVERTEX could not open the object: " + reply.navigationError : ""),
-              /* VERTEX CHANGE BEGIN: codemie / claude-4-5-sonnet-vertex */
               done: true, ...(reply.topic?{topic:reply.topic}:{}), model: reply.model, usage: usageLine(reply)+(reply.planner?" · Jev tools: "+usageLine(reply.planner):""), choices: reply.choices || [],
-              /* VERTEX CHANGE END: codemie / claude-4-5-sonnet-vertex */
               runs: (await vscode.commands.executeCommand("vertex.knownEvidenceSessions")) || [] } });
             await view.webview.postMessage({topicList:ask.topics?.()||[]});
             // The answer names a VERTEX function to run - a table's data, a
@@ -531,9 +507,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         vscode.workspace.onDidChangeWorkspaceFolders(() => { void showFolder(); })];
       const clientSwitch = clients.onChange(() => { void refresh(); });
       const mcpUpdates = chatMcp ? chatMcp.onUpdates(() => { void refresh(); }) : { dispose() {} };
-      /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
       view.onDidDispose(() => { void reviewSurface?.dispose(); reviewSurface=null; currentView = undefined; ready = false; messages.dispose(); changes.dispose(); folderWatch.forEach(watch => watch.dispose()); clientSwitch.dispose(); mcpUpdates.dispose(); });
-      /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
     }
   };
   // The panel holds the chat: switching to Explorer and back must not wipe the conversation on screen.

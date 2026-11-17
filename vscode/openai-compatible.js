@@ -188,7 +188,11 @@ async function rateLimitedRequest(send, options = {}) {
       budgets.record(options.assistant, options.model, options.budgetSize);
       paced = true;
     }
-    try { return await send(); }
+    try {
+      // Tells the host a model call is on the wire: only then can Stop let it finish and report its usage.
+      options.onRequestState?.(true);
+      try { return await send(); } finally { options.onRequestState?.(false); }
+    }
     catch (error) {
       const transient = ["ECONNRESET", "EPIPE", "ECONNREFUSED", "EAI_AGAIN"].includes(error.code)
         || /\b(?:ECONNRESET|EPIPE|ECONNREFUSED|EAI_AGAIN)\b/.test(error.message || "");
@@ -306,14 +310,17 @@ async function ask(options) {
   const textOnly = "Tools are unavailable for this request. Reply directly as plain text from supplied context, not through submit_vertex_answer or JSON. Do not claim to read files, search, run commands, modify objects or perform live actions. The supplied source, review and debugger context are available for reading and analysis. Do not say that this supplied context is unavailable. Mention tool limitations only when the actual requested action needs unavailable tools.";
   const messages = [{ role: "system", content: options.instructions + (options.structuredResult?"\nReturn a root JSON object matching this schema, with no answer wrapper: "+JSON.stringify(options.schema):!tools.length?"\n"+textOnly:"") }, { role: "user", content }];
   const imageBytes = (options.images || []).reduce((sum, image) => sum + Buffer.byteLength(image.data || "", "utf8") + 256, 0);
+  let wrapped = false;
   async function retryAnswer(plan){
+    if(wrapped)return false;
     const feedback=await options.onBeforeAnswer?.(plan);
     if(!feedback)return false;
     messages.push({role:"assistant",content:plan.answer||""},{role:"user",content:feedback});
     return true;
   }
   let usage = null;
-  for (let round = 0; round < (options.maxRounds || 12); round += 1) {
+  // One extra round is allowed once the user has paused: the wrap-up reply is not a work round.
+  for (let round = 0; round < (options.maxRounds || 12) + (wrapped ? 1 : 0); round += 1) {
     // A stage may replace tools without changing their count, or narrow an existing schema.
     if (tools.length && !options.structuredResult && !options.webSearch) {
       tools = (options.tools || []).map(tool => ({type:"function",function:{
@@ -440,6 +447,7 @@ async function ask(options) {
       const name = call.function && call.function.name;
       let content;
       try {
+        if (options.wrapUp?.()) { messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ skipped: "The user paused the request; this tool was not run." }) }); continue; }
         if (!(options.tools || []).some(tool => tool.name === name)) {
           const error=new Error(PROVIDERS[id].label + " requested an unavailable tool: " + name + ". Only supplied function schemas are available; use them or report the missing capability.");
           if(!options.recoverUnavailableTools)throw Object.assign(error,{orchestratorFatal:true});
@@ -449,6 +457,13 @@ async function ask(options) {
         content = toolResult.bound(await options.callTool(name, args));
       } catch (error) { if(error.orchestratorFatal||options.signal?.aborted)throw error; content = JSON.stringify({ error: error.message }); }
       messages.push({ role: "tool", tool_call_id: call.id, content });
+    }
+    // The user paused while this call was on the wire. It was let finish, so its usage is counted; now tell the
+    // model, with no tools left, to close the work, so the last call returns an honest, accounted answer.
+    if (options.wrapUp?.() && !wrapped && !options.structuredResult && !options.webSearch) {
+      wrapped = true; tools = [];
+      messages[0].content += "\n" + textOnly;
+      messages.push({ role: "user", content: "Thank you - the user is pausing here. Do not use any tools. In a few sentences say what is done, what is not finished, and stop." });
     }
   }
   throw new Error(PROVIDERS[id].label + " did not finish the VERTEX plan.");

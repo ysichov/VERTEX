@@ -899,6 +899,90 @@ test('Stop wakes a rate-limit retry without sending another request', async t =>
   assert.equal((await blocked).stopped,true);assert.equal(calls,1);ask.dispose();
 });
 
+test('Stop is logged as a stop with a cost note, not as a request error', async t => {
+  const logs=require('../session-log');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-stop-log-'));
+  t.after(()=>{logs.reset();fs.rmSync(root,{recursive:true,force:true});});
+  logs.reset('stop-chat');
+  let ready;const waiting=new Promise(resolve=>ready=resolve);
+  t.mock.method(assistant,'ask',options=>compatible.rateLimitedRequest(async()=>{
+    throw Object.assign(new Error('rate limited'),{status:429,retryAfter:'60'});
+  },{...options,onRetryWait:cancel=>{options.onRetryWait(cancel);if(cancel)ready();}}));
+  const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test',logPath:root,'log.questions':true,'log.answers':true}),{schemas:[],instructions:'',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+  const pending=ask('please explain this blocked request');await waiting;ask.stop();
+  assert.equal((await pending).stopped,true);ask.dispose();
+  const walk=dir=>fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(dir,e.name)):[path.join(dir,e.name)]);
+  const text=walk(root).filter(f=>f.endsWith('.jsonl')).map(f=>fs.readFileSync(f,'utf8')).join('\n');
+  assert.match(text,/request_stopped/);assert.match(text,/Stopped by user/);assert.doesNotMatch(text,/request_error/);
+});
+
+test('Stop of a CLI run logs the tokens of its finished messages, not "no usage"', async t => {
+  const logs=require('../session-log');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-stop-cli-'));
+  t.after(()=>{logs.reset();fs.rmSync(root,{recursive:true,force:true});});
+  logs.reset('stop-cli');
+  let ready;const waiting=new Promise(resolve=>ready=resolve);
+  t.mock.method(assistant,'ask',options=>new Promise((_,reject)=>{
+    const message={id:'m1',model:'claude-haiku-5-5',usage:{input_tokens:2,output_tokens:8,cache_read_input_tokens:100,cache_creation_input_tokens:50}};
+    // Claude Code repeats a message once per content block; it is one call.
+    options.onProviderResponse({provider:'claude',scope:'model_response',response:message});
+    options.onProviderResponse({provider:'claude',scope:'model_response',response:message});
+    options.signal.addEventListener('abort',()=>reject(new Error('Claude Code stopped')));ready();
+  }));
+  const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test',logPath:root,'log.questions':true,'log.answers':true}),{schemas:[],instructions:'',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+  const pending=ask('please explain this request');await waiting;ask.stop();
+  assert.equal((await pending).stopped,true);ask.dispose();
+  const walk=dir=>fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(dir,e.name)):[path.join(dir,e.name)]);
+  const text=walk(root).filter(f=>f.endsWith('.jsonl')).map(f=>fs.readFileSync(f,'utf8')).join('\n');
+  assert.match(text,/request_stopped/);assert.match(text,/"cli_run"/);
+  assert.match(text,/1 finished model call\(s\) of the stopped run used 2 input, 8 output, 100 cache read and 50 cache write tokens/);
+  assert.doesNotMatch(text,/reported no usage/);assert.doesNotMatch(text,/Estimated cost/,'a Claude subscription has no bill to estimate');
+  // The final assistant message must carry the actual tokens, not all zeros.
+  const lines=text.split('\n').filter(l=>l.trim()).map(l=>JSON.parse(l));
+  const assistant=lines.filter(l=>l.type==='assistant' && l.message?.usage).pop();
+  assert.ok(assistant,'final assistant message with usage not found');
+  assert.equal(assistant.message.usage.input_tokens,2,'input_tokens must be 2, not 0');
+  assert.equal(assistant.message.usage.output_tokens,8,'output_tokens must be 8, not 0');
+  assert.equal(assistant.message.usage.cache_read_input_tokens,100,'cache_read must be 100, not 0');
+  assert.equal(assistant.message.usage.cache_creation_input_tokens,50,'cache_write must be 50, not 0');
+});
+
+test('a stopped CodeMie run gets a list-price estimate the usage report attributes to its messages', () => {
+  const usage={input_tokens:2,output_tokens:8,cache_read_input_tokens:18954,cache_creation_input_tokens:4637,cache_creation:{ephemeral_5m_input_tokens:0,ephemeral_1h_input_tokens:4637},service_tier:'standard'};
+  const account=chat.stoppedRunAccount('codemie',[{model:'claude-haiku-5-5',usage}]);
+  const expected=require('../anthropic-pricing').priceUsage('claude-haiku-5-5',usage).cost_usd;
+  assert.ok(expected>0);assert.equal(account.cost,expected);
+  assert.equal(account.response.total_cost_usd,expected);assert.match(account.text,/Estimated cost ≈ \$/);
+  const line=record=>JSON.stringify({timestamp:'2026-11-17T19:55:40.000Z',vertex_operation:'Chat',...record});
+  const rows=require('../usage-report').parseUsage([{name:'codemie_20261117_215519_7ce7bb.jsonl',text:[
+    line({type:'user',message:{role:'user',content:'question'}}),
+    line({type:'vertex_provider_response',provider:'codemie',scope:'model_response',response:{id:'m1',model:'claude-haiku-5-5',usage}}),
+    line({type:'vertex_provider_response',provider:'codemie',scope:'cli_run',response:account.response}),
+    line({type:'vertex_provider_response',provider:'codemie',scope:'request_stopped',response:{is_error:false,error:'Stopped by user'}}),
+    line({type:'assistant',message:{model:'claude-haiku-5-5',usage:{input_tokens:2,output_tokens:8,cache_creation_input_tokens:4637,cache_read_input_tokens:18954,estimated_cost_usd:expected},content:[{type:'text',text:account.text}]}})].join('\n')}]);
+  assert.equal(rows.length,1);assert.equal(rows[0].cost,expected);assert.equal(rows[0].estimated,true);assert.equal(rows[0].cacheRead,18954);
+  assert.equal(chat.stoppedRunAccount('codemie',[]),null);
+  const unknown=chat.stoppedRunAccount('codemie',[{model:'some-other-model',usage}]);
+  assert.equal(unknown.cost,undefined);assert.doesNotMatch(unknown.text,/Estimated cost/);
+});
+
+test('Stop during a model call of an API provider lets the call finish and report its usage', async t => {
+  t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+  let ready,release,received;const started=new Promise(resolve=>ready=resolve),gate=new Promise(resolve=>release=resolve);
+  t.mock.method(compatible,'ask',async options=>{
+    received=options;options.onRequestState(true);ready();await gate;options.onRequestState(false);
+    return {plan:{answer:'Paused here.'},model:'test',usage:{input_tokens:10,output_tokens:2}};
+  });
+  const ask=chat.create(fakeVscode({provider:'openrouter-api',model:'test'}),{schemas:[],instructions:'',editorContext:()=>null},null,{});
+  t.mock.method(compatible,'keyLimits',async()=>({free:null,usage_daily:0,limit_remaining:null}));
+  const pending=ask('please explain this');await started;
+  assert.equal(ask.stop(),true);
+  assert.equal(received.signal.aborted,false);assert.equal(received.isActive(),true);assert.equal(received.wrapUp(),true);
+  release();
+  const reply=await pending;
+  assert.equal(reply.stopped,true);assert.equal(reply.answer,'Paused here.');assert.equal(reply.usage.input_tokens,10);
+  ask.dispose();
+});
 
 function routingTools(orchestrator=true){const schemas=[{name:'read_evidence',description:'Read evidence',inputSchema:{type:'object',properties:{}}},{name:'write_evidence',description:'Write evidence',inputSchema:{type:'object',properties:{}}}];return {orchestrator:()=>orchestrator,orchestratorTools:async()=>schemas,schemas,instructions:'Available tools',editorContext:()=>null};}
 function jsonPlan(task='user question'){return {goal:task,stages:[{id:1,task,operation:"read",depends_on:[],completion_checks:['Evidence obtained']}]};}

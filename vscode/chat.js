@@ -218,10 +218,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       + command + "` ended with exit code " + result.code + ". Result:\n" + JSON.stringify(result) + "\nFix it in your working copy.");
     return result;
   }
-  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
   // TURNID: the chat turn that produced these changes; an AI Review opened from them is logged as its step.
   function showReview(changes, proposed, turnId = null) {
-  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
     dropReview();
     const entry = { silent: false }, reviewed = copy;
     const folder = reviewed.folder;
@@ -239,9 +237,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       } else if (outcome.applied.length && selectedBuild.automatic) void runBuild(folder, selectedBuild.command);
     }, {
       // A different command for this task overrides the saved command and waits for Run after Apply.
-      /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
       build: { command: selectedBuild.automatic ? "" : selectedBuild.command }, turnId,
-      /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
       onBuild: async (command, remember) => {
         if (remember) await buildRunner.remember(vscode, folder, command);
         return runBuild(folder, command);
@@ -564,6 +560,9 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         return orchestration.isControl(name)?sessionLog.assistantTool(log,name,args,run):run();
       };
       let recordedModelCalls=0;
+      // A CLI run (Claude Code, CodeMie) streams each finished message with its usage, but its cost comes only in the
+      // final result, which a stopped run never writes. The messages are kept here, by id, to account for a stop.
+      const streamedCalls=new Map();
       const onModelCall = ({ model: usedModel, usage, text, withheld }) => {
         recordedModelCalls++;
         if (log) log.assistant({ model: usedModel || model, usage, text });
@@ -676,6 +675,9 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         } : undefined,
         model,
         onRetryWait: cancel => { turn.cancelRetry = cancel; },
+        // Stop while a model call is on the wire lets it finish (see ask.stop) rather than losing its cost.
+        onRequestState: busy => { turn.inFlight = busy; },
+        wrapUp: () => turn.wrapUp === true,
         isActive: () => !superseded(),
         onProgress: typeof options.onProgress === "function"
           ? update => {
@@ -688,7 +690,11 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
           reportProgress({ toolSupport: { model, provider:id, evidence } });
         },
         onModelCall,
-        onProviderResponse: event => { if (log) log.providerResponse(event); },
+        onProviderResponse: event => {
+          if (log) log.providerResponse(event);
+          if (event.scope === "model_response" && event.response?.usage)
+            streamedCalls.set(event.response.id || "call:" + streamedCalls.size, { model: event.response.model || model, usage: event.response.usage });
+        },
         // In a working copy Claude names the copy's files; the log names the user's own, which outlive the copy.
         onStep,
         localTools: !!localTools,
@@ -900,18 +906,38 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
           return outcome;
         };
       }
+      // Only the direct API-provider loop can be paused politely; planned stages and other hosts stop at once.
+      turn.canWrapUp = !!compatible.PROVIDERS[id] && !plannedRun;
       let result = await (plannedRun?plannedRun():runModel(requestOptions,toolSchemas)).catch(async error => {
         if (log) {
-          log.providerResponse({provider:id, scope:"request_error", response:{model:error.model || model,
+          if(!turn.cancelled)log.providerResponse({provider:id, scope:"request_error", response:{model:error.model || model,
             is_error:true, error:error.message, model_step:error.model_step, operation:error.operation || "Request", status:error.status}});
-          if(!recordedModelCalls)log.assistant({ model: error.model || model, text: "Request failed: " + error.message });
+          if(turn.cancelled){
+            // A stop is not a failure. Say so, and say what the log can and cannot tell about the cost of the
+            // interrupted call: completed model calls are logged above with their own usage.
+            // A CLI run's finished messages are read before the stop is handled (see collect in assistant.js);
+            // their tokens and, for CodeMie, the list-price estimate are written as the run's result.
+            const stoppedRun = (id === "claude" || id === "codemie") ? stoppedRunAccount(id, streamedCalls.values()) : null;
+            if (stoppedRun) log.providerResponse({ provider: id, scope: "cli_run", response: stoppedRun.response });
+            log.providerResponse({provider:id, scope:"request_stopped", response:{model:error.model || model, is_error:false,
+              error:"Stopped by user", operation:error.operation || "Request", model_step:error.model_step,
+              ...(stoppedRun ? { usage: stoppedRun.tokens, ...(stoppedRun.cost !== undefined ? { estimated_cost_usd: stoppedRun.cost } : {}) } : {})}});
+            if (stoppedRun) log.assistant({ model: error.model || model, usage: {
+              input_tokens: stoppedRun.tokens.input,
+              output_tokens: stoppedRun.tokens.output,
+              cache_creation_input_tokens: stoppedRun.tokens.cacheWrite,
+              cache_read_input_tokens: stoppedRun.tokens.cacheRead,
+              ...(stoppedRun.cost !== undefined ? { estimated_cost_usd: stoppedRun.cost } : {})
+            }, text: stoppedRun.text });
+            else log.assistant({ model: error.model || model, text: "Stopped by user. " + (recordedModelCalls
+              ? "Usage of the " + recordedModelCalls + " completed model call(s) is logged above; the interrupted call reported no usage, so its cost is not included."
+              : "The interrupted call reported no usage, so its cost is not reported.") });
+          } else if(!recordedModelCalls)log.assistant({ model: error.model || model, text: "Request failed: " + error.message });
         }
-        if (superseded()) return replaced();
+        if (superseded() && !(turn.cancelled && id === "openrouter-api")) return replaced();
         if (working) {
           const pending = await working.changes();
-          /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
           if (pending.length) { reviewProvider = id; showReview(pending, "", turnId); }
-          /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
         }
         if (id === "openrouter-api") {
           const limits = await refreshLimits();
@@ -920,6 +946,23 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         }
         throw error;
       });
+      if (turn.wrapUp) {
+        // The user paused: the model was told so, finished its call and returned its usage, which the log has.
+        // Nothing else (checks, recovery, review of a finished task) runs for a stopped request.
+        clearTimeout(turn.graceTimer);
+        if (log) {
+          log.providerResponse({provider:id, scope:"request_stopped", response:{model:result.model || model, is_error:false,
+            error:"Stopped by user; the model finished its last call and its usage is logged above.", operation:"Request"}});
+        }
+        conversation.push({ role: "user", content: prompt.trim() }, { role: "assistant", content: result.plan.answer });
+        recorded = true;
+        if (working) {
+          const pending = await working.changes();
+          if (pending.length) { reviewProvider = id; showReview(pending, "", turnId); }
+        }
+        if (id === "openrouter-api") await refreshLimits();
+        return { stopped: true, answer: result.plan.answer, model: result.model, usage: result.usage };
+      }
       if (superseded()) return replaced();
       // Common completion gate, outside SAP orchestration and provider-specific execution.
       // The host owns the result; a model's assertion that tests passed cannot replace it.
@@ -1004,9 +1047,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       recorded = true;
       // The answer is done: whatever Claude changed in its working copy is reviewed now, all of a file's changes at once.
       const pendingReview = working ? await working.changes() : [];
-      /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
       if (pendingReview.length) { reviewProvider = id; showReview(pendingReview, result.plan.build_command, turnId); }
-      /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
       if (log && !recordedModelCalls && !compatible.PROVIDERS[id] && id !== "copilot" && id !== "anthropic-api") {
         log.assistant({ model: result.model, usage: result.usage, text: result.plan.answer });
       }
@@ -1022,17 +1063,30 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       // and a conversation that drops a failed request answers the next one with no context at all.
       if (!recorded) conversation.push({ role: "user", content: prompt.trim() });
       throw error;
-    } finally { if (unlisten) unlisten(); if (localTools) localTools.dispose(); if (endpoint) endpoint.dispose(); if (activeRequest === turn) activeRequest = null; }
+    } finally { clearTimeout(turn.graceTimer); if (unlisten) unlisten(); if (localTools) localTools.dispose(); if (endpoint) endpoint.dispose(); if (activeRequest === turn) activeRequest = null; }
   };
   ask.stop = () => {
     const turn = activeRequest;
     if (!turn || turn.cancelled) return false;
     turn.cancelled = true;
+    // A model call on the wire is not cut: that would lose its usage and cost. VERTEX tells the model the user is
+    // pausing, the call finishes and is accounted, and the request ends. If it does not within the grace period,
+    // the request is aborted as before.
+    if (turn.canWrapUp && turn.inFlight) {
+      turn.wrapUp = true;
+      turn.graceTimer = setTimeout(() => { if (activeRequest === turn) hardStop(turn); }, WRAP_UP_GRACE_MS);
+      turn.graceTimer.unref?.();
+      return true;
+    }
+    hardStop(turn);
+    return true;
+  };
+  const WRAP_UP_GRACE_MS = 90000;
+  const hardStop = turn => {
     conversationVersion++;
     turn.controller.abort();
     turn.cancelRetry?.();
     turn.dispose?.();
-    return true;
   };
   ask.newConversation = () => {
     continuationTopic=null;
@@ -1268,10 +1322,47 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
   return ask;
 }
 
+/* The accounting of a stopped CLI run (Claude Code, CodeMie) from the finished messages it streamed: tokens per model
+   and, for CodeMie, a list-price estimate - the CLI's own result with its cost is never written for a stopped run.
+   Returns null when nothing finished. The run record has the shape of the CLI's result, so the usage report
+   attributes the estimate to the logged messages as it does for a completed run. */
+function stoppedRunAccount(provider, calls) {
+  const list = [...(calls || [])].filter(call => call && call.usage);
+  if (!list.length) return null;
+  const pricing = require("./anthropic-pricing"), models = {}, unpriced = new Set();
+  const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  for (const { model, usage } of list) {
+    const name = model || "Unknown model";
+    const row = models[name] || (models[name] = { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, costUSD: 0 });
+    const add = (field, key, value) => { const n = Number(value) || 0; row[field] += n; tokens[key] += n; };
+    add("inputTokens", "input", usage.input_tokens); add("outputTokens", "output", usage.output_tokens);
+    add("cacheReadInputTokens", "cacheRead", usage.cache_read_input_tokens);
+    add("cacheCreationInputTokens", "cacheWrite", usage.cache_creation_input_tokens);
+    const cost = pricing.priceUsage(name, usage)?.cost_usd;
+    if (typeof cost === "number") row.costUSD += cost; else unpriced.add(name);
+  }
+  const estimate = provider === "codemie";
+  let total = 0;
+  for (const [name, row] of Object.entries(models)) {
+    if (!estimate || unpriced.has(name)) delete row.costUSD;
+    else { row.costUSD = Number(row.costUSD.toPrecision(15)); total += row.costUSD; }
+  }
+  const priced = estimate && !unpriced.size;
+  const response = { type: "result", subtype: "stopped_by_user", is_error: false, modelUsage: models,
+    ...(priced ? { total_cost_usd: Number(total.toPrecision(15)) } : {}),
+    ...(estimate ? { cost_source: "VERTEX estimate from Anthropic list prices; the stopped run wrote no result of its own" } : {}) };
+  const amount = estimate && Object.values(models).some(row => typeof row.costUSD === "number")
+    ? " Estimated cost ≈ $" + Number(total.toFixed(6)) + " at list prices" + (priced ? "" : " (partial: no price for " + [...unpriced].join(", ") + ")") + ", not the CodeMie bill."
+    : "";
+  const text = "Stopped by user. The " + list.length + " finished model call(s) of the stopped run used " + tokens.input + " input, "
+    + tokens.output + " output, " + tokens.cacheRead + " cache read and " + tokens.cacheWrite + " cache write tokens." + amount;
+  return { response, text, tokens, cost: priced ? Number(total.toPrecision(15)) : undefined };
+}
+
 /* globalState key: the model last picked for each provider. */
 const MODEL_MEMORY = "vertex.ai.modelByProvider";
 
 /** The folder the chat's next request would work in, for the panel to show: "" when none. */
 const currentWorkingFolder = vscode => workingFolder(vscode, subscriptionProvider(vscode));
 
-module.exports = { create, debugFlowSection, originFlowSection, localAbapContext, workingFolder, currentWorkingFolder, inFolder, navigationOf };
+module.exports = { create, debugFlowSection, originFlowSection, localAbapContext, workingFolder, currentWorkingFolder, inFolder, navigationOf, stoppedRunAccount };

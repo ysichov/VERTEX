@@ -55,9 +55,7 @@ test("review chat keeps follow-ups separate, reports stale snapshots, resets and
   const panel = { webview: { onDidReceiveMessage: fn => { receive = fn; }, postMessage: async m => sent.push(m) },
     onDidDispose: fn => { close = fn; } };
   const vscode = { ViewColumn: { Beside: 2 }, window: { createWebviewPanel: () => panel } };
-  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
   const context = { ...aiContext(changes, "project", "Requirement"), isCurrent: async () => false, relatedTurnId: "0123456789abcdef" };
-  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
   review.open(vscode, context, async (prompt, options) => { runs.push({ prompt, options }); return { answer: "Review answer", model: "test" }; });
   await receive({ action: "ready" });
   assert.equal(sent.at(-1).stale, true);
@@ -70,9 +68,7 @@ test("review chat keeps follow-ups separate, reports stale snapshots, resets and
   await receive({ action: "send", text: "New review" });
   assert.doesNotMatch(runs[2].prompt, /Review answer/);
   assert.notEqual(runs[1].options.logScope.conversation, runs[2].options.logScope.conversation);
-  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
   assert.ok(runs.every(run => run.options.logScope.relatedTurnId === "0123456789abcdef"), "every round, also after Check again, is a step of the reviewed turn");
-  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
   close();
 });
 
@@ -158,7 +154,6 @@ test("AI Review provider request has no tools, working directory or main convers
 });
 
 
-/* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
 test("ASK AI opens the review in the main chat: its rounds are chat steps and Discuss hands the result to the chat", async () => {
   const commands = new Map(), posted = [], runs = [];
   let receive, provider;
@@ -199,7 +194,6 @@ test("ASK AI opens the review in the main chat: its rounds are chat steps and Di
   assert.equal(posted.filter(m => typeof m.review === "string").at(-1).reviewResult.answer, "Finding 1");
 });
 
-/* VERTEX CHANGE END: codemie / claude-opus-5-5 */
 test("prompt drafts never run the review and edited text replaces the selected template", async () => {
  let receive;const sent=[],runs=[],copied=[];
  const panel={webview:{onDidReceiveMessage:fn=>receive=fn,postMessage:async m=>sent.push(m)},onDidDispose(){}};

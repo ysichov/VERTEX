@@ -563,3 +563,23 @@ test('Gemini prefixed Decision ID from its model catalog is classified once and 
  const models=await api.models('gemini-api','key',async()=>({data:[{id:'models/gemini-decision-1',name:'Gemini Decision 1'}]}));assert.equal(models.length,1);assert.equal(models[0].modelKind,'decision');assert.equal(models[0].id,'models/gemini-decision-1');
  const r=await api.probe('gemini-api','key',models[0].id,async(id,key,route,body)=>{assert.equal(route,'/decisions');assert.equal(body.model,'gemini-decision-1');return{answers:{passed:{type:'noul',noul:0.99}},usage:{total_input_tokens:10,total_output_tokens:0}};});assert.equal(r.model,'gemini-decision-1');assert.equal(r.usage.cost_usd,undefined);
 });
+
+test('a pause during a model call lets it finish, skips its tools and asks the model to wrap up with usage counted',async()=>{
+ let paused=false;const requests=[],tools=[],calls=[];
+ const answers=[
+  {usage:{prompt_tokens:100,completion_tokens:10},choices:[{message:{role:'assistant',content:null,tool_calls:[{id:'c1',type:'function',function:{name:'read_sap_object',arguments:'{}'}}]}}]},
+  {usage:{prompt_tokens:120,completion_tokens:20},choices:[{message:{role:'assistant',content:'Paused: nothing was changed.'}}]}];
+ const result=await api.ask({assistant:'mistral-api',apiKey:'k',model:'m',instructions:'i',prompt:'p',schema:{type:'object'},maxRounds:1,
+  wrapUp:()=>paused,onModelCall:call=>calls.push(call),
+  tools:[{name:'read_sap_object',description:'Read',inputSchema:{type:'object'}}],
+  request:async(id,key,route,body)=>{requests.push(JSON.parse(JSON.stringify(body)));paused=true;return answers.shift();},
+  callTool:async name=>{tools.push(name);return {};}});
+ assert.equal(result.plan.answer,'Paused: nothing was changed.');
+ assert.deepEqual(tools,[]);
+ assert.equal(requests.length,2);
+ assert.equal(requests[1].tools,undefined);
+ assert.match(requests[1].messages.at(-1).content,/pausing/);
+ assert.match(requests[1].messages.at(-2).content,/not run/);
+ assert.equal(result.usage.input_tokens,220);assert.equal(result.usage.output_tokens,30);assert.equal(calls.length,2);
+});
+

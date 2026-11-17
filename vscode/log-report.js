@@ -82,7 +82,6 @@ function recordingReference(content) {
   return { kind, id, step: 1, available: data.recorded_steps !== 0 };
 }
 
-/* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
 // The model's own name. A proxy reports it with the route glued on - CodeMie answers
 // "codemie-gpt-6-luna-2026-09-22" and "openai.gpt-5.6-sol" - while the Providers cell already names the
 // provider. The session's provider prefix and a vendor route ("openai.", "us.anthropic.") are dropped;
@@ -94,7 +93,6 @@ function bareModel(value, provider) {
   return model.replace(MODEL_VENDORS, "") || model;
 }
 
-/* VERTEX CHANGE END: codemie / claude-opus-5-5 */
 function parseSession(text, file) {
   // The file's name without folder or extension, read as text: Eclipse parses logs in its browser, without Node's path.
   const name = String(file).replace(/^.*[\\/]/, "").replace(/\.jsonl$/, "");
@@ -129,9 +127,7 @@ function parseSession(text, file) {
       session.end = session.end === null ? time : Math.max(session.end, time);
     }
     for(const value of [record.message?.model,record.response?.model,...Object.keys(record.response?.modelUsage||{})]){
-      /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
       for(const model of String(value||"").split(",").map(value=>bareModel(value,provider)).filter(Boolean))if(!session.models.includes(model))session.models.push(model);
-      /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
     }
     const content = record.message?.content;
     if (record.type === "vertex_provider_response") {

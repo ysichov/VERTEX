@@ -59,3 +59,5 @@ The extension README is `vscode/README.md`. Release and development histories be
 - Every diagram and its controls (including Mermaid SVGs, range tracks and thumbs) must follow the active VS Code theme through VS Code CSS variables. Never hard-code a light/dark Mermaid theme or fixed surface colours; verify both light and dark rendering before packaging.
 
 - The repository is public: never publish a Claude Code session link (`https://claude.ai/code/session_...`) - not in commit messages (no `Claude-Session:` trailer), pull request descriptions, comments, documentation or code. The link is private to its owner and is a dead link for everyone else.
+
+- Do not add `VERTEX CHANGE BEGIN` / `VERTEX CHANGE END` comments around your edits. Make changes directly without attribution markers.

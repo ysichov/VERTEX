@@ -1,3 +1,13 @@
+## 2026-11-17 — Chat Stop in the log
+
+Stopping a chat request is no longer logged as a failed request with empty usage. The session log now says the request was stopped by the user and which completed calls carry cost; for OpenRouter the key-limit (cost) figures are refreshed after a stop.
+
+With an API provider, Stop no longer cuts a model call that is already running. VERTEX lets that call finish, skips its tool calls, tells the model the user is pausing and asks for a short wrap-up, so the call's usage and cost are counted and logged. Other assistants, and any call that has not finished after 90 s, still stop at once.
+
+With Claude Code and EPAM CodeMie, a stopped request now records the tokens of the model calls that finished before Stop. The log no longer says that no usage was reported. For CodeMie, the log and **Logs & Cost** also show an estimated cost (≈) at Anthropic list prices. This is not the CodeMie bill.
+
+The final assistant message in a stopped request now carries the actual token counts and cost, not all zeros. **Logs & Cost** displays the correct usage and estimated cost for stopped CodeMie conversations.
+
 ## 2026-11-17 — 0.9.101: Release
 
 Advanced the VS Code and Eclipse version metadata to 0.9.101. Rebuilt the VSIX.
@@ -8,7 +18,7 @@ Object Navigator for packages and transport requests now has **Copy context**. I
 
 Advanced the VS Code and Eclipse version metadata to 0.9.100.
 
-Session logs now preserve streamed Claude Code/CodeMie reasoning and reply text in chronological parts. Starting a new tool closes the preceding part; long generations save parts every 200 ms, and stopped or failed runs retain received partial output. Logs → Steps (chronological) now displays Thinking and Assistant text parts between tools instead of hiding the recorded notes. Answer logging must be enabled. Every new JSONL record also carries a monotonic sequence number for unambiguous ordering when timestamps are equal.
+Session logs now keep each streamed Claude Code/CodeMie thinking or reply-text block together as one chronological part, rather than splitting it into timer-sized fragments. Parts are saved at block/type boundaries, before tools, and when a run ends, including stopped or failed runs. Logs → Steps (chronological) displays Thinking and Assistant text between tools. Answer logging must be enabled. Every new JSONL record also carries a monotonic sequence number for unambiguous ordering when timestamps are equal.
 
 Logs' Providers column now shows the model's own name. Before, it showed the route a proxy adds to the name, so CodeMie conversations listed `codemie-gpt-6-luna-2026-09-22` or `openai.gpt-5.6-sol` next to the provider that was already shown.
 

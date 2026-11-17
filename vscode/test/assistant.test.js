@@ -136,6 +136,25 @@ test("in a working folder Claude Code runs there with its file and shell tools a
   assert.ok(fs.existsSync(work), "the working folder is not removed");
 });
 
+test("a stopped Claude Code run still delivers its last finished message before the request ends", async () => {
+  const controller = new AbortController(), seen = [];
+  const spawn = spawner(call => {
+    call.options.signal.addEventListener("abort", () => {
+      call.child.emit("error", Object.assign(new Error("The operation was aborted"), { name: "AbortError" }));
+      // The killed child's last output arrives after the abort, then it closes.
+      setImmediate(() => {
+        call.child.stdout.emit("data", JSON.stringify({ type: "assistant", message: { id: "m1", model: "claude-haiku-5-5",
+          usage: { input_tokens: 2, output_tokens: 8 }, content: [] } }) + "\n");
+        call.child.emit("close", null);
+      });
+    });
+    controller.abort();
+  });
+  await assert.rejects(assistant.ask(common(spawn, "claude", { signal: controller.signal, onProgress() {},
+    onProviderResponse: event => seen.push(event.scope + ":" + (event.response.id || "")) })));
+  assert.deepEqual(seen, ["model_response:m1"], "the message is accounted before the stop is reported");
+});
+
 test("in a git working copy edits run freely and only Bash asks", async () => {
   const work = folder("vertex-copy-");
   const spawn = spawner(call => {
@@ -172,9 +191,7 @@ test("Claude Code's own steps reach onStep, the SAP tools and the answer's Struc
     { kind: "result", id: "t1", name: "Bash", is_error: false, content: "ok" }]);
 });
 
-/* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
 test("Claude's thinking is recorded at block stop before its completed model message", async () => {
-/* VERTEX CHANGE END: codemie / gpt-6.1-sol */
   const order = [];
   const spawn = spawner(call => {
     const send = event => call.child.stdout.emit("data", JSON.stringify(event) + "\n");
@@ -189,12 +206,9 @@ test("Claude's thinking is recorded at block stop before its completed model mes
   await assistant.ask(common(spawn, "claude", { onProgress() {},
     onProviderResponse: event => { if (event.scope === "model_response") order.push("model " + event.response.id); },
     onStep: step => order.push(step.note + ": " + step.text) }));
-  /* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
   assert.deepEqual(order, ["thinking: Found the markup; checking logs.js.", "model m1", "text: Now the notes."]);
-  /* VERTEX CHANGE END: codemie / gpt-6.1-sol */
 });
 
-/* VERTEX CHANGE BEGIN: codemie / gpt-5.6-sol-2026-07-09 */
 test("a streamed tool start closes and records the preceding reasoning segment", async () => {
   const steps = [];
   const spawn = spawner(call => {
@@ -214,16 +228,12 @@ test("a streamed tool start closes and records the preceding reasoning segment",
   assert.equal(steps[0].text, "Inspect the source first.");
 });
 
-/* VERTEX CHANGE END: codemie / gpt-5.6-sol-2026-07-09 */
-/* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
-/* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
 // Eclipse's packaged runtime supplies the shared chat-progress dependency.
 const eclipseModule = { exports: {} };
 require("node:vm").runInThisContext("(function(require, module, exports) {\n" +
   fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/assistant/assistant.js"), "utf8") + "\n})")(
   require("node:module").createRequire(path.join(__dirname, "../assistant.js")), eclipseModule, eclipseModule.exports);
 for (const [host, implementation] of [["VS Code", assistant], ["Eclipse", eclipseModule.exports]]) {
-/* VERTEX CHANGE END: codemie / gpt-6.1-sol */
   test(host + " streamed notes persist before tools and do not repeat completed text", async () => {
     const root = folder("vertex-stream-log-");
     const log = require("../session-log").create(root, "claude", "stream", { answers: true, tools: true });
@@ -269,22 +279,30 @@ for (const [host, implementation] of [["VS Code", assistant], ["Eclipse", eclips
     }
   });
 
-  test(host + " long generation writes notes before completion and streams StructuredOutput text", async () => {
+  test(host + " streamed notes stay whole across pauses and flush at block boundaries", async () => {
     const notes = [];
     const spawn = spawner(call => {
       const send = event => call.child.stdout.emit("data", JSON.stringify(event) + "\n");
       send({ type: "stream_event", event: { type: "content_block_delta", index: 0,
         delta: { type: "thinking_delta", thinking: "Still thinking" } } });
       setTimeout(() => {
-        assert.deepEqual(notes.map(note => note.text), ["Still thinking"]);
+        assert.deepEqual(notes.map(note => note.text), [], "thinking is buffered until its block boundary");
         send({ type: "stream_event", event: { type: "content_block_start", index: 1,
           content_block: { type: "tool_use", name: "StructuredOutput" } } });
-        for (const fragment of ['{"answer":"Hello ', 'world","navigation":null}']) {
+        assert.deepEqual(notes.map(note => note.text), ["Still thinking"]);
+        send({ type: "stream_event", event: { type: "content_block_delta", index: 1,
+          delta: { type: "input_json_delta", partial_json: '{"answer":"Hello ' } } });
+        setTimeout(() => {
+          assert.deepEqual(notes.map(note => note.text), ["Still thinking"], "text remains buffered across a long pause");
           send({ type: "stream_event", event: { type: "content_block_delta", index: 1,
-            delta: { type: "input_json_delta", partial_json: fragment } } });
-        }
-        send({ type: "result", subtype: "success", is_error: false, structured_output: PLAN, modelUsage: {} });
-        call.child.emit("close", 0);
+            delta: { type: "input_json_delta", partial_json: 'world","navigation":null}' } } });
+          setTimeout(() => {
+            assert.deepEqual(notes.map(note => note.text), ["Still thinking"], "no timer splits the text block");
+            send({ type: "stream_event", event: { type: "content_block_stop", index: 1 } });
+            send({ type: "result", subtype: "success", is_error: false, structured_output: PLAN, modelUsage: {} });
+            call.child.emit("close", 0);
+          }, 260);
+        }, 260);
       }, 260);
     });
     await implementation.ask(common(spawn, "claude", { onProgress() {}, onStep: note => notes.push(note) }));
@@ -292,7 +310,6 @@ for (const [host, implementation] of [["VS Code", assistant], ["Eclipse", eclips
   });
 }
 
-/* VERTEX CHANGE END: codemie / gpt-6.1-sol */
 test("the effort level reaches Claude Code as --effort and Codex as model_reasoning_effort, a foreign level not at all", async () => {
   const done = call => { call.child.stdout.emit("data", JSON.stringify({ type: "result", subtype: "success", is_error: false,
     structured_output: PLAN, modelUsage: {} })); call.child.emit("close", 0); };

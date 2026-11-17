@@ -59,10 +59,8 @@ function open(vscode, copy, changes, onDone, options = {}) {
         const fingerprint = JSON.stringify(context.blocks);
         context.isCurrent = async () => fingerprint === JSON.stringify(aiContext(await copy.changes(), folder, options.task || "", scope).blocks);
         context.refresh = async () => buildContext(await copy.changes());
-        /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
         // The chat turn whose changes these are: Session Logs shows the AI Review as a step of that turn.
         if (options.turnId) context.relatedTurnId = options.turnId;
-        /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
         return context;
       };
       await vscode.commands.executeCommand("vertex.openAiReview", buildContext(changes));

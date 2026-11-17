@@ -8,12 +8,9 @@ const path = require("node:path");
 const vm = require("node:vm");
 const report = require("../log-report");
 
-/* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
 test('chronology renders streamed thinking and text between tool steps',()=>{
   const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
-  /* VERTEX CHANGE BEGIN: codemie / gpt-6.1-sol */
   const element=label=>({label,children:[],querySelector(){return null;},appendChild(child){this.children.push(child);},addEventListener(type,callback){this[type]=callback;}});
-  /* VERTEX CHANGE END: codemie / gpt-6.1-sol */
   const context={section:(label,kind,text)=>({...element(label),kind,text}),Date,Map,Set};
   vm.createContext(context);
   vm.runInContext(page.slice(page.indexOf('  function chronology('),page.indexOf('  function conversation(')),context);
@@ -27,7 +24,6 @@ test('chronology renders streamed thinking and text between tool steps',()=>{
   assert.match(box.children[2].label,/3\. .*Assistant text/);
 });
 
-/* VERTEX CHANGE END: codemie / gpt-6.1-sol */
 test('matched skill is labeled Skill search in the recorded chronology',()=>{
  const rows=[{type:'user',message:{content:'собери всикс'}},{type:'vertex_topic_routing',report:{status:'skill',skill:'build-vertex-vsix',beforeMessages:6,afterMessages:0}}];
  const session=report.parseSession(rows.map(row=>JSON.stringify({timestamp:'2026-11-16T18:41:51Z',...row})).join('\n'),'codex_skill.jsonl');
@@ -69,8 +65,6 @@ test('lazy prompt starts with chronological disclosures instead of repeated lega
  assert.deepEqual(Array.from(holder.children,entry=>entry.label),['User','Steps (chronological)']);
 });
 
-/* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
-/* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
 test('every AI Review round is a chat step of its own, not a technical step of a question',()=>{
  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
  const context={};vm.createContext(context);
@@ -86,10 +80,8 @@ test('every AI Review round is a chat step of its own, not a technical step of a
  const lone=context.promptSteps([round('Only review',2000)]);
  assert.deepEqual(Array.from(lone.rows,p=>p.text),['Only review']);
  assert.doesNotMatch(page,/AI Review · "\+rounds\.length/);
-/* VERTEX CHANGE END: codemie / claude-opus-5-5 */
 });
 
-/* VERTEX CHANGE END: codemie / claude-opus-5-5 */
 test('legacy checks and recovery states retain file order as distinct chronological actors',()=>{
  const rows=[{type:'user',message:{content:'Edit'}},{type:'vertex_topic_routing',report:{topic:{id:'t'}}},{type:'vertex_request',request:{instructions:'Rules',prompt:'Edit',tools:[],schema:null}},
  {type:'assistant',vertex_step:'local',message:{content:[{type:'tool_use',id:'lint',name:'Verification',input:{files:['x.js']}}]}},
@@ -405,14 +397,12 @@ test('session header model list collects actual models without duplicate aggrega
  const parsed=report.parseSession(rows.map(JSON.stringify).join('\n'),'vercel-api_20261107_120000.jsonl');assert.deepEqual(parsed.models,['inclusionai/ling-3.0-flash','nvidia/free']);
 });
 
-/* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
 test('session model list shows the model name without the provider route a proxy glues on',()=>{
  const rows=[{type:'user',message:{content:'Fix'}},{type:'vertex_provider_response',scope:'model_response',response:{id:'a',model:'codemie-gpt-6-luna-2026-09-22'}},{type:'assistant',message:{id:'b',model:'gpt-6-luna'}},{type:'vertex_provider_response',scope:'model_response',response:{id:'c',model:'openai.gpt-5.6-sol'}},{type:'assistant',message:{id:'d',model:'us.anthropic.claude-haiku-5-5'}}].map(r=>({timestamp:'2026-11-17T12:00:00Z',...r}));
  const parsed=report.parseSession(rows.map(JSON.stringify).join('\n'),'codemie_20261117_120000.jsonl');
  assert.deepEqual(parsed.models,['gpt-6-luna-2026-09-22','gpt-6-luna','gpt-5.6-sol','claude-haiku-5-5']);
 });
 
-/* VERTEX CHANGE END: codemie / claude-opus-5-5 */
 test("a Jev answer reads as a table: what each question was about, the answer, confidence and odds", () => {
   const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
   const node = (tag, cls = "", text) => ({ tag, cls, text, children: [], appendChild(child) { this.children.push(child); return child; } });

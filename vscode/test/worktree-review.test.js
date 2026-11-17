@@ -15,9 +15,7 @@ test("assistant ASK AI opens an independent review for all changes and uses a pr
   const folder = path.join(os.tmpdir(), "project");
   const changes = [{ file: "src/a.txt", path: path.join(folder, "src", "a.txt"), before: "old", after: "new" },
     { file: "b.txt", path: path.join(folder, "b.txt"), before: "", after: "added" }];
-  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
   reviewer.open(vscode, { folder, changes: async () => changes }, changes, () => {}, { task: "Original task", turnId: "0123456789abcdef" });
-  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
   assert.match(page.html, /id="askall"/);
   const tree = page.html.slice(page.html.indexOf('<nav class="review-tree"'), page.html.indexOf('</nav>'));
   assert.match(tree, /<summary>project<\/summary>/);
@@ -27,10 +25,8 @@ test("assistant ASK AI opens an independent review for all changes and uses a pr
   assert.equal(commands[0][1].blocks.length, 2);
   assert.equal(await commands[0][1].isCurrent(), true);
   assert.equal(commands[0][1].task, "Original task");
-  /* VERTEX CHANGE BEGIN: codemie / claude-opus-5-5 */
   assert.equal(commands[0][1].relatedTurnId, "0123456789abcdef", "the review is logged as a step of the turn that made the changes");
   assert.equal((await commands[0][1].refresh()).relatedTurnId, "0123456789abcdef");
-  /* VERTEX CHANGE END: codemie / claude-opus-5-5 */
   await page.send({ action: "ask", file: "f1" });
   assert.deepEqual(commands[1][1].files, ["src/a.txt"]);
 });

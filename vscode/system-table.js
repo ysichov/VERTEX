@@ -40,7 +40,6 @@ async function change(vscode, index, name, edit) {
 // The last test result of each system, by name, until the window is reloaded - also when the table is closed.
 const lastResults = new Map();
 
-/* VERTEX CHANGE BEGIN: codemie / claude-sonnet-5-5 */
 let openPanel;
 
 function open(vscode, { test, login, hasPassword = async () => false, chosen = () => undefined, setClient = async () => {}, onClientChange = () => ({ dispose() {} }) }) {
@@ -50,7 +49,6 @@ function open(vscode, { test, login, hasPassword = async () => false, chosen = (
     vscode.ViewColumn.Active, { enableScripts: true, localResourceRoots: [] });
   openPanel = panel;
   panel.onDidDispose(() => { if (openPanel === panel) { openPanel = undefined; } });
-/* VERTEX CHANGE END: codemie / claude-sonnet-5-5 */
   const nonce = require("crypto").randomBytes(24).toString("hex");
   panel.webview.html = html(nonce);
   // Each row says whether a password is kept for it; the kept password itself never reaches the page.
