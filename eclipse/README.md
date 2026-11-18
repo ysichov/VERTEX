@@ -108,7 +108,7 @@ since in red; newly created objects are green. Review ignores spacing and case o
 gave no block. **Code review** and **Technical documentation** in the saved transport summary open all changed objects with that prompt chosen. Tick objects in the summary (a row, or a group heading for the whole group) to narrow **Expand all**, **Code review**, **Technical documentation** and their prompts to them; **All / None** set or clear the ticks, and none ticked means all objects. In a transport review, **Open** on a block and a line number in its diff open the code in the editor at that line, class parts included. **ASK AI** beside that choice puts the blocks on the chat chip with the chosen prompt as its instruction; a question typed in the chat adds to it. A single block's **ASK AI** keeps the short question. There,
 **Code review / Technical documentation** selects the prompt copied by **AI prompt diff / full**, and on a single object's page the one copied by **Copy prompt: diff / full**;
 developer and reviewer views have the same choice. The documentation prompt keeps created objects (sent whole, described as they are) apart from modified ones, and ends with
-`TR Details: <request>`. The **Prompts…** button shows and edits both prompt texts. **Save user file** writes
+`TR details: <request>`. The **Prompts…** button shows and edits both prompt texts. **Save user file** writes
 `~/.vertex/prompts/code-review.txt` or `~/.vertex/prompts/technical-documentation.txt`; the file takes priority
 and is reread when copying. **Use built-in** removes it. Data elements, domains and tables ADT keeps no versions of are read through VERTEX's ABAP; without it
 they say so. The **Blame** toggle beside Versions | Review, off by default,

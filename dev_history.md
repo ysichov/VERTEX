@@ -1,3 +1,7 @@
+## 2026-11-18 — Technical documentation prompt text
+
+Replaced the built-in `TECH_DOC_PROMPT` in `org.vertex.abap.ui/resources/versions.html` with the team's documentation template (Business Requirement, Solution, Created objects, Modified objects, object documentation rules, formatting requirements, `TR details: TR name`). The image transcription had dropped the diff markers, so `+ lines are added.` and `- lines are removed.` are restored: the rules depend on them. `promptEnding` now appends `TR details:` to match. Object classification still comes from `reviewPrompt` (NEW / MODIFIED sections), which the template keeps as its input. `vscode/test/review-prompt-kind.test.js` assertions were updated to the new wording. Not run in this session; no version change and no package built.
+
 ## 2026-11-17 — Assistant text duplication in logs fixed
 
 The Session Logs timeline showed duplicate "Assistant text" entries for the same message. Root cause in `vscode/assistant.js`: when CodeMie sends duplicate streaming events (the same `content_block_delta` deltas followed by multiple `assistant` messages), the same text was accumulated and flushed multiple times through `flushStreamNote()` (line 524).
@@ -26,6 +30,10 @@ Follow-up: the final assistant message in a stopped CLI run was written with tex
 ## 2026-11-17 — Claude streaming: keep thinking and reply text blocks intact
 
 The user's latest log exposed the same fragmentation in ordinary streamed assistant text: deltas were split into ~200 ms `claude_note` records, visible as many adjacent **Assistant text** rows. The timer in `appendStreamNote` was meant to persist partial output during long generations; it made each delay create another note. Both VS Code and Eclipse now buffer thinking and text until a real boundary (content block/message stop, type change, before tool/result events) or process termination, so each uninterrupted block is one log note. Extended the shared two-host streaming test with delayed text deltas and checks that no interim notes are emitted across pauses. `git diff --check` passed; the targeted Node test command timed out twice and is unverified. No build run.
+
+## 2026-11-18 — 0.9.102: Release
+
+Advanced the VS Code package and lockfile, Eclipse feature, and UI bundle metadata together to 0.9.102 (patch +1 from 0.9.101). The pending entries above this heading are part of this release. The VSIX build runs after these edits are applied to the real project; the Eclipse update site was not rebuilt, so `docs/index.html` keeps the last published build.
 
 ## 2026-11-17 — 0.9.101: Release
 

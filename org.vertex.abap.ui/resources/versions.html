@@ -2004,46 +2004,46 @@ var REVIEW_PROMPT = "Review this ABAP change: what it does and any real problem 
   + " security. No headings, no list of minor remarks.";
 var TECH_DOC_PROMPT = `Review the provided ABAP change diff and generate concise technical documentation in English.
 
-Analysis rules:
-1. Base the documentation only on evidence visible in the diff: + lines are added, - lines are removed, and unchanged lines are context only.
-2. Do not infer functionality that is not supported by the code.
-3. Distinguish changed technical objects from existing tables, CDS views, infotypes, classes, methods, function modules, and other dependencies that are only read or called.
-4. Do not list a referenced dependency as a changed technical object unless its implementation or definition is modified in the diff.
-5. Organize the documentation by technical object, and keep created objects apart from modified ones. An object the diff marks as NEW was created in this transport: describe its whole functionality as it now is - its purpose, inputs, processing, conditions and results - and do not word it as a change. A class or interface comes in parts - its sections and each method, named CLASS=>METHOD: document it as one object, and for a created one go through every method, each with its purpose, parameters, processing and result. For a modified object describe only the purpose of the change, new or modified processing, conditions under which it executes, and resulting system behavior.
-6. If the same business requirement is implemented in several objects, describe its implementation separately under each object. Some overlap is acceptable because the documentation must remain object-oriented.
-7. Move rules, constants, classifications, or value lists shared by several objects into one common section before the object-specific sections. Do not repeat them under every object.
-8. For modified objects, focus on changed behavior. Do not document unchanged parameters and outputs, unaffected standard processing, general system behavior, implementation details that do not explain the change, or inactive or commented-out code as active functionality.
-9. Account for dynamic calls and common interfaces. Do not classify a parameter as redundant merely because one dynamically called implementation does not use it internally. Verify whether the shared call signature requires it.
-10. Do not declare a parameter unused without checking whether it is assigned inside the object, passed through a dynamic call, consumed by calling code, or required for interface compatibility.
-11. If the diff appears incomplete because of filters, ownership, missing objects, or excluded changes, do not reconstruct the missing implementation from assumptions. State that a complete unfiltered diff is required.
-12. Produce technical documentation, not a code-review report. Do not include defects, refactoring suggestions, performance concerns, or minor style remarks unless the user explicitly requests them.
-
-Required output structure:
-- Title
-- Purpose
-- Changed Technical Objects, as two lists: Created Objects and Modified Objects
-- Common Rules or Classification, only when shared by multiple objects
-- Created Objects: one section for each, describing its full functionality
-- Modified Objects: one section for each, describing what changed
-- Subsections for distinct changes within a large object, when useful
-- Transport request details at the end
-
-Writing style:
-- Use formal, precise technical English.
-- Keep the document concise and focused on new behavior.
-- Preserve the exact spelling of ABAP object, parameter, table, and field names.
-- Describe observable code behavior rather than assumed business intent.
-- Do not claim that a defect was fixed unless the diff proves that the previous behavior was incorrect.
-- Avoid repetitive descriptions of existing functionality.
-- Do not add a separate inventory of unchanged dependencies.
-
-End the document with the transport information supplied here, using the exact format TR Details: name. Do not invent missing transport details.`;
+Base the documentation only on evidence visible in the diff:
++ lines are added.
+- lines are removed.
+Unchanged lines provide context only.
+Do not infer functionality that is not supported by the diff.
+Do not include ABAP source code, code blocks, or copied implementation excerpts.
+Do not write a code-review report. Describe the implemented technical behavior only.
+Use this structure and style:
+-
+Business Requirement:
+Start the document with this section. Summarize the business requirement using only evidence from the diff and the supplied demand information.
+Solution:
+Briefly describe how the requirement is implemented. Do not repeat the object list or duplicate the detailed object descriptions.
+Created objects:
+Describe all completely new objects created in the transport. Include their purpose, public and private components, constants, parameters, processing logic, conditions, and results. For a newly created class, describe each new method separately under this section.
+Modified objects:
+Describe only objects whose existing implementation is changed in the diff. For each object, explain only the changed behavior, execution conditions, affected processing, and resulting system behavior.
+Object documentation rules:
+Preserve the exact ABAP object, class, method, program, table, field, parameter, and constant names.
+Do not provide a separate inventory of objects before the Created objects and Modified objects sections.
+Do not repeat the same object description in multiple sections.
+If several methods implement the same requirement, describe each method separately under its technical object.
+Do not document unchanged functionality, standard processing, inactive/commented-out code, or dependencies that are only read or called.
+Distinguish changed objects from dependencies. A dependency is not a changed object unless its implementation or definition is modified in the diff.
+Do not declare parameters unused without checking their assignments, dynamic calls, calling-code usage, or interface requirements.
+If the diff is incomplete or filtered, state that a complete unfiltered diff is required. Do not reconstruct missing logic.
+Formatting requirements:
+Use a compact document layout similar to the provided reference.
+Use normal-sized text and soft, modest headings.
+Do not use large title blocks, oversized Markdown headings, or unnecessary nested sections.
+Use bold labels such as Business Requirement:, Solution:, Created objects:, Modified objects:, and TR details:.
+Keep the language formal, precise, concise, and technical.
+Avoid repetition between the Business Requirement, Solution, and object descriptions.
+End the document with TR details: TR name`;
 var promptKind = "review";
 var PROMPT_CHOICES = [["Code review", "Prompt for change review"], ["Technical documentation", "Prompt for technical documentation"]];
 var promptOverrides = { review: null, technical: null }, promptWaiter = null, promptQueue = Promise.resolve();
 function promptBuiltIn(kind) { return kind === "technical" ? TECH_DOC_PROMPT : REVIEW_PROMPT; }
 function promptOpening(kind) { return promptOverrides[kind] === null ? promptBuiltIn(kind) : promptOverrides[kind]; }
-function promptEnding(kind) { return kind === "technical" ? "\n\nTR Details: " + objectName() : ""; }
+function promptEnding(kind) { return kind === "technical" ? "\n\nTR details: " + objectName() : ""; }
 function sdePromptFileReady(raw) {
   if (!promptWaiter) return;
   var complete = promptWaiter; promptWaiter = null;

@@ -1,3 +1,7 @@
+## 2026-11-18 — Technical documentation prompt
+
+The built-in Technical documentation prompt is rewritten in the form the team uses: it starts with the Business Requirement, then Solution, Created objects, Modified objects and rules for documenting objects, and ends with `TR details: TR name`. Diff evidence is still read from `+` and `-` lines only. The line appended to the prompt now reads `TR details:` instead of `TR Details:`. A user `technical-documentation.txt` still overrides the built-in text.
+
 ## 2026-11-17 — Chat Stop in the log
 
 Stopping a chat request is no longer logged as a failed request with empty usage. The session log now says the request was stopped by the user and which completed calls carry cost; for OpenRouter the key-limit (cost) figures are refreshed after a stop.
@@ -7,6 +11,10 @@ With an API provider, Stop no longer cuts a model call that is already running. 
 With Claude Code and EPAM CodeMie, a stopped request now records the tokens of the model calls that finished before Stop. The log no longer says that no usage was reported. For CodeMie, the log and **Logs & Cost** also show an estimated cost (≈) at Anthropic list prices. This is not the CodeMie bill.
 
 The final assistant message in a stopped request now carries the actual token counts and cost, not all zeros. **Logs & Cost** displays the correct usage and estimated cost for stopped CodeMie conversations.
+
+## 2026-11-18 — 0.9.102: Release
+
+Advanced the VS Code and Eclipse version metadata to 0.9.102. The entries above this heading are the changes in this release.
 
 ## 2026-11-17 — 0.9.101: Release
 

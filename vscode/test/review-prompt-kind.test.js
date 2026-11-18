@@ -18,16 +18,20 @@ function context() {
   return state;
 }
 
-test("technical documentation prompt keeps diff evidence and ends with TR Details", () => {
+/* VERTEX CHANGE BEGIN: codemie / claude-haiku-5-5 */
+test("technical documentation prompt keeps diff evidence and ends with TR details", () => {
+/* VERTEX CHANGE END: codemie / claude-haiku-5-5 */
   const state = context();
   for (const full of [false, true]) {
     const prompt = state.reviewPrompt(full, null, "technical");
     assert.match(prompt, /^Review the provided ABAP change diff and generate concise technical documentation in English/);
-    assert.match(prompt, /Changed Technical Objects/);
-    assert.match(prompt, /Do not list a referenced dependency as a changed technical object/);
+    /* VERTEX CHANGE BEGIN: codemie / claude-haiku-5-5 */
+    assert.match(prompt, /Created objects:/);
+    assert.match(prompt, /A dependency is not a changed object unless its implementation or definition is modified/);
     assert.match(prompt, /\+ amount = new_price \* 2\./);
     assert.match(prompt, /- amount = old_price\./);
-    assert.match(prompt, /TR Details: ER6K9A1QXV$/);
+    assert.match(prompt, /TR details: ER6K9A1QXV$/);
+    /* VERTEX CHANGE END: codemie / claude-haiku-5-5 */
     assert.doesNotMatch(prompt, /Review this ABAP change: what it does and any real problem/);
   }
 });
@@ -35,11 +39,15 @@ test("technical documentation prompt keeps diff evidence and ends with TR Detail
 test("a created object goes to the prompt whole and named NEW, a changed one named MODIFIED", () => {
   const state = context();
   assert.match(state.reviewPrompt(false, null, "technical"), /MODIFIED object ZCL_SHIP=>RUN/);
-  assert.match(state.reviewPrompt(false, null, "technical"), /keep created objects apart from modified ones/);
+  /* VERTEX CHANGE BEGIN: codemie / claude-haiku-5-5 */
+  assert.match(state.reviewPrompt(false, null, "technical"), /Describe all completely new objects created in the transport/);
+  /* VERTEX CHANGE END: codemie / claude-haiku-5-5 */
   state.review_ops = [{ op: "+", text: "FUNCTION z_new." }, { op: "+", text: "ENDFUNCTION." }];
   for (const full of [false, true]) {
     const prompt = state.reviewPrompt(full, null, "technical");
-    assert.match(prompt, /NEW object ZCL_SHIP=>RUN, created in this transport - its whole source:\n\n\+ FUNCTION z_new\.\n\+ ENDFUNCTION\.\n\nTR Details: ER6K9A1QXV$/);
+    /* VERTEX CHANGE BEGIN: codemie / claude-haiku-5-5 */
+    assert.match(prompt, /NEW object ZCL_SHIP=>RUN, created in this transport - its whole source:\n\n\+ FUNCTION z_new\.\n\+ ENDFUNCTION\.\n\nTR details: ER6K9A1QXV$/);
+    /* VERTEX CHANGE END: codemie / claude-haiku-5-5 */
     assert.doesNotMatch(prompt, /MODIFIED object/);
   }
   // The review's own mark decides too: its new source, without lines a version before it held.
@@ -54,7 +62,9 @@ test("a class's parts are named under their class", () => {
   const state = context();
   state.review_part = { objtype: "METH", display_name: "RUN", class_name: "ZCL_NEW", is_created: true };
   assert.match(state.reviewPrompt(false, null, "technical"), /NEW object ZCL_NEW=>RUN, created in this transport/);
-  assert.match(state.reviewPrompt(false, null, "technical"), /for a created one go through every method/);
+  /* VERTEX CHANGE BEGIN: codemie / claude-haiku-5-5 */
+  assert.match(state.reviewPrompt(false, null, "technical"), /For a newly created class, describe each new method separately/);
+  /* VERTEX CHANGE END: codemie / claude-haiku-5-5 */
   state.review_part = { objtype: "CPUB", display_name: "ZCL_NEW=======CU", class_name: "ZCL_NEW" };
   assert.match(state.reviewPrompt(false, null, "technical"), /ZCL_NEW, public section/);
   state.review_part = { objtype: "REPS", display_name: "ZPROG" };
@@ -65,7 +75,9 @@ test("code review remains the default prompt", () => {
   const state = context();
   const prompt = state.reviewPrompt(false);
   assert.match(prompt, /^Review this ABAP change:/);
-  assert.doesNotMatch(prompt, /TR Details:/);
+  /* VERTEX CHANGE BEGIN: codemie / claude-haiku-5-5 */
+  assert.doesNotMatch(prompt, /TR details:/);
+  /* VERTEX CHANGE END: codemie / claude-haiku-5-5 */
 });
 
 test("a user prompt overrides the built-in text for its own kind", () => {
@@ -101,7 +113,9 @@ test("multi-object technical prompt uses one instruction and one transport foote
   assert.equal(prompt.match(/Review the provided ABAP change diff/g).length, 1);
   assert.match(prompt, /ZCL_SHIP=>RUN/);
   assert.match(prompt, /ZCL_PRICE=>CALCULATE/);
-  assert.equal(prompt.match(/TR Details: ER6K9A1QXV/g).length, 1);
+  /* VERTEX CHANGE BEGIN: codemie / claude-haiku-5-5 */
+  assert.equal(prompt.match(/TR details: ER6K9A1QXV/g).length, 1);
+  /* VERTEX CHANGE END: codemie / claude-haiku-5-5 */
   // A developer's view follows the same choice.
   state.personView.selector = "D:AUTHOR";
   assert.match(state.personPrompt(false), /^Review the provided ABAP change diff/);
