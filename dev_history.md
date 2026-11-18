@@ -1,3 +1,19 @@
+## 2026-11-18 — Topic routing: preserve 'new' choice even with low confidence
+
+Fixed a bug in `vscode/topic-routing.js` where the `uncertainSelection` function (called when Jev's confidence is below 0.6) always replaced any route choice with `'clarify'`, including the `'new'` choice for creating a new topic. This caused requests like "собери всикс" (build VSIX) to remain without a topic even though Jev correctly identified no existing topic matched.
+
+**Root cause**: When Jev selected `'new'` with low confidence (e.g., 0.41), `uncertainSelection` unconditionally set `route.choice='clarify'`, which blocked topic creation in `apply()` because `unplaced=true` prevented the `if(!topic&&!unplaced)` branch from running.
+
+**Logic error**: Low confidence for `'new'` is expected when no existing topic fits. The first unassigned topic **is** a new topic. The uncertainty guard should only apply when choosing between **existing** topics, not when creating a new one.
+
+**Fix**: In `uncertainSelection` (line 71), preserve `route.choice='new'` even with low confidence. Only replace an existing topic selection with `'clarify'` when confidence is insufficient. This allows skill-matched requests to establish their topic on the first occurrence.
+
+Verified with `node --check`; not tested in a live session. No build or version change.
+
+## 2026-11-18 — Push and PR in Git History
+
+The Push and PR dialogs moved from `vscode/code-review.js` into `vscode/git-dialogs.js` (`css`, `html`, `script`), so the uncommitted-changes review and Git History render and script them from one source. `code-review.js` exports `OPERATION_STATUS_FUNCTION` and `OPERATION_STATUS_CSS` for the history page; the review keeps `OPERATION_STATUS_SCRIPT` (function plus the `#status` initialisation). In `vscode/git-history.js`, `remoteAction()` answers `preparePush`, `pushChanges`, `preparePR`, `openPR` and `generatePR` with the helpers in `git-push.js` and `git-branches.js`, under a panel-level busy flag. The history page reloads after `pushDone`; its message handler ignores messages without `folder`. Limit: the review's own push/PR dispatch in `openCommitReview` is still a separate copy. Verified with `node --test` on `git-history`, `code-review` and the related Git/review test files: 201 pass, 24 fail, the same 24 names as on an unchanged HEAD worktree (SAP navigation, LLM Providers, sidebar). Not run in VS Code; no build or package made.
+
 ## 2026-11-18 — Technical documentation prompt text
 
 Replaced the built-in `TECH_DOC_PROMPT` in `org.vertex.abap.ui/resources/versions.html` with the team's documentation template (Business Requirement, Solution, Created objects, Modified objects, object documentation rules, formatting requirements, `TR details: TR name`). The image transcription had dropped the diff markers, so `+ lines are added.` and `- lines are removed.` are restored: the rules depend on them. `promptEnding` now appends `TR details:` to match. Object classification still comes from `reviewPrompt` (NEW / MODIFIED sections), which the template keeps as its input. `vscode/test/review-prompt-kind.test.js` assertions were updated to the new wording. Not run in this session; no version change and no package built.

@@ -3,6 +3,7 @@
 // as Session Logs opens. Read with `git log` in that folder; a folder outside a git repository says so.
 const { execFile } = require("child_process");
 const crypto = require("crypto");
+const gitDialogs = require("./git-dialogs");
 
 const SEP = "\x1f", END = "\x1e";
 
@@ -353,12 +354,16 @@ tr:hover td{background:var(--vscode-list-hoverBackground)}
 td.hash{font-family:var(--vscode-editor-font-family);white-space:nowrap}td.hash a{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:none}td.hash a:hover{color:var(--vscode-textLink-activeForeground);text-decoration:underline}td.date{white-space:nowrap}
 .unpushed-marker{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--vscode-charts-blue);margin-right:6px;vertical-align:middle}
 ${require("./code-review").controlsCss}
+${require("./code-review").OPERATION_STATUS_CSS}
+${gitDialogs.css}
+${require("./task-visual").css}
 </style></head><body>
-<header class="history-head"><h1>Git History</h1><button id="refresh" title="Refresh Git history" aria-label="Refresh Git history">↻</button></header><div id="folder"></div><div id="error" role="alert"></div>
+<header class="history-head"><h1>Git History</h1><button id="refresh" title="Refresh Git history" aria-label="Refresh Git history">↻</button><button id="push-open" class="neutral" title="Push committed changes to a remote">Push…</button><button id="pr-open" class="neutral" title="Open GitHub pull request creation">PR…</button></header><div id="folder"></div><div id="error" role="alert"></div>
 <div id="filters" hidden><label>From <input id="from" placeholder="dd-mm-yyyy" aria-label="From date, dd-mm-yyyy" maxlength="10"></label><label>To <input id="to" placeholder="dd-mm-yyyy" aria-label="To date, dd-mm-yyyy" maxlength="10"></label><label>Month <select id="month"><option value="">Last 10 commits</option></select></label><label>Author <select id="author"><option value="">All authors</option></select></label></div>
 <table hidden><thead><tr><th>#</th><th>Commit</th><th>Date</th><th>Author</th><th>Message</th></tr></thead><tbody></tbody></table>
+${gitDialogs.html}
 <script nonce="${nonce}">
-const vscode=acquireVsCodeApi();
+const vscode=acquireVsCodeApi(),api=vscode;
 const formatDate=${formatDate.toString()};
 let commits=[],dirty=true;
 const expandedDescriptions=new Set();
@@ -421,6 +426,8 @@ month.addEventListener("change",()=>{
 });
 window.addEventListener("message",e=>{
   const m=e.data||{};
+  if(m.pushDone)vscode.postMessage({action:"refresh"});
+  if(!("folder" in m))return;
   if(document.getElementById("folder").textContent!==m.folder){expandedDescriptions.clear();from.value="";to.value="";month.value="";author.value="";}
   document.getElementById("folder").textContent=m.folder||"";
   dirty=m.dirty!==false;
@@ -439,8 +446,35 @@ window.addEventListener("message",e=>{
   render();
 });
 document.getElementById("refresh").onclick=()=>vscode.postMessage({action:"refresh"});
+${require("./code-review").OPERATION_STATUS_FUNCTION}
+${gitDialogs.script}
 vscode.postMessage({action:"ready"});
 </script></body></html>`;
+}
+
+// Push and pull request actions of the Git History page: the same helpers and messages as the uncommitted-changes review.
+let remoteBusy = false;
+async function remoteAction(vscode, panel, folder, message) {
+  const push = message.action === "preparePush" || message.action === "pushChanges";
+  const kind = push ? "pushError" : "prError";
+  if (remoteBusy) { await panel.webview.postMessage({ [kind]: "Another Git operation is running. Try again when it finishes." }); return; }
+  remoteBusy = true;
+  try {
+    const helper = require(push ? "./git-push" : "./git-branches");
+    if (message.action === "preparePush") await panel.webview.postMessage({ pushInfo: await helper.info(folder) });
+    else if (message.action === "pushChanges") await panel.webview.postMessage({ pushDone: await helper.push(folder, message) });
+    else if (message.action === "preparePR") await panel.webview.postMessage({ prInfo: await helper.prInfo(folder) });
+    else if (message.action === "generatePR") {
+      const result = await vscode.commands.executeCommand("vertex.generatePullRequest", await helper.prSnapshot(folder, message), { summary: message.title, description: message.body });
+      if (!result) throw new Error("No pull request description returned.");
+      await panel.webview.postMessage(result.error ? { prError: result.error, prGeneration: result.generation || null } : { prDraft: result });
+    } else {
+      const url = await helper.prUrl(folder, message);
+      if (!await vscode.env.openExternal(vscode.Uri.parse(url))) throw new Error("Could not open the browser.");
+      await panel.webview.postMessage({ prOpened: true });
+    }
+  } catch (error) { await panel.webview.postMessage({ [kind]: error.message }); }
+  finally { remoteBusy = false; }
 }
 
 let panel, shown = "";
@@ -467,6 +501,7 @@ function open(vscode, folder) {
   panel.onDidChangeViewState?.(event => { if (event.webviewPanel.visible) refresh(); });
   panel.webview.onDidReceiveMessage(async message => {
     if (message?.action === "ready" || message?.action === "refresh") refresh();
+    if (["preparePush", "pushChanges", "preparePR", "openPR", "generatePR"].includes(message?.action)) await remoteAction(vscode, panel, shown, message);
     if (message?.action === "filter") refresh({from:message.from,to:message.to,author:message.author});
     if (message?.action === "commit" && message.commit) {
       try { await openCommit(vscode, shown, message.commit); }

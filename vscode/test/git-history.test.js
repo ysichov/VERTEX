@@ -29,7 +29,8 @@ function fixture(){
   querySelector(){return body;}
  }
  const body=new Element(),table=new Element(),ids=Object.fromEntries(['from','to','month','author','error','folder','filters','refresh'].map(k=>[k,new Element()]));
- vm.runInNewContext(html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1],{document:{getElementById:id=>ids[id],querySelector:()=>table,createElement:()=>new Element()},window:{addEventListener(name,fn){receive=fn;}},setTimeout:()=>0,clearTimeout(){},acquireVsCodeApi:()=>({postMessage(){}}),Option:function(text,value){this.text=text;this.value=value;}});
+ const listeners=[];receive=e=>listeners.forEach(fn=>fn(e));
+  vm.runInNewContext(html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1],{document:{getElementById:id=>ids[id],querySelector:()=>table,createElement:()=>new Element()},window:{addEventListener(name,fn){listeners.push(fn);}},setTimeout:()=>0,clearTimeout(){},acquireVsCodeApi:()=>({postMessage(){}}),Option:function(text,value){this.text=text;this.value=value;}});
  receive({data:{folder:'.',commits:[{short:'c',date:'2024-03-01T00:00:00+02:00'},{short:'b',date:'2024-02-29T23:59:59-08:00'},{short:'a',date:'2024-02-01T00:00:00Z'}]}});
  close();return {ids,body,receive};
 }

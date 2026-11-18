@@ -68,7 +68,10 @@ function uncertainSelection(question,history,scope,topics,answers){
   if(visual)keep.add(visual.id);
  }
  if(!keep.size&&topics.some(t=>t.id===answers.route?.choice))keep.add(answers.route.choice);
- const guarded={...answers,route:{choice:'clarify'}};
+ // If Jev chose 'new' (new topic), keep that choice even with low confidence.
+ // Only replace existing topic selection with 'clarify' when confidence is low.
+ const routeChoice=answers.route?.choice;
+ const guarded={...answers,route:{choice:routeChoice==='new'?'new':'clarify'}};
  for(const t of topics)guarded['need_'+t.id]={choice:keep.has(t.id)?'keep':'skip'};
  return apply(question,history,scope,topics,guarded);
 }
