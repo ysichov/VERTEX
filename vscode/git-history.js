@@ -13,6 +13,23 @@ async function readCommits(folder, filter = {}) {
       const [hash, date, author] = line.split(SEP); return { hash, date, author };
     });
   index.forEach((entry, i) => { entry.number = index.length - i; });
+  
+  // Mark unpushed commits: those present locally but not in the tracked remote branch.
+  let unpushedHashes = new Set();
+  try {
+    const currentBranch = (await git(folder, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+    if (currentBranch && currentBranch !== "HEAD") {
+      const upstream = (await git(folder, ["rev-parse", "--abbrev-ref", currentBranch + "@{upstream}"])).trim();
+      if (upstream) {
+        const unpushedLog = await git(folder, ["log", upstream + "..HEAD", "--pretty=format:%H"]);
+        unpushedHashes = new Set(unpushedLog.split("\n").map(h => h.trim()).filter(Boolean));
+      }
+    }
+  } catch (_) {
+    // No upstream or not in a branch: all commits are considered pushed.
+  }
+  index.forEach(entry => { entry.unpushed = unpushedHashes.has(entry.hash); });
+  
   const valid = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
   const from = valid(filter.from), to = valid(filter.to);
   const byAuthor = filter.author ? index.filter(entry => entry.author === filter.author) : index;
@@ -28,7 +45,7 @@ async function readCommits(folder, filter = {}) {
       details.set(hash, { hash, short, date, author, subject, description: body.join(SEP).trimEnd() });
     }
   }
-  const commits = selected.map(entry => ({ ...details.get(entry.hash), number: entry.number }));
+  const commits = selected.map(entry => ({ ...details.get(entry.hash), number: entry.number, unpushed: entry.unpushed }));
   commits.months = [...new Set(index.map(entry => entry.date.slice(0, 7)))].sort().reverse();
   commits.authors = [...new Set(index.map(entry => entry.author))].sort((a,b)=>a.localeCompare(b));
   return commits;
@@ -334,6 +351,7 @@ th,td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--vscode-panel
 th{position:sticky;top:0;background:var(--vscode-editor-background);color:var(--vscode-descriptionForeground);font-weight:600}
 tr:hover td{background:var(--vscode-list-hoverBackground)}
 td.hash{font-family:var(--vscode-editor-font-family);white-space:nowrap}td.hash a{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:none}td.hash a:hover{color:var(--vscode-textLink-activeForeground);text-decoration:underline}td.date{white-space:nowrap}
+.unpushed-marker{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--vscode-charts-blue);margin-right:6px;vertical-align:middle}
 ${require("./code-review").controlsCss}
 </style></head><body>
 <header class="history-head"><h1>Git History</h1><button id="refresh" title="Refresh Git history" aria-label="Refresh Git history">↻</button></header><div id="folder"></div><div id="error" role="alert"></div>
@@ -369,7 +387,9 @@ function render(){
     const tr=document.createElement("tr");
     [["number",c.number],["hash",c.short],["date",formatDate(c.date)],["author",c.author],["subject",c.subject]].forEach(([k,v])=>{
       const td=document.createElement("td");td.className=k;
-      if(k==="hash"){const a=document.createElement("a");a.textContent=v||"";a.title="Review commit "+c.hash;a.tabIndex=0;
+      if(k==="hash"){
+        if(c.unpushed){const marker=document.createElement("span");marker.className="unpushed-marker";marker.title="Not pushed to remote";td.appendChild(marker);}
+        const a=document.createElement("a");a.textContent=v||"";a.title="Review commit "+c.hash;a.tabIndex=0;
         const go=()=>vscode.postMessage({action:"commit",commit:c});a.onclick=go;a.onkeydown=e=>{if(e.key==="Enter")go();};td.appendChild(a);}
       else if(k==="subject"&&String(c.description||"").trim()){
         const fold=document.createElement("button"),description=document.createElement("div"),subject=document.createElement("span");
