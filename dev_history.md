@@ -1,3 +1,18 @@
+## 2026-11-18 — Skill matching: topic priority fixed for build-vertex-vsix
+
+Extended skill matching in `vscode/chat.js` (lines 658-672) to find or create an appropriate topic for the `build-vertex-vsix` skill with the correct priority: **first check existing topics, then routedTopic, and only create new as a last resort**.
+
+**Problem**: Repeated "собери всикс" (build VSIX) requests were assigned to random different topics (T3, T4, T5, T2) or left without a topic. Each request created a new topic instead of reusing the first one.
+
+**Root cause**: The initial fix checked `routedTopic` first and only searched the catalog when `routedTopic` was `null` or unrelated. This was backwards: when topic routing returns `null` (pruned due to low confidence), the code should **always search existing topics first** before creating a new one. Otherwise, every pruned request creates a separate topic even though a matching topic already exists.
+
+**Correct priority** (lines 658-672):
+1. Search the topic catalog for an existing build-related topic matching `/build|vsix|сбор|пакет|package/i`
+2. If not found, check if `routedTopic` matches the keywords (use it as a secondary source)
+3. Only if neither source has a suitable topic, create a new "Build VSIX" topic
+
+This ensures all build requests group into one topic regardless of topic routing's classification. Verified with `node --check`; not tested in a live session. No build or version change.
+
 ## 2026-11-18 — Topic routing: preserve 'new' choice even with low confidence
 
 Fixed a bug in `vscode/topic-routing.js` where the `uncertainSelection` function (called when Jev's confidence is below 0.6) always replaced any route choice with `'clarify'`, including the `'new'` choice for creating a new topic. This caused requests like "собери всикс" (build VSIX) to remain without a topic even though Jev correctly identified no existing topic matched.

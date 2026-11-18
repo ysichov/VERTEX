@@ -120,12 +120,24 @@ function highlight(line) {
         : /^(REPORT|TYPES|BEGIN|END|OF|DATA|TYPE|TABLE|WITH|DEFAULT|KEY|VALUE|WRITE|LOOP|AT|INTO|ENDLOOP|IF|ELSE|ENDIF|CLASS|METHOD|ENDMETHOD|ENDCLASS|SELECT|FROM|WHERE|FUNCTION|ENDFUNCTION|CONSTANTS)$/i.test(token)
           ? `<span class="keyword">${escape(token)}</span>` : escape(token)).join("");
 }
-function marked(line, other, hl = highlight) {
-  if (other === undefined) { return hl(line); }
+// The common prefix and suffix of LINE and OTHER: what lies between them is the part that changed.
+function affix(line, other) {
   let start = 0, end = 0;
   while (start < line.length && start < other.length && line[start] === other[start]) { start++; }
   while (end < line.length - start && end < other.length - start
     && line[line.length - end - 1] === other[other.length - end - 1]) { end++; }
+  return { start, end };
+}
+// LINE is wholly inside OTHER (text was only added to it, or only removed from it): no changed part of its own, so the
+// row is left out and the other side shows the change.
+const absorbed = (line, other) => {
+  if (other === undefined || !line.length) { return false; }
+  const { start, end } = affix(line, other);
+  return start + end === line.length;
+};
+function marked(line, other, hl = highlight) {
+  if (other === undefined) { return hl(line); }
+  const { start, end } = affix(line, other);
   return hl(line.slice(0, start)) + '<mark>' + escape(line.slice(start, line.length - end))
     + '</mark>' + hl(end ? line.slice(-end) : '');
 }
@@ -143,8 +155,9 @@ function hunkSections(parts, newLines, hl, key = i => i, maxLine = Infinity, com
   return parts.map((p, i) => {
     const contextStart = full ? (i ? p.afterFrom : 0) : Math.max(i ? parts[i - 1].afterTo : 0, p.afterFrom - 3);
     let lines = newLines.slice(contextStart, p.afterFrom).map((s, j) => row(p.beforeFrom - (p.afterFrom - contextStart) + j + 1, contextStart + j + 1, 'context', ()=>hl(clip(s)))).join('');
-    p.before.forEach((s, j) => { lines += row(p.beforeFrom + j + 1, '', 'removed', ()=>marked(clip(s), p.after[j] === undefined ? undefined : clip(p.after[j]), hl)); });
-    p.after.forEach((s, j) => { lines += row('', p.afterFrom + j + 1, 'added', ()=>(neutral||window?.neutral)?hl(clip(s)):marked(clip(s), p.before[j] === undefined ? undefined : clip(p.before[j]), hl)); });
+    const hiding = !(neutral || window?.neutral);
+    p.before.forEach((s, j) => { if (hiding && absorbed(s, p.after[j])) { return; } lines += row(p.beforeFrom + j + 1, '', 'removed', ()=>marked(clip(s), p.after[j] === undefined ? undefined : clip(p.after[j]), hl)); });
+    p.after.forEach((s, j) => { if (hiding && absorbed(s, p.before[j])) { return; } lines += row('', p.afterFrom + j + 1, 'added', ()=>(neutral||window?.neutral)?hl(clip(s)):marked(clip(s), p.before[j] === undefined ? undefined : clip(p.before[j]), hl)); });
     const tail = Math.min(newLines.length, full ? newLines.length : p.afterTo + 3, i + 1 < parts.length ? parts[i + 1].afterFrom : newLines.length);
     lines += newLines.slice(p.afterTo, tail).map((s, j) => row(p.beforeTo + j + 1, p.afterTo + j + 1, 'context', ()=>hl(clip(s)))).join('');
     if(window&&!lines)return '';

@@ -205,13 +205,11 @@
 <header>
   <h1>Logs &amp; Cost</h1>
   <div class="vertex-segment-toggle" role="group" aria-label="Report"><button id="view-logs" class="active" aria-pressed="true">Logs</button><button id="view-flow" aria-pressed="false">Flow</button><button id="view-costs" aria-pressed="false">Usage &amp; Cost</button></div>
-  <button id="folder">Choose Folder…</button>
-  <button id="settings">Log Settings</button>
+  <button id="settings" title="Enable vertex.ai.log.request to see VERTEX instructions and context for new prompts.">Log Settings</button>
   <button id="refresh" title="Refresh session logs" aria-label="Refresh session logs">↻</button>
   <button id="clear-conversations" disabled>Clear selected conversations</button>
 </header>
 <div id="status" class="muted">Loading…</div>
-<div class="muted">Enable <code>vertex.ai.log.request</code> to see VERTEX instructions and context for new prompts.</div>
 <div id="date-range" class="list-tools" aria-label="Date range">
 <button data-date="previous" title="Previous period" aria-label="Previous period">←</button>
 <label><select data-date="period" class="log-context"><option value="all">All dates</option><option value="day" selected>Day</option><option value="week">Week</option><option value="month">Month</option><option value="year">Year</option><option value="custom">Custom range</option></select></label>
@@ -319,7 +317,6 @@ function vertexDateRange(root, changed) {
   clear.onclick = function () { vscode.postMessage({ action: "clearConversations", ids: Array.from(selected) }); };
   function selectionChanged() { clear.disabled = selected.size === 0; }
   document.getElementById("refresh").onclick = function () { vscode.postMessage({ action: "refresh" }); };
-  document.getElementById("folder").onclick = function () { vscode.postMessage({ action: "chooseFolder" }); };
   document.getElementById("settings").onclick = function () { vscode.postMessage({ action: "settings" }); };
 
   function el(tag, cls, text) {

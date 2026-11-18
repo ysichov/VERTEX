@@ -655,9 +655,25 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
           toolSchemas.splice(0,toolSchemas.length,...toolSchemas.filter(tool=>tool.name==="Bash"));
           projectAccess.tools=toolSchemas.map(tool=>tool.name);
         }
-        skillReport.topic=routedTopic;
+        // For build-vertex-vsix skill, assign a Build VSIX topic: first check existing topics, then create new if none found.
+        let skillTopic=routedTopic;
+        if(matchedSkill.name==="build-vertex-vsix"){
+          const scope=require("./topic-routing").scopeOf(vscode,mode,workDir);
+          const catalog=require("./topic-routing").catalog(history,scope);
+          // First priority: existing topic matching build/vsix/package keywords.
+          skillTopic=catalog.find(t=>/build|vsix|сбор|пакет|package/i.test(t.label));
+          // Second priority: routedTopic if it matches the keywords.
+          if(!skillTopic&&routedTopic&&/build|vsix|сбор|пакет|package/i.test(routedTopic.label))skillTopic=routedTopic;
+          // Last resort: create a new Build VSIX topic.
+          if(!skillTopic){
+            const topicOf=require("./topic-routing").topicOf;
+            const max=history.reduce((n,m)=>Math.max(n,Number(topicOf(m.topic)?.id.slice(6))||0),0);
+            skillTopic={id:'topic_'+String(max+1).padStart(4,'0'),label:'Build VSIX',scope};
+          }
+        }
+        skillReport.topic=skillTopic;
         log?.routing?.(skillReport);
-        options.onProgress?.({status:"Jev matched "+matchedSkill.name+" · 0 previous prompts",topic:routedTopic,
+        options.onProgress?.({status:"Jev matched "+matchedSkill.name+" · 0 previous prompts",topic:skillTopic,
           topicRouting:{...skillReport,exchangesKept:0,exchangesTotal:require("./topic-routing").exchangesOf(history).length,
             savedPercent:skillReport.contextReduction.beforeCharacters?100:0}});
       }
