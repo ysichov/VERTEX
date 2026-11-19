@@ -19,6 +19,18 @@ test("Codex steps are counted from the endpoint, Claude Code's from its own stre
   assert.match(require("node:fs").readFileSync(require.resolve("../extension"), "utf8"), /require\("\.\/chat-progress"\)\.report\(toolName\)/);
 });
 
+test("the verification step never shows the MCP scene; it leaves the running scene alone", () => {
+  const progress = require("../chat-progress");
+  assert.equal(progress.scene("Verification"), null);
+  assert.equal(progress.scene("mcp__vertex__Verification"), null);
+  assert.equal(progress.scene("abap_objects_generator_run"), "mcp");
+});
+
+test("the folder's own tools are not counted twice from the endpoint listener", () => {
+  const source = require("node:fs").readFileSync(require.resolve("../chat"), "utf8");
+  assert.match(source, /if \(localTools && localTools\.schemas\.some\(tool => tool\.name === bare\)\) return;/);
+});
+
 test("a search by pattern says what it looks for; reading a named file says nothing", () => {
   const progress = require("../chat-progress");
   assert.equal(progress.subject("Grep", { pattern: "AI logging", path: "vscode" }), "AI logging");

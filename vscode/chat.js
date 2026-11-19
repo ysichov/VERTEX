@@ -507,6 +507,9 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       if (id !== "claude" && !compatible.PROVIDERS[id] && id !== "anthropic-api" && id !== "copilot") {
         unlisten = require("./chat-progress").listen(name => {
           if (superseded()) return;
+          // The folder's own tools are already reported by onStep as they run; they are not reported twice here.
+          const bare = String(name || "").replace(/^mcp__vertex__/, "");
+          if (localTools && localTools.schemas.some(tool => tool.name === bare)) return;
           const scene = require("./chat-progress").scene(name);
           reportProgress({ status: "Working: step " + (++progressStep) + " — " + name, kind: scene });
         });

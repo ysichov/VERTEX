@@ -5,7 +5,7 @@
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
 
-Current VS Code extension: **0.9.102**.
+Current VS Code extension: **0.9.103**.
 
 For VS Code, the recommended companion is
 [ABAP Syntax Highlighting by Lars Hvam](https://marketplace.visualstudio.com/items?itemName=larshp.vscode-abap)
@@ -541,7 +541,7 @@ The current question, system instructions and at least the last three exchanges/
 
 Session Logs shows **Context optimization (Jev)** under the main question: selected exchange index ranges, probabilities, latency, Jev usage, and before/after history characters. Jev calls are grouped in a separate related conversation per selection, so Continue does not restore it as a user question. The composer reports history text reduction or a full-history fallback. Character reduction is not a guaranteed token or money saving: Jev adds latency and usage, and changed context may affect the main provider's cache. Compare total provider usage and answer quality in separate baseline/optimized runs for a real A/B evaluation. Question/request logging controls whether full decision inputs and model prompts are saved.
 
-After a topic is chosen, the line under the question box says which topic, how many earlier exchanges went with the question and how much shorter the history became - for example `Topic topic_0001 · Jev · 17 of 60 exchanges · history 65% shorter`. Nothing is deleted from the conversation; Session Logs shows each question's topic.
+After a topic is chosen, the line under the question box says which topic, how many earlier exchanges went with the question and how much shorter the history became - for example `T1 · Jev · 17 of 60 exchanges · history 65% shorter`. Nothing is deleted from the conversation; Session Logs shows each question's topic.
 
 The progress line says **JEV is optimizing context…**, including the current pass and portion. Log details include pass/batch sizes and aggregated Jev usage. In the monitor, **Basis** distinguishes question-only decisions from brief-answer clarification; the expanded strip shows the actual brief extract used. Full context is retained on errors.
 

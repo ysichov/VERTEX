@@ -550,6 +550,8 @@ async function ask(options) {
           generated = ""; structured = "";
         } else if (inner.type === "content_block_start") {
           flushStreamNote();
+          // A new thinking block brings the edit scene back, even when a step the host ran has replaced it since.
+          if (inner.content_block?.type === "thinking") lastStatus = "";
           if (inner.content_block?.type === "tool_use") {
             if (inner.content_block.name === "StructuredOutput") structured = "";
             else {
@@ -584,8 +586,9 @@ async function ask(options) {
           if (fragment) { thinking += fragment; options.onProgress({ thinking }); }
           // Claude Code's finished message carries its thinking empty: the log keeps the streamed text.
           appendStreamNote("thinking", fragment);
+          // The edit scene stays up while the model thinks; the next tool it asks for takes the scene over.
           const status = fragment ? "Claude is thinking…" : "Claude is working…";
-          if (lastStatus !== status) { lastStatus = status; options.onProgress({ status }); }
+          if (lastStatus !== status) { lastStatus = status; options.onProgress(fragment ? { status, kind: "edit" } : { status }); }
         } else if (inner.type === "content_block_stop" || inner.type === "message_stop") {
           flushStreamNote();
           if (toolBlocks.has(inner.index)) {

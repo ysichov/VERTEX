@@ -19,7 +19,7 @@ function report(name) {
    and changing it - while everything the SAP side offers is one conversation with the system. Bash has no scene:
    it is told by its command line instead, and returning null leaves whatever scene is running untouched rather
    than blanking the message for one step. */
-const SCENES = { Read: "search", Glob: "search", Grep: "search", Edit: "edit", Write: "edit", Bash: null };
+const SCENES = { Read: "search", Glob: "search", Grep: "search", Edit: "edit", Write: "edit", Bash: null, Verification: null };
 
 function scene(name) {
   const tool = String(name || "").replace(/^mcp__vertex__/, "");

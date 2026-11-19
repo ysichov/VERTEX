@@ -440,8 +440,25 @@ test("Claude streams reasoning and the current tool name separately from the ans
   });
   await assistant.ask(common(spawn, "claude", { onProgress: update => updates.push(update) }));
   // A SAP tool call also names the waiting scene the panel should show while it runs.
-  assert.deepEqual(updates, [{ thinking: "Checking the run" }, { status: "Claude is thinking…" },
+  assert.deepEqual(updates, [{ thinking: "Checking the run" }, { status: "Claude is thinking…", kind: "edit" },
     { status: "Using run_abap_transpiler…", kind: "mcp" }]);
+});
+
+test("Claude's thinking brings the edit scene back for each thinking block in folder mode", async () => {
+  const updates = [];
+  const spawn = spawner(call => {
+    const send = event => call.child.stdout.emit("data", JSON.stringify(event) + "\n");
+    send({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "thinking" } } });
+    send({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Plan the edit. " } } });
+    send({ type: "stream_event", event: { type: "content_block_stop", index: 0 } });
+    send({ type: "stream_event", event: { type: "content_block_start", index: 1, content_block: { type: "thinking" } } });
+    send({ type: "stream_event", event: { type: "content_block_delta", index: 1, delta: { type: "thinking_delta", thinking: "Check it." } } });
+    send({ type: "result", subtype: "success", is_error: false, structured_output: PLAN });
+    call.child.emit("close", 0);
+  });
+  await assistant.ask(common(spawn, "claude", { localTools: true, onProgress: update => updates.push(update) }));
+  assert.deepEqual(updates.filter(update => Object.hasOwn(update, "kind")),
+    [{ status: "Claude is thinking…", kind: "edit" }, { status: "Claude is thinking…", kind: "edit" }]);
 });
 
 test("an empty thinking delta does not claim visible reasoning", async () => {

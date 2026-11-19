@@ -152,3 +152,22 @@ test('replays the Providers screenshot misroute: uncertain routing keeps only re
   assert.deepEqual(result.history,history.slice(0,4));
   assert.deepEqual(result.report.keptIndices,[0,1,2,3]);
 });
+
+test('a short, uncertain follow-up keeps the full history instead of an empty one', async t => {
+  const history=[
+    {role:'user',content:'опиши логику добавления провайдеров',topic:topic('topic_0001','providers')},
+    {role:'assistant',content:'Provider list is built from log files.',topic:topic('topic_0001','providers')},
+    {role:'user',content:'Release transport',topic:topic('topic_0002','transport')},
+    {role:'assistant',content:'Transport released.',topic:topic('topic_0002','transport')}
+  ];
+  const review=require('../review-jev'),jev=require('../jev'),accounting=require('../ai-accounting');
+  t.mock.method(review,'connection',async()=>({key:'fixture',model:'jev-test'}));
+  t.mock.method(accounting,'begin',()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+  t.mock.method(jev,'evaluate',async()=>({model:'jev-test',usage:{},answers:{
+    route:{choice:'clarify',confidence:0.3},
+    need_topic_0001:{choice:'skip',confidence:0.8},need_topic_0002:{choice:'skip',confidence:0.8}}}));
+  const result=await routing.route({},'исправь',history,scope);
+  assert.deepEqual(result.history,history,'a short uncertain request must not lose the previous exchange');
+  assert.equal(result.topic,null);
+  assert.match(result.report.reason,/full history retained/);
+});

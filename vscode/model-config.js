@@ -25,7 +25,7 @@ const PROVIDERS = [
   { id: "codex", setting: "codex-subscription", label: "ChatGPT subscription (Codex)", short: "ChatGPT" },
   { id: "copilot", setting: "copilot", label: "GitHub Copilot (VS Code)", short: "Copilot" },
   { id: "codemie", setting: "codemie", label: "EPAM CodeMie (CodeMie CLI)", short: "CodeMie" },
-  { id: "vercel-api", setting: "vercel-api", label: "Vercel AI Gateway API (key)", short: "Vercel AI Gateway API" },
+  { id: "vercel-api", setting: "vercel-api", label: "Vercel API (key)", short: "Vercel API" },
   { id: "openrouter-api", setting: "openrouter-api", label: "OpenRouter API (key)", short: "OpenRouter API" },
   { id: "opencode-api", setting: "opencode-api", label: "OpenCode Console API (key)", short: "OpenCode API" },
   { id: "typesafe-api", setting: "typesafe-api", label: "TypeSafe Jev API (key)", short: "TypeSafe Jev", decisionOnly: true },

@@ -1,10 +1,14 @@
 ## 2026-11-18 — Push and PR in Git History
 
-The Git History header has **Push…** and **PR…** buttons beside Refresh. They open the same dialogs as on the Uncommitted changes page: Push sends the committed current branch to a remote, PR opens GitHub's pull request page with a title and description (AI can draft them). Unpushed commits are marked before the hash; the list reloads after a push. Version remains 0.9.102.
+The Git History header has **Push…** and **PR…** buttons beside Refresh. They open the same dialogs as on the Uncommitted changes page: Push sends the committed current branch to a remote, PR opens GitHub's pull request page with a title and description (AI can draft them). Unpushed commits are marked before the hash; the list reloads after a push. Included in 0.9.103.
 
 ## 2026-11-18 — Technical documentation prompt
 
 The built-in Technical documentation prompt is rewritten in the form the team uses: it starts with the Business Requirement, then Solution, Created objects, Modified objects and rules for documenting objects, and ends with `TR details: TR name`. Diff evidence is still read from `+` and `-` lines only. The line appended to the prompt now reads `TR details:` instead of `TR Details:`. A user `technical-documentation.txt` still overrides the built-in text.
+
+## 2026-11-18 — 0.9.103: Release
+
+Advanced the VS Code and Eclipse version metadata to 0.9.103. The entries above this heading are the changes in this release.
 
 ## 2026-11-17 — Chat Stop in the log
 

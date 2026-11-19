@@ -1,3 +1,11 @@
+## 2026-11-18 — Topic routing: uncertain short follow-up keeps full history
+
+**Problem**: A short request such as «исправь» routed with confidence below 0.6 left no context: `uncertainSelection` kept only topics related by words, so with none related `keptIndices` was empty and the model answered without the previous exchange.
+
+**Fix**: In `route()` (`vscode/topic-routing.js`), when confidence is below 0.6, the route is unplaced and no message is kept, the full history is returned through the existing fallback with the reason «full history retained». Partial pruning is unchanged when some topic is related, and a `new` route with low confidence still creates its topic.
+
+**Limit**: With a related topic present, the older unrelated exchanges are still left out. Verified with `node --test vscode/test/topic-routing.test.js` in the working copy; not run in a live session. No build or version change.
+
 ## 2026-11-18 — Skill matching: topic priority fixed for build-vertex-vsix
 
 Extended skill matching in `vscode/chat.js` (lines 658-672) to find or create an appropriate topic for the `build-vertex-vsix` skill with the correct priority: **first check existing topics, then routedTopic, and only create new as a last resort**.
@@ -61,6 +69,10 @@ Follow-up: the final assistant message in a stopped CLI run was written with tex
 ## 2026-11-17 — Claude streaming: keep thinking and reply text blocks intact
 
 The user's latest log exposed the same fragmentation in ordinary streamed assistant text: deltas were split into ~200 ms `claude_note` records, visible as many adjacent **Assistant text** rows. The timer in `appendStreamNote` was meant to persist partial output during long generations; it made each delay create another note. Both VS Code and Eclipse now buffer thinking and text until a real boundary (content block/message stop, type change, before tool/result events) or process termination, so each uninterrupted block is one log note. Extended the shared two-host streaming test with delayed text deltas and checks that no interim notes are emitted across pauses. `git diff --check` passed; the targeted Node test command timed out twice and is unverified. No build run.
+
+## 2026-11-18 — 0.9.103: Release
+
+Advanced the VS Code package and lockfile, Eclipse feature, and UI bundle metadata together to 0.9.103 (patch +1 from 0.9.102). The pending entries above this heading are part of this release. The VSIX build runs after these edits are applied to the real project; the Eclipse update site was not rebuilt, so `docs/index.html` keeps the last published build.
 
 ## 2026-11-18 — 0.9.102: Release
 
