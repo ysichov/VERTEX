@@ -99,6 +99,22 @@ test("questions, answers and tool calls are optional; source is omitted even wit
   assert.doesNotMatch(codeWithoutTools.raw, /SECRET/);
 });
 
+test("logged assistant responses retain complete generated code without a fictitious object link",()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-generated-answer-"));
+  try{
+    const log=sessionLog.create(root,"codex","generated",{questions:true,answers:true});
+    const answer="```abap\nREPORT z_calculator_local_classes.\nWRITE: / 'Result'.\n```\nCreate this program to run it.";
+    log.user("Generate an ABAP calculator in chat");
+    log.assistant({model:"test",text:answer});
+    const records=fs.readFileSync(log.file,"utf8").trim().split("\n").map(JSON.parse);
+    assert.equal(records.at(-1).message.content[0].text,answer);
+    assert.deepEqual(records.at(-1).vertex_objects,[]);
+    assert.doesNotMatch(records.at(-1).message.content[0].text,/not logged/);
+    const parsed=require("../log-report").parseSession(fs.readFileSync(log.file,"utf8"),"codex_generated.jsonl");
+    assert.ok(parsed.prompts[0].details.some(detail=>detail.text===answer));
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test("direct Anthropic-style assistant tools keep the result and log the call", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-log-"));
   try {

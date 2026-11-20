@@ -68,8 +68,18 @@ function glob(pattern) {
 
 function create(vscode, options) {
   const outputDirectory = commandOutput.directory(vscode);
-  const root = fs.realpathSync(options.cwd);
+  let root = fs.realpathSync(options.cwd);
   const project = fs.realpathSync(options.projectFolder || options.cwd);
+  let reviewAfter = !!options.reviewAfter;
+  let pendingChanges = options.pendingChanges;
+  const changedFiles = new Map((options.overlayFiles || []).map(file => [path.normalize(file).toLowerCase(), path.normalize(file)]));
+  const relativeToProject = given => {
+    const absolute = path.isAbsolute(given) ? path.resolve(given) : path.resolve(project, given);
+    let relative = path.relative(project, absolute);
+    if (root !== project && (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)))
+      relative = path.relative(root, absolute);
+    return relative;
+  };
   function commandLocation(args) {
     const purpose = args.purpose || "command";
     if (!["command", "build", "artifact"].includes(purpose)) throw new Error("Unknown command purpose.");
@@ -84,30 +94,52 @@ function create(vscode, options) {
   const approve = approval.set(vscode);
   const seen = new Map();
   const written = new Map();
+  const inPlaceSed = command => /(?:^|[\s;&|])sed(?:\.exe)?\s+(?:[^\r\n;&|]*?\s)?(?:-i\b|--in-place\b)/i.test(String(command||""));
+  const switchToReview = async () => {
+    if (reviewAfter || !options.prepareEdit) return;
+    const prepared = await options.prepareEdit();
+    const next = fs.realpathSync(prepared.cwd);
+    for (const [file, text] of seen) {
+      const relative = path.relative(root, file);
+      if (relative !== ".." && !relative.startsWith(".." + path.sep) && !path.isAbsolute(relative))
+        seen.set(path.join(next, relative), text);
+    }
+    root = next;
+    reviewAfter = true;
+    pendingChanges = prepared.pendingChanges;
+  };
   const controller = new AbortController();
+  let approvalsClosed = false;
   let serial = Promise.resolve();
   let outstanding = 0;
   const completed = [];
   const active = () => {
     if (controller.signal.aborted || options.isActive && !options.isActive()) throw new Error("This local-tool request is no longer active.");
   };
-  const within = file => {
-    const rel = path.relative(root, file);
+  const within = (file, base = root) => {
+    const rel = path.relative(base, file);
     if (rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel)) throw new Error("Path is outside the working folder.");
     if (rel.split(path.sep).some(part => part.toLowerCase() === ".git" || part.includes(":"))) throw new Error("Repository metadata and alternate streams are unavailable.");
   };
-  function resolve(given = ".") {
+  const displayPath=file=>{
+    const relative=path.relative(project,file);
+    return relative!==".."&&!relative.startsWith(".."+path.sep)&&!path.isAbsolute(relative)
+      ? relative:path.relative(root,file);
+  };
+  function resolve(given = ".", reading = false) {
     if (typeof given !== "string" || given.includes("\0")) throw new Error("Invalid project path.");
-    const file = path.resolve(root, given);
-    within(file);
+    const relative = relativeToProject(given);
+    const base = reading && !changedFiles.has(path.normalize(relative).toLowerCase()) ? project : root;
+    const file = path.resolve(base, relative);
+    within(file, base);
     // Check every ancestor, including dangling links. New files must not escape through a symlink.
-    let current = root;
-    for (const part of path.relative(root, file).split(path.sep).filter(Boolean)) {
+    let current = base;
+    for (const part of path.relative(base, file).split(path.sep).filter(Boolean)) {
       current = path.join(current, part);
       let stat;
       try { stat = fs.lstatSync(current); } catch (error) { if (error.code === "ENOENT") continue; throw error; }
       if (stat.isSymbolicLink()) throw new Error("Symbolic links are unavailable to local tools.");
-      within(fs.realpathSync(current));
+      within(fs.realpathSync(current), base);
     }
     return file;
   }
@@ -136,8 +168,10 @@ function create(vscode, options) {
     return { files: files.sort(), dirs: dirs.sort(), truncated: pending.length > 0 };
   }
   async function permission(name, input) {
+    if (approvalsClosed) throw new Error("The model request ended before this approval; the command was not started.");
     const result = await approve.call(null, approval.TOOL, { tool_name: name, input });
     active();
+    if (approvalsClosed) throw new Error("The model request ended before this approval; the command was not started.");
     const decision = JSON.parse(result.content[0].text);
     if (decision.behavior !== "allow") throw new Error(decision.message || "The user declined this action.");
   }
@@ -146,7 +180,7 @@ function create(vscode, options) {
     if ((name === "Write" || name === "Edit") && commandOutput.owns(args.file_path)) throw new Error("Command output logs are read-only.");
     if (name === "Read") {
       if (commandOutput.owns(args.file_path)) return commandOutput.readPage(args.file_path, args.offset, args.limit);
-      const file = resolve(args.file_path), text = read(file);
+      const file = resolve(args.file_path, true), text = read(file);
       seen.set(file, text);
       const lines = text.split(/\r?\n/), offset = Math.max(1, Number(args.offset) || 1);
       const limit = Math.min(500, Math.max(1, Number(args.limit) || 200));
@@ -161,10 +195,17 @@ function create(vscode, options) {
         truncated: selected.length < Math.min(limit, lines.length - offset + 1) || lines.some(line => line.length > 4000) };
     }
     if (name === "Glob" || name === "Grep") {
-      const start = resolve(args.path || ".");
+      const start = resolve(args.path || ".", true);
       // A Glob pattern ending in / asks for directories: */ the top-level folders, **/ all of them.
       const folders = name === "Glob" && typeof args.pattern === "string" && /[\\/]$/.test(args.pattern);
       const listed = listing(start), matches = [];
+      if(root!==project){
+        for(const relative of changedFiles.values()){
+          const virtual=path.join(project,relative), actual=path.join(root,relative);
+          if(fs.existsSync(actual) && !listed.files.includes(virtual) &&
+             (virtual===start || virtual.startsWith(start+path.sep)))listed.files.push(virtual);
+        }
+      }
       const filter = glob(name === "Glob" ? (folders ? args.pattern.replace(/[\\/]+$/, "") : args.pattern) : args.glob || "**");
       let truncated = listed.truncated, scanned = 0, size = 0;
       const base = fs.statSync(start).isDirectory() ? start : path.dirname(start);
@@ -172,17 +213,17 @@ function create(vscode, options) {
       for (const file of folders ? listed.dirs : listed.files) {
         const relative = path.relative(base, file).replace(/\\/g, "/");
         if (!filter.test(relative)) continue;
-        if (name === "Glob") matches.push(path.relative(root, file).replace(/\\/g, "/") + (folders ? "/" : ""));
+        if (name === "Glob") matches.push(displayPath(file).replace(/\\/g, "/") + (folders ? "/" : ""));
         else {
           let text;
-          try { text = read(file); } catch (_) { continue; }
+          try { text = read(resolve(file,true)); } catch (_) { continue; }
           scanned += Buffer.byteLength(text);
           if (scanned > 32 * 1024 * 1024) { truncated = true; break; }
           const needle = args.ignore_case ? args.pattern.toLowerCase() : args.pattern;
           const lines = text.split(/\r?\n/);
           for (let i = 0; i < lines.length; i++) {
             if (!(args.ignore_case ? lines[i].toLowerCase() : lines[i]).includes(needle)) continue;
-            const match = { file: path.relative(root, file), line: i + 1, text: lines[i].slice(0, 300) };
+            const match = { file: displayPath(file), line: i + 1, text: lines[i].slice(0, 300) };
             matches.push(match); size += Buffer.byteLength(JSON.stringify(match));
             if (matches.length >= 100 || size >= 12000) { truncated = true; break; }
           }
@@ -192,34 +233,38 @@ function create(vscode, options) {
       return { matches, truncated };
     }
     if (name === "Edit" || name === "Write") {
+      await switchToReview();
       const file = resolve(args.file_path);
       const before = fs.existsSync(file) ? read(file) : null;
+      if (!seen.has(file)) seen.set(file, seen.get(path.join(project, relativeToProject(args.file_path))));
       if (before !== null && seen.get(file) !== before) throw new Error("Read the current file before changing it; it is unread or has changed.");
       if (name === "Write" && typeof args.content !== "string" || name === "Edit" && (typeof args.old_string !== "string" || typeof args.new_string !== "string")) throw new Error("File contents must be strings.");
       const input = { ...args, file_path: file };
       const change = approval.change(name, input, read);
       if (change.error) throw new Error(change.error);
       if (Buffer.byteLength(change.after) > MAX_FILE) throw new Error("File exceeds the 2 MB limit.");
-      if (!options.reviewAfter) await permission(name, input);
+      if (!reviewAfter) await permission(name, input);
       active(); resolve(args.file_path);
       const current = fs.existsSync(file) ? read(file) : null;
       if (current !== before) throw new Error("File changed while waiting for review; read it again.");
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, change.after);
+      const relative=path.normalize(relativeToProject(args.file_path));
+      changedFiles.set(relative.toLowerCase(),relative);
       if (!written.has(file)) written.set(file, before);
       seen.set(file, change.after);
-      return { file_path: file, changed: true, review: options.reviewAfter ? "pending after this turn" : "approved" };
+      return { file_path: file, changed: true, review: reviewAfter ? "pending after this turn" : "approved" };
     }
     if (name === "Bash") {
       if (typeof args.command !== "string" || !args.command.trim()) throw new Error("A command is required.");
       const location = commandLocation(args);
-      const unapplied = location.cwd !== root && options.pendingChanges ? (await options.pendingChanges()).map(change => change.file) : [];
+      const unapplied = location.cwd !== root && pendingChanges ? (await pendingChanges()).map(change => change.file) : [];
       if (location.purpose === "build" && location.cwd === project && unapplied.length)
         throw new Error("The project build would omit unapplied working-copy edits. Finish this turn so VERTEX can show Review, then build the project after Apply. Pending files: " + unapplied.join(", "));
       const details = { ...args, ...location, ...(unapplied.length ? { unapplied_changes: unapplied, warning: "This command runs outside the working copy and does not include its unapplied changes." } : {}) };
-      if (location.cwd !== root || !options.reviewAfter || !options.shellWithoutAsking) await permission(name, details);
+      if (location.cwd !== root || !reviewAfter || !options.shellWithoutAsking) await permission(name, details);
       active();
-      const projectDiff = options.reviewAfter && root !== project ? require("./project-command-diff") : null;
+      const projectDiff = reviewAfter && root !== project ? require("./project-command-diff") : null;
       let projectBefore, projectSnapshotError;
       if (projectDiff) {
         try { projectBefore = await projectDiff.snapshot(project); }
@@ -256,6 +301,12 @@ function create(vscode, options) {
         } catch (error) { projectSnapshotError = error.message; }
       }
       if (projectSnapshotError) commandResult.project_diff_error = "Could not verify changes in the real project: " + projectSnapshotError;
+      if(reviewAfter && pendingChanges && location.cwd===root){
+        for(const change of await pendingChanges()){
+          const relative=path.normalize(change.file);
+          changedFiles.set(relative.toLowerCase(),relative);
+        }
+      }
       return compactVerifiedVsix(commandResult, project);
     }
     throw new Error("Unknown local tool: " + name);
@@ -264,6 +315,7 @@ function create(vscode, options) {
     schemas,
     changes() { return [...written].map(([file, before]) => ({ file: path.relative(root, file).replace(/\\/g, "/"), before: before || "", after: read(file), status: before === null ? "added" : "changed" })); },
     dispose() { controller.abort(); approve.dispose(); },
+    closeApprovals() { approvalsClosed = true; return approve.cancelPending(); },
     settled() { return serial; },
     pending() { return outstanding; },
     completed() { return completed.slice(); },
@@ -271,9 +323,19 @@ function create(vscode, options) {
       outstanding++;
       const run = serial.then(async () => {
         active();
+        if(name==="Bash"&&inPlaceSed(args.command)&&!reviewAfter&&!options.prepareEdit)
+          throw new Error("In-place shell edits need a review copy. Use Edit or Write for this folder.");
+        if((name==="Edit"||name==="Write"||name==="Bash"&&inPlaceSed(args.command))&&options.prepareEdit)await switchToReview();
+        if(name==="Bash"&&inPlaceSed(args.command)&&reviewAfter){
+          const escape=value=>value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+          let command=args.command;
+          for(const [from,to] of [[project,root],[project.replace(/\\/g,"/"),root.replace(/\\/g,"/")]])
+            command=command.replace(new RegExp(escape(from),process.platform==="win32"?"gi":"g"),to);
+          args={...args,command,target:"working_copy",directory:undefined};
+        }
         const id = "local_" + crypto.randomBytes(8).toString("hex");
         const input = { ...args, ...(name === "Bash" ? commandLocation(args) : {}) };
-        for (const key of ["file_path", "path"]) if (input[key] && !(name === "Read" && commandOutput.owns(input[key]))) input[key] = resolve(input[key]);
+        for (const key of ["file_path", "path"]) if (input[key] && !(name === "Read" && commandOutput.owns(input[key]))) input[key] = resolve(input[key], name === "Read" || name === "Glob" || name === "Grep");
         if (options.onStep) options.onStep({ kind: "use", id, name, input, provider: "local" });
         try {
           const result = await execute(name, args);

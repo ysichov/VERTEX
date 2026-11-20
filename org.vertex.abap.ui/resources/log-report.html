@@ -58,12 +58,19 @@
   .session-models, .prompt-model { color: var(--vscode-editor-foreground); }
   .preview, .prompt > summary { color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); }
   .entry.user { --entry-color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); }
-  .entry.model { --entry-color: var(--vscode-charts-green, var(--vscode-textLink-foreground)); }
+  .entry.model, .step-note.thinking { --entry-color: var(--vscode-editor-foreground); }
+  .entry.model > summary .entry-preview { color: var(--vscode-charts-green, var(--vscode-editor-foreground)); }
+  .step-note.thinking > summary .entry-preview { color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); }
+  .entry.model .detail, .step-note.thinking .detail { color: var(--vscode-editor-foreground); }
   .entry.tool { --entry-color: var(--vscode-charts-orange, var(--vscode-textLink-foreground)); }
   .entry.jev { --entry-color: var(--vscode-charts-purple, var(--vscode-textLink-foreground)); }
   .entry.vertex { --entry-color: var(--vscode-charts-red, var(--vscode-textLink-foreground)); }
-  .entry > summary { padding: 6px 8px; cursor: pointer; color: var(--entry-color); font-weight: 600; }
+  .entry > summary { padding: 6px 8px; cursor: pointer; color: var(--vscode-descriptionForeground); font-weight: 600; }
+  .entry > summary .entry-preview { color: var(--entry-color); font-weight: normal; }
   .entry > summary:hover { background: var(--vscode-list-hoverBackground); }
+  .entry-preview { margin-left: 8px; color: var(--vscode-descriptionForeground); font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .step-note > summary { display: flex; align-items: baseline; }
+  .step-note > summary .entry-preview { flex: 1; min-width: 0; }
   /* A failed request reads as a failure in the list, without opening it. */
   .entry.failed > summary { color: var(--vscode-errorForeground); }
   table.jev-table { width: 100%; margin: 4px 0; }
@@ -87,6 +94,24 @@
   table.conversation-table th { position: relative; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   td.conversation-title { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-textLink-foreground); }
   td.conversation-body { padding: 0 0 8px 24px; }
+  body.conversation-open > header, body.conversation-open > #status, body.conversation-open > #date-error, body.conversation-open > #content, body.conversation-open > #usage-content { display: none; }
+  #conversation-screen[hidden] { display: none; }
+  #conversation-screen { box-sizing: border-box; height: calc(100vh - 24px); min-height: 360px; display: flex; flex-direction: column; background: var(--vscode-editor-background); }
+  #conversation-screen > .flow-root:not([hidden]), #conversation-screen .log-flow { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+  #conversation-screen .flow-stage { flex: 1; height: auto; min-height: 0; }
+  .conversation-screen-head { position: sticky; top: 0; z-index: 4; display: flex; align-items: center; gap: 12px; padding: 8px 0; background: var(--vscode-editor-background); border-bottom: 1px solid var(--vscode-panel-border); }
+  .conversation-screen-head .preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #conversation-screen .conversation-screen-head { gap: 8px; padding: 2px 0 6px; }
+  #conversation-screen .conversation-screen-head .preview { flex: 1; min-width: 0; }
+  #conversation-screen .conversation-screen-head .list-tools { margin: 0; gap: 6px; }
+  #conversation-screen .flow-hint { display: none; }
+  #conversation-screen .log-flow > .list-tools { margin: 4px 0; gap: 8px; }
+  #conversation-screen .flow-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 4px 0 6px; padding: 6px 8px; }
+  #conversation-screen .flow-stats[hidden] { display: none; }
+  #conversation-screen .flow-stats-head { gap: 4px 8px; }
+  #conversation-screen .flow-stats-saving, #conversation-screen .flow-stats-percent { font-size: 1em; }
+  #conversation-screen .flow-stats-comparison, #conversation-screen .flow-stats-reasons { margin: 0; font-size: .85em; }
+  #conversation-screen .flow-comparison-bar { flex-basis: 100%; height: 4px; }
   .conversation-actions{position:sticky;top:0;z-index:3;padding:6px 0;background:var(--vscode-editor-background);border-bottom:1px solid var(--vscode-panel-border)}
   .conversation-actions[hidden]{display:none}
   .conversation-actions>.list-tools{margin:0;gap:6px}
@@ -221,6 +246,7 @@
 <div id="date-error" class="error" role="alert"></div>
 <div id="content"></div>
 <div id="usage-content" hidden></div>
+<div id="conversation-screen" hidden></div>
 <script id="vertex-date-range" nonce="{{NONCE}}">
 function vertexDateRange(root, changed) {
   var from = root.querySelector('[data-date="from"]'), to = root.querySelector('[data-date="to"]');
@@ -541,6 +567,40 @@ function markdown(text, target) {
 
   /* VS Code sends the list without each prompt's details (lazy); an opened prompt asks the host for its record.
      Eclipse parses the logs in the page, so its prompts are complete and render at once. */
+  // Preserve the reader's open prompts and disclosures across incoming log updates.
+  var readingState = Object.create(null), pendingReadingScroll = null;
+  function disclosureState(root, saved) {
+    var result = Object.create(null);
+    function walk(parent, prefix) {
+      var counts = Object.create(null);
+      function visit(node) {
+        if (node.tagName === "DETAILS") {
+          var summary = node.querySelector("summary");
+          var label = summary ? summary.textContent.replace(/^Steps \(.*\)$/, "Steps") : "";
+          var key = prefix + "/" + JSON.stringify(label) + ":" + (counts[label] || 0);
+          counts[label] = (counts[label] || 0) + 1;
+          if (saved && Object.prototype.hasOwnProperty.call(saved, key)) {
+            node.open = saved[key];
+            if (node.open) node.dispatchEvent(new Event("toggle"));
+          }
+          result[key] = node.open;
+          walk(node, key);
+        } else Array.from(node.children).forEach(visit);
+      }
+      Array.from(parent.children).forEach(visit);
+    }
+    walk(root, "");
+    return result;
+  }
+  function rememberReading() {
+    readingState = Object.create(null);
+    document.querySelectorAll("tr.prompt-detail[data-prompt-key]").forEach(function (row) {
+      var prompt = row.previousElementSibling.querySelector("details.prompt");
+      readingState[row.getAttribute("data-prompt-key")] = {
+        open: !prompt || prompt.open, disclosures: disclosureState(row)
+      };
+    });
+  }
   var waitingDetail = {};
   function loadPromptDetails(p, done) {
     if (!p.lazy) { done(null); return; }
@@ -567,7 +627,10 @@ function markdown(text, target) {
   }
   function lazyConversation(p) {
     var holder = el("div", "conversation-holder");
-    var show = function () { holder.appendChild(conversation(p)); };
+    var show = function () {
+      holder.appendChild(conversation(p));
+      if (typeof readingState !== "undefined" && readingState[p.key]) disclosureState(holder, readingState[p.key].disclosures);
+    };
     if (!p.lazy) { show(); return holder; }
     holder.appendChild(el("div","muted","Loading…"));
     loadPromptDetails(p,function(error){
@@ -580,7 +643,11 @@ function markdown(text, target) {
 
   function section(label, cls, text) {
     var box = el("details", "entry " + cls);
-    box.appendChild(el("summary", "", label));
+    var firstLine = text === undefined ? "" : String(text).split(/\r?\n/).find(function (line) { return line.trim(); });
+    var summary = el("summary", "");
+    summary.appendChild(document.createTextNode(label));
+    if (firstLine) summary.appendChild(el("span", "entry-preview", "· " + firstLine.trim()));
+    box.appendChild(summary);
     if (text !== undefined) {
       var loaded = false;
       box.addEventListener("toggle", function () {
@@ -839,6 +906,8 @@ function markdown(text, target) {
       events.forEach(function(event){if(event.kind==="tool_result"){
         var result=p.details[event.detail];if(result&&result.tool_id)results.set(result.tool_id,event);
       }});
+      var answerDetail=p.details.find(function(detail){return detail?.type==="answer";});
+      var answerShown=false;
       events.forEach(function(event,index){
         if(duplicates.has(index))return;
         if(event.kind==="model")return;
@@ -872,10 +941,16 @@ function markdown(text, target) {
           entry=section(prefix+"Request and context","technical");
           (event.details||[]).forEach(function(i){var part=detailSection(p.details[i],p,"");if(part)entry.appendChild(part);});
         } else if(detail?.type==="answer"){
-          entry=section(prefix+"Response","model");markdown(detail.text,entry);objectLinks(entry,detail.objects);
+          answerShown=true;
+          entry=section(prefix+"Response","model",detail.text);markdown(detail.text,entry);objectLinks(entry,detail.objects);
         } else if(detail) entry=detailSection(detail,p,prefix);
         if(entry)box.appendChild(entry);
       });
+      if(answerDetail&&!answerShown){
+        var answer=section((items.length+1)+". "+new Date(answerDetail.time||p.time||0).toLocaleTimeString()+" · Response","model",answerDetail.text);
+        markdown(answerDetail.text,answer);objectLinks(answer,answerDetail.objects);
+        box.appendChild(answer);
+      }
     });
     box.open=true;return box;
   }
@@ -1172,20 +1247,79 @@ function markdown(text, target) {
     previous.onclick = function () { flowSelectedId = sessions[index - 1].id; flowView(root, sessions); };
     next.onclick = function () { flowSelectedId = sessions[index + 1].id; flowView(root, sessions); };
     picker.onchange = function () { flowSelectedId = picker.value; flowView(root, sessions); };
-    [previous,picker,next,el("span", "muted", (index + 1) + " / " + sessions.length + " conversations")].forEach(function (item) { tools.appendChild(item); }); root.appendChild(tools);
+    if (sessions.length > 1) { [previous,picker,next,el("span", "muted", (index + 1) + " / " + sessions.length + " conversations")].forEach(function (item) { tools.appendChild(item); }); root.appendChild(tools); }
     if (!window.vertexLogFlow) { root.appendChild(el("p", "error", "The flow renderer is unavailable. Switch to Logs to read this conversation.")); return; }
-    flowDispose = window.vertexLogFlow.mount(root, sessions[index], { details: showFlowDetail });
+    var states = flowView.states || (flowView.states = Object.create(null));
+    var state = states[sessions[index].id] || (states[sessions[index].id] = {});
+    flowDispose = window.vertexLogFlow.mount(root, sessions[index], { details: showFlowDetail, state: state });
   }
   var lastReport = null, listState = { query: "", hiddenKinds: {}, context: "" };
+  var conversationScreen = document.getElementById("conversation-screen"), listScroll = 0, conversationState = null;
+  function closeConversation(clearState) {
+    if (clearState !== false) conversationState = null;
+    if (conversationScreen.hidden) return;
+    if (flowDispose) { flowDispose(); flowDispose = null; }
+    conversationScreen.hidden = true;
+    conversationScreen.textContent = "";
+    document.body.classList.remove("conversation-open");
+    window.scrollTo(0, listScroll);
+  }
+  function openConversation(session, actions) {
+    var reopening = conversationState && conversationState.id === session.id;
+    if (!conversationState) listScroll = window.scrollY;
+    conversationState = { id: session.id, mode: conversationState && conversationState.id === session.id ? conversationState.mode : "logs" };
+    conversationScreen.textContent = "";
+    var head = el("div", "conversation-screen-head");
+    var back = el("button", "continue-session", "← Back");
+    back.type = "button";
+    back.onclick = function () { closeConversation(); };
+    head.appendChild(back);
+    head.appendChild(el("span", "preview", promptPreview(session.prompts) || "Conversation"));
+    var modes = el("div", "vertex-segment-toggle");
+    modes.setAttribute("role", "group");
+    modes.setAttribute("aria-label", "Conversation view");
+    var logsButton = el("button", "active", "Logs"), flowButton = el("button", "", "Flow");
+    logsButton.type = flowButton.type = "button";
+    modes.appendChild(logsButton); modes.appendChild(flowButton); head.appendChild(modes);
+    var refreshConversation = el("button", "", "↻");
+    refreshConversation.type = "button";
+    refreshConversation.title = "Refresh session logs";
+    refreshConversation.setAttribute("aria-label", "Refresh session logs");
+    refreshConversation.onclick = function () { vscode.postMessage({ action: "refresh" }); };
+    head.appendChild(refreshConversation);
+    if (actions.children.length) head.appendChild(actions);
+    conversationScreen.appendChild(head);
+    var logs = el("div", "table-scroll"), graph = el("div", "flow-root");
+    logs.appendChild(promptTable(session));
+    graph.hidden = true;
+    conversationScreen.appendChild(logs); conversationScreen.appendChild(graph);
+    conversationScreen.hidden = false;
+    document.body.classList.add("conversation-open");
+    function show(mode) {
+      conversationState.mode = mode;
+      var flowing = mode === "flow";
+      logs.hidden = flowing; graph.hidden = !flowing;
+      logsButton.classList.toggle("active", !flowing); logsButton.setAttribute("aria-pressed", String(!flowing));
+      flowButton.classList.toggle("active", flowing); flowButton.setAttribute("aria-pressed", String(flowing));
+      if (flowing) flowView(graph, [session]);
+      else if (flowDispose) { flowDispose(); flowDispose = null; }
+    }
+    logsButton.onclick = function () { show("logs"); };
+    flowButton.onclick = function () { show("flow"); };
+    show(conversationState.mode);
+    if (!reopening) { window.scrollTo(0, 0); back.focus(); }
+  }
   vertexDateRange(document.getElementById("date-range"), function () { if (lastReport) render(lastReport); if (reportMode === "costs") renderCosts(); });
   function render(report) {
+    var preserveSelection = arguments[1];
+    closeConversation(false);
     if (typeof flowDispose === "function") { flowDispose(); flowDispose = null; }
     var from = document.getElementById("from").value, to = document.getElementById("to").value;
     document.getElementById("date-error").textContent = from && to && from > to ? "From date must be on or before To date." : "";
     if (from && to && from > to) return;
     var localDay = function (time) { var d = new Date(time); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
     report = Object.assign({}, report, { sessions: report.sessions.filter(function (s) { return (!from || localDay(s.end) >= from) && (!to || localDay(s.start) <= to); }) });
-    selected.clear(); selectionChanged();
+    if (!preserveSelection) selected.clear(); selectionChanged();
     content.textContent = "";
     if (!report.configured) { status.className = "muted"; status.textContent = "No log folder is set. Choose a folder to read session logs from."; return; }
     if (!report.sessions.length) { status.className = "muted"; status.textContent = "No sessions in " + report.folder + "."; return; }
@@ -1343,14 +1477,13 @@ function markdown(text, target) {
       var pick = el("td", "select-cell");
       var select = el("input", "select-session");
       select.type = "checkbox";
+      select.checked = s.fileIds.some(function(id){return selected.has(id);});
       select.setAttribute("aria-label", "Select conversation " + s.provider + " " + time(s.start));
       select.onchange = function () { s.fileIds.forEach(function (id) { if (select.checked) selected.add(id); else selected.delete(id); }); selectionChanged(); };
       pick.appendChild(select);
       main.appendChild(pick);
       var preview = promptPreview(s.prompts);
       var title = el("td", "conversation-title");
-      var caret = el("span", "caret", "▸");
-      title.appendChild(caret);
       title.appendChild(el("span", "preview", " " + (preview || "(no prompt text)")));
       title.title = preview;
       // Where it was held, under the question: with no filter chosen the list mixes places, and the row
@@ -1417,14 +1550,9 @@ function markdown(text, target) {
       // The questions' table is built the first time the conversation opens, and kept.
       record.toggle = function () {
         if (typeof flowSelectedId !== "undefined") flowSelectedId = s.id;
-        actionPanel.textContent="";actionPanel.hidden=!actions.children.length;
-        if(actions.children.length){var selectedTitle=el("span","action-conversation",preview);selectedTitle.title=preview;actionPanel.appendChild(selectedTitle);actionPanel.appendChild(actions);}
-        record.open = !record.open;
-        caret.textContent = record.open ? "▾" : "▸";
-        if (record.open && !record.loaded) { body.appendChild(promptTable(s)); record.loaded = true; }
-        detail.hidden = !record.open;
+        openConversation(s, actions);
       };
-      title.addEventListener("click", record.toggle);
+      main.addEventListener("click", function (event) { if (event.target.closest("input, button, a")) return; record.toggle(); });
       title.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); record.toggle(); } });
       records.push(record);
       list.appendChild(main); list.appendChild(detail);
@@ -1470,6 +1598,10 @@ function markdown(text, target) {
       var restored = records.find(function (r) { return r.item.id === flowSelectedId && !r.rows[0].hidden; });
       if (restored) restored.toggle();
     }
+    if (conversationState) {
+      var reopened = records.find(function (r) { return r.item.id === conversationState.id; });
+      if (reopened) reopened.toggle(); else conversationState = null;
+    }
     return records;
   }
 
@@ -1497,7 +1629,9 @@ function markdown(text, target) {
     if (!hasCost) columns = columns.filter(function (column) { return column.name !== "Cost USD"; });
     var rows = [];
     var steps=promptSteps(s.prompts),technicalByChat=steps.technicalByChat;
-    var source=steps.rows,pageNumber=0,pageSize=30;
+    var states = promptTable.states || (promptTable.states = Object.create(null));
+    var tableState = states[s.id] || (states[s.id] = { page: 0 });
+    var source=steps.rows,pageNumber=tableState.page,pageSize=30;
     function childrenOf(p){return technicalByChat.get(p)||[];}
     function runsOf(p){return [p].concat(childrenOf(p)).reduce(function(sum,item){return sum+(item.toolCalls||0);},0);}
     function usageOf(p,kind){
@@ -1519,10 +1653,18 @@ function markdown(text, target) {
     function changePage(direction){pageNumber+=direction;renderPage();navigation.scrollIntoView({block:"start"});}
     previousPage.onclick=bottomPrevious.onclick=function(){changePage(-1);};
     nextPage.onclick=bottomNext.onclick=function(){changePage(1);};
-    sortableHead(table,columns,rows,function(column,down){
+    function sortPrompts(column,down){
       source.sort(function(a,b){var x=column.value(a),y=column.value(b);return(x<y?-1:x>y?1:0)*(down?-1:1)||(a.time||0)-(b.time||0);});
+    }
+    sortableHead(table,columns,rows,function(column,down){
+      tableState.sort = { name: column.name, down: down };
+      sortPrompts(column,down);
       pageNumber=0;renderPage();
     });
+    if (tableState.sort) {
+      var sortColumn = columns.find(function(column){return column.name === tableState.sort.name;});
+      if (sortColumn) sortPrompts(sortColumn,tableState.sort.down);
+    }
     var several = s.prompts.length > 1;
     function renderPrompt(p, number) {
       var row = el("tr", several ? "compact" : "");
@@ -1530,6 +1672,7 @@ function markdown(text, target) {
       // The conversation body gets a row of its own, spanning every column, as the conversation list already
       // does: inside the first cell a fixed-layout table squeezes an answer into the Conversation column.
       var detail = el("tr", "prompt-detail");
+      detail.setAttribute("data-prompt-key", p.key);
       var detailBody = el("td", "conversation-body");
       detailBody.colSpan = columns.length;
       detail.appendChild(detailBody);
@@ -1548,6 +1691,7 @@ function markdown(text, target) {
           detail.hidden = !prompt.open;
         };
         cell.appendChild(prompt);
+        if (typeof readingState !== "undefined" && readingState[p.key]?.open) { prompt.open = true; prompt.ontoggle(); }
       } else { detail.hidden = false; p.technicalChildren=childrenOf(p); detailBody.appendChild(lazyConversation(p)); }
       row.appendChild(cell);
       // Its topic, coloured as the chat colours it, so the topics of a conversation can be told apart at a glance.
@@ -1615,6 +1759,8 @@ function markdown(text, target) {
       table.appendChild(detail);
     }
     function renderPage(){
+      pageNumber = Math.max(0, Math.min(pageNumber, Math.ceil(source.length / pageSize) - 1));
+      tableState.page = pageNumber;
       rows.forEach(function(record){record.rows.forEach(function(row){row.remove();});});rows.length=0;
       var start=pageNumber*pageSize,end=Math.min(start+pageSize,source.length);
       source.slice(start,end).forEach(function(p,index){renderPrompt(p,start+index+1);});
@@ -1630,10 +1776,32 @@ function markdown(text, target) {
   }
 
 
+  var deferredReport = null;
+  document.addEventListener("close", function () {
+    if (deferredReport && !document.querySelector("dialog[open]")) {
+      var data = deferredReport; deferredReport = null;
+      window.dispatchEvent(new MessageEvent("message", { data: data }));
+    }
+  }, true);
   window.addEventListener("message", function (event) {
     var m = event.data || {};
-    if (m.action === "data") { lastReport = m.report; usageRows = m.usageRows || []; render(m.report); if (reportMode === "costs") renderCosts(); }
-    if (m.action === "promptDetail") { var waiting = waitingDetail[m.key] || []; delete waitingDetail[m.key]; waiting.forEach(function (done) { done(m); }); }
+    if (m.action === "data" && m.automatic && document.querySelector("dialog[open]")) { deferredReport = m; return; }
+    if (m.action === "data") {
+      deferredReport = null;
+      var scrollX = window.scrollX, scrollY = window.scrollY;
+      rememberReading();
+      lastReport = m.report; usageRows = m.usageRows || [];
+      render(m.report, m.automatic); if (reportMode === "costs") renderCosts();
+      window.scrollTo(scrollX, scrollY);
+      pendingReadingScroll = Object.keys(waitingDetail).length ? { x: scrollX, y: scrollY } : null;
+    }
+    if (m.action === "promptDetail") {
+      var waiting = waitingDetail[m.key] || []; delete waitingDetail[m.key];
+      waiting.forEach(function (done) { done(m); });
+      if (pendingReadingScroll && !Object.keys(waitingDetail).length) {
+        window.scrollTo(pendingReadingScroll.x, pendingReadingScroll.y); pendingReadingScroll = null;
+      }
+    }
     if (m.action === "error") { status.className = "error"; status.textContent = m.error; }
   });
   vscode.postMessage({ action: "ready" });

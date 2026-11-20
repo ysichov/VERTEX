@@ -548,17 +548,49 @@ function open(vscode, options = {}) {
     .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
   // The page gets the list only - each prompt without its details, steps and Jev input - and asks for one prompt's
   // full record when it is opened: the whole log folder can be tens of megabytes, too much to hold in a webview.
-  let full = null, promptIndex = new Map();
-  const refresh = () => {
+  const view = panel;
+  let full = null, promptIndex = new Map(), lastState = null, refreshing = false, ready = false, disposed = false;
+  // Check metadata only while visible. Do not reparse an unchanged log folder every second.
+  const logState = async root => {
+    const resolved = require("./session-log").resolveRoot(root);
+    const folder = resolved ? path.join(resolved, "claude_compatible") : "";
+    const files = [];
+    if (folder) {
+      try {
+        const entries = await fs.promises.readdir(folder, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+          try {
+            const stat = await fs.promises.stat(path.join(folder, entry.name));
+            files.push([entry.name, stat.size, stat.mtimeMs, stat.ctimeMs]);
+          } catch (error) { if (error.code !== "ENOENT") throw error; }
+        }
+      } catch (error) { if (error.code !== "ENOENT") throw error; }
+    }
+    return JSON.stringify([folder, files.sort((a,b) => a[0].localeCompare(b[0]))]);
+  };
+  const refresh = async (automatic = false) => {
+    if (disposed || refreshing || automatic && (!ready || !view.visible)) return;
+    refreshing = true;
     try {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
+      const state = await logState(root);
+      if (disposed || automatic && (!view.visible || state === lastState)) return;
       full = readSessions(root);
       promptIndex = new Map(full.sessions.flatMap(session => session.prompts).map(prompt => [prompt.key,prompt]));
-      return panel?.webview.postMessage({ action: "data", usageRows: require("./usage-report").readUsage(root).rows, report: { ...listReport(full), current: currentPlace(vscode) } });
-    } catch (error) { return panel?.webview.postMessage({ action: "error", error: error.message }); }
+      const delivered = await view.webview.postMessage({ action: "data", automatic,
+        usageRows: require("./usage-report").readUsage(root).rows, report: { ...listReport(full), current: currentPlace(vscode) } });
+      if (delivered !== false) lastState = state;
+    } catch (error) {
+      if (!disposed && !automatic) await view.webview.postMessage({ action: "error", error: error.message });
+      // Transient writes/deletes are retried on the next tick; keep the last readable report.
+    } finally { refreshing = false; }
   };
+  const timer = setInterval(() => refresh(true), 1500);
+  timer.unref?.();
+  const visibility = view.onDidChangeViewState?.(() => { if (view.visible) return refresh(true); });
   panel.webview.onDidReceiveMessage(async message => {
-    if (message?.action === "ready" || message?.action === "refresh") await refresh();
+    if (message?.action === "ready" || message?.action === "refresh") { ready = true; await refresh(); }
     if (message?.action === "promptDetail") {
       const key = String(message.key || "");
       const prompt = promptIndex.get(key);
@@ -646,7 +678,7 @@ function open(vscode, options = {}) {
       await refresh();
     }
   });
-  panel.onDidDispose(() => { panel = undefined; });
+  panel.onDidDispose(() => { disposed = true; clearInterval(timer); visibility?.dispose(); if (panel === view) panel = undefined; });
   return panel;
 }
 

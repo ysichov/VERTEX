@@ -1,3 +1,59 @@
+## 2026-11-19 — Build the VSIX without a second model call
+
+In the VERTEX repository, a VSIX request now lets Jev choose whether to build the current version or increase it first. VERTEX itself computes the new version and shows the file diff for Apply; after all version files are applied, it runs the packaging wrapper. An explicit version in the request is used as written.
+
+## 2026-11-19 — Correct Codex model and effort selection
+
+For GPT-6 Codex models, the former minimal effort selection now maps to the supported none value, and the picker offers none through max. A request sent while the model picker still says Loading uses the configured model instead of sending the placeholder to Codex.
+
+## 2026-11-19 — Keep generated answers complete in logs
+
+With answer logging enabled, Logs & Cost now retains a model's complete response, including code generated only in chat. Such code is not replaced with a placeholder or a link to a nonexistent repository object. Secret masking still applies.
+
+## 2026-11-19 — Prepare review copies only when editing
+
+Folder chat now reads the main project immediately. A Git review copy is prepared on the first Edit or Write, or before an in-place `sed -i` command. Later reads of changed files use the copy; unchanged files continue to come from the main folder. A folder without a review copy rejects `sed -i` instead of changing the original source.
+
+## 2026-11-19 — Show project preparation in chat
+
+Folder chat now says when VERTEX is preparing its review working copy and syncing project changes. Long Git preparation no longer appears as unexplained model thinking.
+
+## 2026-11-19 — More context for Jev change checks
+
+Before a code review, Jev now receives the resulting source of changed text files alongside their complete diff when it fits the decision limit. This lets it inspect surrounding code instead of judging isolated changed lines. Oversized source is marked as omitted; the diff remains complete.
+
+## 2026-11-19 — Avoid redundant recovery after uncertain review
+
+When automatic file checks pass and there is no unresolved tool failure, an uncertain Jev verdict no longer starts a second agent attempt or asks the user to continue. An earlier failed edit followed by a successful edit of the same file counts as resolved. The change still waits for the normal human diff review and remains marked unverified until there is enough evidence.
+
+## 2026-11-19 — Long Codex tasks stay active while progressing
+
+VERTEX now restarts the assistant timeout whenever Codex sends an update. Approvals, tests and other long tasks can continue past the original 20-minute total limit when the agent remains active. A silent run still times out, and Stop remains available.
+
+## 2026-11-19 — Live conversation logs in VS Code
+
+An open Logs & Cost window now refreshes automatically as conversation logs change, including new questions, answers, recorded steps and usage. The selected conversation, Logs/Flow mode, prompt page and open disclosures are retained. Hidden windows catch up when shown again.
+
+## 2026-11-19 — Expired command approvals and chat status
+
+When Codex finishes before a command approval is answered, VERTEX now retires that approval. Pressing Allow later cannot start the old command. The chat also shows one Working status instead of two while the first progress update arrives.
+
+## 2026-11-19 — Codex reasoning summaries
+
+VERTEX now requests an available reasoning summary from Codex CLI and shows it in the chat's colored thought stream. The summary is labeled as such; the model's private reasoning remains unavailable.
+
+## 2026-11-19 — One chat stream for model thoughts and answers
+
+The chat now shows streamed model thoughts and answer text in arrival order in one response. Thoughts use a separate theme color; answers keep the usual green styling and formatting.
+
+## 2026-11-19 — Skill matching follows the routed topic
+
+A short follow-up such as «еще раз» now resolves its conversation topic before project skill matching. When the topic is Build VSIX, the skill matcher can recognize a request to repeat the build without requiring the user to name VSIX again.
+
+## 2026-11-19 — Full-window conversation logs
+
+Clicking a conversation in Logs & Cost now opens its prompts across the report window. Logs | Flow switches between details and graph in the full-window view. Back returns to the list with filters and scroll position intact; Refresh reloads the open conversation, keeping its view; the compact header also retains Continue and Tag topics (Jev).
+
 ## 2026-11-18 — Push and PR in Git History
 
 The Git History header has **Push…** and **PR…** buttons beside Refresh. They open the same dialogs as on the Uncommitted changes page: Push sends the committed current branch to a remote, PR opens GitHub's pull request page with a title and description (AI can draft them). Unpushed commits are marked before the hash; the list reloads after a push. Included in 0.9.103.

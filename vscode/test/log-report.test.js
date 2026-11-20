@@ -8,6 +8,123 @@ const path = require("node:path");
 const vm = require("node:vm");
 const report = require("../log-report");
 
+test("visible log report follows file changes, retries failures and stops polling on disposal", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-live-logs-"));
+  const folder = path.join(root, "claude_compatible");
+  const posted = [], timers = new Map();
+  let receive, dispose, visibility, configuredRoot = root, reads = 0, rejectRead = false;
+  const realRequire = require("node:module").createRequire(path.join(__dirname, "../log-report.js"));
+  const fakeFs = { ...fs, readFileSync(file, ...args) {
+    if (String(file).endsWith(".jsonl")) {
+      reads++;
+      if (rejectRead) throw new Error("temporary log read failure");
+    }
+    const relative = path.relative(path.join(__dirname, "../resources"), String(file));
+    if (!relative.startsWith("..") && !path.isAbsolute(relative)) {
+      file = path.join(__dirname, "../../org.vertex.abap.ui/resources", relative);
+    }
+    return fs.readFileSync(file, ...args);
+  } };
+  const panel = { visible: true, webview: {
+    postMessage: async message => { posted.push(message); return true; },
+    onDidReceiveMessage: fn => { receive = fn; }
+  }, onDidDispose: fn => { dispose = fn; }, onDidChangeViewState: fn => {
+    visibility = fn; return { dispose() { visibility = null; } };
+  }, reveal() {} };
+  const vscode = { ViewColumn: { Beside: 2 }, workspace: {
+    getConfiguration: () => ({ get: (key, fallback) => key === "logPath" ? configuredRoot : fallback })
+  }, window: { createWebviewPanel: () => panel } };
+  const sandbox = { module: { exports: {} }, __dirname: path.join(__dirname, ".."),
+    require: name => name === "fs" ? fakeFs : name === "./usage-report" ?
+      { ...realRequire("./usage-report"), browserEngine: () => "" } :
+      name === "./review-jev" ? { enabled: () => false } : realRequire(name),
+    setInterval: (fn, delay) => { assert.equal(delay, 1500); timers.set(1, fn); return 1; },
+    clearInterval: id => timers.delete(id)
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../log-report.js"), "utf8"), sandbox);
+  sandbox.module.exports.open(vscode);
+  const tick = async () => { await timers.get(1)?.(); };
+  const write = (name, rows) => fs.writeFileSync(path.join(folder, name),
+    rows.map(row => JSON.stringify({ timestamp: "2026-11-19T10:00:00Z", ...row })).join("\n") + "\n");
+  try {
+    await tick(); assert.equal(posted.length, 0, "wait for webview ready");
+    await receive({ action: "ready" });
+    assert.equal(posted.at(-1).report.sessions.length, 0, "missing log directory is supported");
+    await tick(); assert.equal(posted.length, 1, "unchanged folder is not republished");
+    fs.mkdirSync(folder);
+    write("codex_live.jsonl", [{ type: "user", message: { content: "New question" } }]);
+    await tick();
+    assert.equal(posted.at(-1).report.sessions[0].prompts[0].text, "New question");
+    assert.equal(posted.at(-1).automatic, true);
+    const readCount = reads;
+    await tick(); assert.equal(reads, readCount, "unchanged logs are not reparsed");
+    panel.visible = false;
+    fs.appendFileSync(path.join(folder, "codex_live.jsonl"), JSON.stringify({
+      timestamp: "2026-11-19T10:00:01Z", type: "assistant",
+      message: { id: "answer", content: [{ type: "text", text: "New answer" }], usage: { input_tokens: 2 } }
+    }) + "\n");
+    await tick(); assert.equal(reads, readCount, "hidden panels do no file reads");
+    panel.visible = true; await visibility();
+    assert.equal(posted.at(-1).report.sessions[0].usage.input, 2);
+    await receive({ action: "promptDetail", key: posted.at(-1).report.sessions[0].prompts[0].key });
+    assert.ok(posted.at(-1).prompt.details.some(detail => detail.text === "New answer"));
+    fs.appendFileSync(path.join(folder, "codex_live.jsonl"), "\n");
+    rejectRead = true; const count = posted.length;
+    await tick(); assert.equal(posted.length, count, "transient errors keep the readable report");
+    rejectRead = false; await tick(); assert.equal(posted.length, count + 1, "failed updates retry");
+    fs.unlinkSync(path.join(folder, "codex_live.jsonl")); await tick();
+    assert.equal(posted.at(-1).report.sessions.length, 0, "deleted logs disappear");
+    configuredRoot = path.join(root, "other"); await tick();
+    assert.equal(posted.at(-1).report.folder, path.join(configuredRoot, "claude_compatible"));
+    dispose(); assert.equal(timers.size, 0); assert.equal(visibility, null);
+  } finally { dispose(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("automatic log updates wait for the Flow detail dialog to close and retain only the latest report", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  let dialogOpen = true, receive, close;
+  const rendered = [];
+  const sandbox = {
+    document: { querySelector: () => dialogOpen ? {} : null, addEventListener: (name, fn) => { close = fn; } },
+    window: { scrollX: 0, scrollY: 10, scrollTo() {}, addEventListener: (name, fn) => { receive = fn; },
+      dispatchEvent: event => receive(event) },
+    MessageEvent: class MessageEvent { constructor(name, options) { this.data = options.data; } },
+    rememberReading() {}, render: report => rendered.push(report.id), reportMode: "logs",
+    waitingDetail: {}, vscode: { postMessage() {} }
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(page.slice(page.indexOf("  var deferredReport = null;"), page.indexOf('  vscode.postMessage({ action: "ready" });')), sandbox);
+  receive({ data: { action: "data", automatic: true, report: { id: 1 } } });
+  receive({ data: { action: "data", automatic: true, report: { id: 2 } } });
+  assert.deepEqual(rendered, []);
+  dialogOpen = false; close();
+  assert.deepEqual(rendered, [2]);
+  close(); assert.deepEqual(rendered, [2], "a close event cannot replay an older report");
+});
+
+test("log refresh restores lazy nested disclosures while keeping new steps closed", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const element = (tag, text = "") => ({
+    tagName: tag.toUpperCase(), textContent: text, children: [], open: false,
+    querySelector() { return this.children.find(child => child.tagName === "SUMMARY"); },
+    dispatchEvent() { if (this.populate) { const fn = this.populate; this.populate = null; fn(); } }
+  });
+  const detail = label => { const node = element("details"); node.children.push(element("summary", label)); return node; };
+  const before = element("div"), steps = detail("Steps (1 model call, 1 tool call)"), tool = detail("1. Read");
+  before.children.push(steps); steps.children.push(tool); steps.open = tool.open = true;
+  const sandbox = { Event: class Event {}, document: {} }; vm.createContext(sandbox);
+  vm.runInContext(page.slice(page.indexOf("  function disclosureState("), page.indexOf("  function rememberReading(")), sandbox);
+  const saved = sandbox.disclosureState(before);
+  const after = element("div"), updatedSteps = detail("Steps (2 model calls, 2 tool calls)");
+  const updatedTool = detail("1. Read"), newTool = detail("2. Write");
+  updatedSteps.populate = () => updatedSteps.children.push(updatedTool, newTool);
+  after.children.push(updatedSteps);
+  sandbox.disclosureState(after, saved);
+  assert.equal(updatedSteps.open, true); assert.equal(updatedTool.open, true); assert.equal(newTool.open, false);
+});
+
+
 test('chronology renders streamed thinking and text between tool steps',()=>{
   const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
   const element=label=>({label,children:[],querySelector(){return null;},appendChild(child){this.children.push(child);},addEventListener(type,callback){this[type]=callback;}});
@@ -346,8 +463,8 @@ test("closed log conversations and prompts do not render their bodies; search an
   const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
   const node=(tag,cls='',text='')=>({tag,cls,text,value:'',children:[],events:{},style:{},classList:{toggle(){},add(){},remove(){}},
     appendChild(child){this.children.push(child);return child;},setAttribute(){},removeAttribute(){},addEventListener(name,fn){this.events[name]=fn;}});
-  const content=node('main');let rendered=0;
-  const context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{}},
+  const content=node('main');let rendered=0,opened=0;
+  const context={content,status:{},selected:new Set(),selectionChanged(){},closeConversation(){},openConversation(){opened++;},window:{},el:node,listState:{query:'',hiddenKinds:{}},
     document:{getElementById:()=>({value:'',textContent:''}),createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,
     usageText:()=>'',promptPreview:prompts=>prompts[0]?.text||'',conversation(){rendered++;return node('div','conversation');}};
   vm.createContext(context);
@@ -359,25 +476,9 @@ test("closed log conversations and prompts do not render their bodies; search an
   const record=records.find(r=>r.item.id==='s'),body=record.rows[1].children[0];
   assert.equal(body.children.length,0,'nothing of a closed conversation is built');
   record.toggle();
-  assert.equal(record.rows[1].hidden,false);
-  assert.equal(rendered,0,'opening a conversation shows prompt rows, not all hidden answers');
-  const all=[];const walk=item=>{all.push(item);(item.children||[]).forEach(walk);};walk(body);
-  const selectedPrompt=all.find(child=>child.cls==='prompt');
-  selectedPrompt.open=true;selectedPrompt.ontoggle();
-  assert.equal(rendered,1);
-  // An answer is not a table column: its body is a row of its own spanning every column.
-  const inner=[];const walkInner=i=>{inner.push(i);(i.children||[]).forEach(walkInner);};walkInner(body);
-  const detailRow=inner.find(i=>i.cls==='prompt-detail');
-  assert.ok(detailRow,'the prompt body has its own row');
-  assert.equal(detailRow.hidden,false,'and it is shown while the prompt is open');
-  const spanned=detailRow.children[0];
-  assert.equal(spanned.cls,'conversation-body');
-  assert.ok(spanned.colSpan>1,'spanning every column, not squeezed into the first: '+spanned.colSpan);
-  assert.equal(inner.find(i=>i.cls==='prompt-cell').children.some(c=>c.cls==='conversation'),false,'nothing of it is left in the first cell');
-  selectedPrompt.open=false;selectedPrompt.ontoggle();selectedPrompt.open=true;selectedPrompt.ontoggle();
-  assert.equal(rendered,1,'reopening reuses the previously rendered body');
-  record.toggle();record.toggle();
-  assert.equal(body.children.length,1,'reopening does not duplicate the prompt table');
+  assert.equal(opened,1,'clicking a conversation opens the full-window screen');
+  assert.equal(body.children.length,0,'the list does not build an inline body');
+  assert.equal(rendered,0,'prompt details remain lazy');
   const technical=records.find(r=>r.item.id==='t');
   assert.equal(technical.technical,true);
   const tools=content.children.find(child=>child.cls==='list-tools'),search=tools.children[0],hide=tools.children[1].children[0];
@@ -456,7 +557,7 @@ test('conversations can be filtered by the folder or SAP system they were held i
   const node=(tag,cls='',text='')=>({tag,cls,text,value:'',children:[],events:{},style:{},classList:{toggle(){},add(){},remove(){}},
     appendChild(child){this.children.push(child);return child;},setAttribute(){},removeAttribute(){},addEventListener(name,fn){this.events[name]=fn;}});
   const content=node('main');
-  const context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{},context:''},
+  const context={content,status:{},selected:new Set(),selectionChanged(){},closeConversation(){},window:{},el:node,listState:{query:'',hiddenKinds:{},context:''},
     document:{getElementById:()=>({value:'',textContent:''}),createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,
     usageText:()=>'',promptPreview:prompts=>prompts[0]?.text||'',conversation(){return node('div','conversation');}};
   vm.createContext(context);
@@ -530,7 +631,7 @@ test('continuing an older conversation without a place gives the whole conversat
 test('internal routing, tagging, recognition and orchestrator selection join their parent with totals, files and lazy details intact',()=>{
  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
  const node=(tag,cls='',text='')=>({tag,cls,text,value:'',children:[],events:{},style:{},classList:{toggle(){},add(){},remove(){}},appendChild(c){this.children.push(c);return c;},setAttribute(){},removeAttribute(){},addEventListener(n,f){this.events[n]=f;}});
- const content=node('main'),context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{}},document:{getElementById:()=>({value:'',textContent:''}),createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,usageText:()=>'',promptPreview:p=>p.find(x=>x.operation==='Chat')?.text||p[0]?.text||'',conversation:()=>node('div')};
+ const content=node('main'),context={content,status:{},selected:new Set(),selectionChanged(){},closeConversation(){},openConversation(){},window:{},el:node,listState:{query:'',hiddenKinds:{}},document:{getElementById:()=>({value:'',textContent:''}),createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,usageText:()=>'',promptPreview:p=>p.find(x=>x.operation==='Chat')?.text||p[0]?.text||'',conversation:()=>node('div')};
  vm.createContext(context);vm.runInContext(page.slice(page.indexOf('  var waitingDetail'),page.indexOf('  function section('))+page.slice(page.indexOf('  function sortableHead('),page.indexOf('  var lastReport = null'))+page.slice(page.indexOf('  function render(report)'),page.indexOf('  window.addEventListener("message"')),context);
  const session=(id,operation,related)=>({id,conversation:id,relatedConversation:related,provider:id,start:1,end:3,usage:{input:10,cost:0.01},prompts:[{key:id+':0',operation,text:id,time:1,usage:{input:10,cost:0.01}}]});
  const parent=session('parent','Chat');parent.context={mode:'folder',folder:'C:/project'};
@@ -554,7 +655,7 @@ test('internal routing, tagging, recognition and orchestrator selection join the
  assert.equal(group.context.folder,'C:/project');assert.equal(group.prompts.length,8);assert.equal(group.usage.input,80);assert.ok(Math.abs(group.usage.cost-0.08)<1e-12);assert.equal(group.usage.costEstimated,1);
  assert.deepEqual(Array.from(group.fileIds).sort(),['image','parent','review','routing','selection','tagging','task-check','verification']);assert.equal(group.prompts.find(p=>p.provider==='image').key,'image:0');
  const tools=content.children.find(c=>c.cls==='list-tools');assert.equal(tools.children.filter(c=>c.cls==='kind-filter').length,2,'only standalone evaluation and model-check filters remain');
- const row=records.find(r=>r.item.id==='parent');row.toggle();assert.equal(row.rows[1].hidden,false);
+ const row=records.find(r=>r.item.id==='parent');row.toggle();assert.equal(row.rows[1].hidden,true);
 });
 
 test('Jev estimates enter report usage once and are marked estimated',()=>{

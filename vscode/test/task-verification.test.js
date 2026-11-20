@@ -6,6 +6,14 @@ test('recovery is bounded by an actionable decision, completed tools and existin
  assert.equal(checks.canRecover({status:'unverified',error:'Jev unavailable'},{tools:[]}),false);
  assert.equal(checks.canRecover({status:'failed'},{pending:1,tools:[]}),false);
  assert.equal(checks.canRecover({status:'failed'},{tools:[{error:true,result:'The user declined this action.'}]}),false);
+ assert.equal(checks.canRecover({status:'unverified',checks:[{status:'unverified',probabilities:{passed:0.6,failed:0.05}}]},
+   {tools:[{tool:'Edit',result:{changed:true}}]},{state:'passed'}),false);
+ assert.equal(checks.canRecover({status:'unverified'}, {tools:[
+   {tool:'Edit',error:true,arguments:{file_path:'C:/project/view.html'},result:'old_string is not in file'},
+   {tool:'Edit',arguments:{file_path:'C:/project/view.html'},result:{changed:true}},
+   {tool:'Verification',result:'PASSED'}]},{state:'passed'}),false);
+ assert.equal(checks.canRecover({status:'unverified'},
+   {tools:[{tool:'Edit',error:true,arguments:{file_path:'C:/project/view.html'},result:'old_string is not in file'}]},{state:'passed'}),true);
 });
 function decision(t,choice='passed',confidence=0.95){
  let input,operation,finished,scope;
@@ -17,7 +25,15 @@ test('global verification uses its own operation, completed evidence and actual 
  const capture=decision(t);const evidence={changes:[{file:'index.js',before:'const x=1;',after:'const x=2;'}],tools:[{tool:'Edit',result:{changed:true}}]};
  const result=await checks.verifyTask({},'Build','Done',evidence,{connection,logContext:{mode:'folder',folder:'C:/project'}});
  assert.equal(result.status,'passed');assert.equal(result.usage.input_tokens,11);assert.equal(capture().operation,'Change verification with Jev');assert.deepEqual(capture().input.state.tool_evidence.changes[0].hunks[0].after,['const x=2;']);assert.match(capture().finished.plan.answer,/passed/);
+ assert.deepEqual(capture().input.state.tool_evidence.changes[0].source,{kind:'after',text:'const x=2;'});
  assert.deepEqual(capture().scope.context,{mode:'folder',folder:'C:/project'});
+});
+test('large unchanged source is explicitly omitted while the complete diff stays available',async t=>{
+ const capture=decision(t),context='/* context */\n'.repeat(15000);
+ await checks.verifyTask({},'Change the colour','Done',{changes:[{file:'view.css',before:context+'color: gray;',after:context+'color: blue;'}]},{connection});
+ const change=capture().input.state.tool_evidence.changes[0];
+ assert.equal(change.source.kind,'omitted');assert.equal(change.source.characters,(context+'color: blue;').length);
+ assert.deepEqual(change.hunks[0].after,['color: blue;']);
 });
 
 test('pre-review check receives every changed line and excludes unrelated task context and final-answer claims',async t=>{

@@ -39,11 +39,35 @@ test.beforeEach(t => { t.mock.method(assistant, "resolveAssistant", async (vscod
 test.beforeEach(t => { t.mock.method(require('../orchestrator-plan'), 'verifyStage', async()=>({status:'passed',checks:[],usage:{}})); });
 test.beforeEach(t => { t.mock.method(require('../task-verification'), 'verifyTask', async()=>({status:'passed',checks:[],usage:{}})); });
 
+test('read-only Git folder chat does not create a review copy',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-readonly-chat-'));
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ t.mock.method(require('../agent-worktree'),'repositoryOf',async()=>root);
+ t.mock.method(require('../agent-worktree'),'open',async()=>assert.fail('read-only chat must not create a copy'));
+ t.mock.method(assistant,'ask',async()=>({model:'test',plan:{answer:'Here is the answer',navigation:null,build_command:''}}));
+ const vscode=fakeVscode({provider:'codex-subscription',model:'test'});
+ vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];
+ const server={token:'test',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:()=>({route:'/readonly',dispose(){}})};
+ const ask=chat.create(vscode,{schemas:[],editorContext:()=>null},server,{get:async()=>null});
+ try{assert.equal((await ask('Explain this project',{contextMode:'folder'})).answer,'Here is the answer');}
+ finally{await ask.dispose();}
+});
+test('loading model placeholder is never sent to Codex',async t=>{
+ let selected;
+ t.mock.method(assistant,'ask',async options=>{selected=options.model;return {model:selected,plan:{answer:'Ready',navigation:null,build_command:''}};});
+ const vscode=fakeVscode({provider:'codex-subscription',model:'gpt-6-luna'});
+ const server={token:'test',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:()=>({route:'/loading',dispose(){}})};
+ const ask=chat.create(vscode,{schemas:[],editorContext:()=>null},server,{get:async()=>null});
+ try{await ask('Explain this request in plain language',{model:'Loading…'});assert.equal(selected,'gpt-6-luna');}
+ finally{await ask.dispose();}
+});
+
 for(const fixed of [true,false])test(`Jev sends a rejected exact Edit back for one real reread and recovery (${fixed})`,async t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-jev-recovery-')),file=path.join(root,'index.js'),before='const value = 1;\r\n';
  fs.writeFileSync(file,before);t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const copy={folder:root,top:root,dir:root,cwd:root,refresh:async()=>[],remove:async()=>{},changes:async()=>{const after=fs.readFileSync(file,'utf8');return after===before?[]:[{file:'index.js',path:file,before,after,status:'changed'}];}};
  t.mock.method(require('../agent-worktree'),'open',async()=>copy);
+ t.mock.method(require('../agent-worktree'),'repositoryOf',async()=>root);
  t.mock.method(require('../worktree-review'),'open',()=>({dispose(){},panel:{}}));
  t.mock.method(require('../build-runner'),'remembered',()=> '');
  let served,calls=0,decisions=0;
@@ -118,6 +142,30 @@ test('a premature CLI answer waits for the command and receives completed result
  try{assert.equal((await ask('Build now',{contextMode:'folder'})).answer,'Build finished');assert.equal(calls,2);}finally{await ask.dispose();}
 });
 
+test('a timed-out Codex tool cannot run after a late Allow',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-stale-allow-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ t.mock.method(require('../agent-worktree'),'open',async()=>null);
+ const vscode=fakeVscode({provider:'codex-subscription',model:'test',logPath:root});
+ vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];
+ let allow,shown;const dialog=new Promise(resolve=>{shown=resolve;});
+ vscode.window.showWarningMessage=()=>{shown();return new Promise(resolve=>{allow=resolve;});};
+ let served,calls=0,toolError;
+ const server={token:'test',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:set=>{served=set;return {route:'/stale',dispose(){}};}};
+ t.mock.method(assistant,'ask',async()=>{
+   if(++calls===1){const command=process.platform==='win32'?'Set-Content -LiteralPath stale.txt -Value stale':'printf stale > stale.txt';served.call({},'Bash',{command,purpose:'build'}).catch(error=>{toolError=error;});return {plan:{answer:'Tool timed out'},model:'test'};}
+   return {plan:{answer:'The tool did not run',navigation:null,build_command:''},model:'test'};
+ });
+ const ask=chat.create(vscode,{schemas:[],instructions:'',editorContext:()=>null},server,{get:async()=>null});
+ try {
+   const result=ask('Build now',{contextMode:'folder'});
+   await dialog;
+   assert.equal((await result).answer,'The tool did not run');
+   allow('Allow');await new Promise(resolve=>setImmediate(resolve));
+   assert.match(toolError.message,/model request ended/);
+   assert.equal(fs.existsSync(path.join(root,'stale.txt')),false);
+ } finally {await ask.dispose();}
+});
+
 function fakeVscode(settings) {
   return {
     ConfigurationTarget: { Global: 1 },
@@ -129,6 +177,58 @@ function fakeVscode(settings) {
   };
 }
 
+test("matched VSIX build uses Jev decision and local Bash without the selected LLM", async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-skill-build-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const vscode = fakeVscode({ provider: "codex-subscription", model: "test-model" });
+  vscode.workspace.workspaceFolders = [{ uri: { scheme: "file", fsPath: root } }];
+  t.mock.method(require("../agent-worktree"), "repositoryOf", async () => root);
+  t.mock.method(require("../review-jev"), "enabled", () => true);
+  t.mock.method(require("../skill-match"), "match", async () => ({ matched: true, skill: { name: "build-vertex-vsix", content: "VSIX" }, versionChoice: "current", usage: {} }));
+  t.mock.method(require("../vsix-workflow"), "prepare", () => ({ action: "current", version: "0.9.104", command: "package-command" }));
+  let calls = 0;
+  t.mock.method(require("../folder-tools"), "create", () => ({ schemas: [], dispose() {}, call: async (name, args) => {
+    calls++; assert.equal(name, "Bash"); assert.equal(args.purpose, "build");
+    return { code: 0, verified_vsix: { file: path.join(root, "vscode", "vertex-abap-0.9.104.vsix") } };
+  } }));
+  t.mock.method(assistant, "ask", async () => assert.fail("The selected LLM must not run"));
+  const ask = chat.create(vscode, { schemas: [], editorContext: () => null }, {}, { get: async () => null });
+  try { assert.match((await ask("собери всикс", { contextMode: "folder" })).answer, /built and verified/); assert.equal(calls, 1); }
+  finally { await ask.dispose(); }
+});
+
+test("matched VSIX version stages review and builds only after every file is applied", async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-skill-version-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const vscode = fakeVscode({ provider: "codex-subscription", model: "test-model" });
+  vscode.workspace.workspaceFolders = [{ uri: { scheme: "file", fsPath: root } }];
+  vscode.window.showInformationMessage = () => {};
+  vscode.window.showErrorMessage = () => {};
+  t.mock.method(require("../agent-worktree"), "repositoryOf", async () => root);
+  t.mock.method(require("../review-jev"), "enabled", () => true);
+  t.mock.method(require("../skill-match"), "match", async () => ({ matched: true, skill: { name: "build-vertex-vsix", content: "VSIX" }, versionChoice: "increment", usage: {} }));
+  t.mock.method(require("../vsix-workflow"), "prepare", () => ({ action: "version", current: "0.9.104", version: "0.9.105", command: ".\\vscode\\package.ps1" }));
+  let staged = false, onDone, built = 0;
+  const changes = [{ file: "vscode/package.json", path: path.join(root, "vscode/package.json"), before: "old", after: "new" }];
+  const copy = { folder: root, cwd: root, top: root, refresh: async () => [], remove: async () => {}, changes: async () => staged ? changes : [] };
+  t.mock.method(require("../agent-worktree"), "open", async () => copy);
+  t.mock.method(require("../vsix-workflow"), "stage", () => { staged = true; });
+  t.mock.method(require("../worktree-review"), "open", (_v, _copy, _changes, callback) => { onDone = callback; return { dispose() {} }; });
+  t.mock.method(require("../build-runner"), "remembered", () => "");
+  t.mock.method(require("../build-runner"), "run", async () => { built++; return { code: 1, stderr: "build failed" }; });
+  t.mock.method(assistant, "ask", async () => assert.fail("The selected LLM must not run"));
+  const ask = chat.create(vscode, { schemas: [], editorContext: () => null }, {}, { get: async () => null });
+  try {
+    assert.match((await ask("VSIX +1", { contextMode: "folder" })).answer, /Review the diff/);
+    assert.equal(built, 0); assert.equal(typeof onDone, "function");
+    onDone({ applied: [], failed: [], reworked: [], dropped: [changes[0].file] });
+    assert.equal(built, 0);
+    onDone({ applied: [changes[0].file], failed: [], reworked: [], dropped: [] });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(built, 1);
+  } finally { await ask.dispose(); }
+});
+
 for (const fix of [true, false]) test(`host checks run before review and permit only one repair (${fix ? 'fixed' : 'still broken'})`, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vertex-host-check-'));
   const file = path.join(root, 'index.js'); fs.writeFileSync(file, 'const x = 1;');
@@ -137,6 +237,7 @@ for (const fix of [true, false]) test(`host checks run before review and permit 
     const after=fs.readFileSync(file,'utf8');return after==='const x = 1;'?[]:[{file:'index.js',path:file,before:'const x = 1;',after,status:'changed'}];
   }};
   t.mock.method(require('../agent-worktree'),'open',async()=>copy);
+  t.mock.method(require('../agent-worktree'),'repositoryOf',async()=>root);
   t.mock.method(require('../build-runner'),'remembered',()=> '');
   let reviews=0,served,calls=0;
   let checked=0;
@@ -1230,6 +1331,7 @@ test('host edit completion and a subsequent Bash command clear the edit scene',a
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-scene-host-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  fs.writeFileSync(path.join(root,'a.txt'),'before');
  t.mock.method(require('../agent-worktree'),'open',async()=>({folder:root,top:root,cwd:root,refresh:async()=>[],changes:async()=>[],remove:async()=>{}}));
+ t.mock.method(require('../agent-worktree'),'repositoryOf',async()=>root);
  t.mock.method(compatible,'models',async()=>[{id:'model',capabilities:{tools:true}}]);
  t.mock.method(compatible,'ask',async options=>{
   await options.callTool('Read',{file_path:'a.txt'});

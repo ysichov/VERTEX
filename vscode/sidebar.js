@@ -37,6 +37,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   context.subscriptions.push(vscode.commands.registerCommand("vertex.continueConversation", async found => {
     if (pendingChat || continuing || reviewSurface?.running) throw new Error("Stop or finish the current request before continuing another conversation.");
     if (!found || !Array.isArray(found.turns) || !found.turns.length) throw new Error("No questions to continue from.");
+    if (!await ask.confirmDiscardChanges()) return;
     continuing = true;
     try {
     if (!currentView || !ready) {
@@ -312,7 +313,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if (message.action === "setEffort") {
           const level = String(message.effort || "");
-          if (["", "minimal", "low", "medium", "high", "xhigh", "max"].includes(level)) {
+          if (["", "none", "minimal", "low", "medium", "high", "xhigh", "max"].includes(level)) {
             await vscode.workspace.getConfiguration("vertex.ai").update("effort", level, vscode.ConfigurationTarget.Global);
           }
           return;
@@ -330,6 +331,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if (message.action === "newConversation") {
           if (pendingChat || continuing || reviewSurface?.running) return;
+          if (!await ask.confirmDiscardChanges()) return;
           await closeReview();
           // A new conversation writes to a new log file.
           require("./session-log").reset();
@@ -643,9 +645,10 @@ body[data-provider="vercel-api"] .model-picker, body[data-provider="opencode-api
 #messages .vertex code { font-family: var(--vscode-editor-font-family); background: var(--vscode-textCodeBlock-background); padding: 0 3px; border-radius: 3px; }
 #messages .vertex pre { white-space: pre; overflow-x: auto; background: var(--vscode-textCodeBlock-background); padding: 6px 8px; border-radius: 3px; }
 #messages .vertex pre code { background: none; padding: 0; }
-#messages .reasoning { margin: 0.5em 0; }
-#messages .reasoning summary { cursor: pointer; opacity: .8; }
-#messages .reasoning pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20em; overflow-y: auto; }
+#messages .stream-part { white-space: pre-wrap; overflow-wrap: anywhere; }
+#messages .stream-part + .stream-part { margin-top: .55em; }
+#messages .stream-part.thinking { color: var(--vscode-charts-purple, var(--vscode-descriptionForeground)); }
+#messages .stream-part.answer { color: var(--vscode-charts-green, var(--vscode-editor-foreground)); }
 textarea, select { box-sizing: border-box; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 4px; font: inherit; }
 textarea { width: 100%; resize: vertical; padding: 8px; }
 #prompt { min-height: 5.5em; max-height: 14em; overflow-y: auto; padding-right: 30px; }
@@ -731,7 +734,7 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 <div id="topic-view" class="line" hidden><label for="topic-view-select">Show conversation</label><select id="topic-view-select" aria-label="Visible conversation topic"><option value="current">Current topic</option><option value="all">All topics</option></select></div>
 <main id="messages" aria-live="polite"><p class="chat-empty">Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
-<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model · Ctrl+C / Cmd+C copies the model ID"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
+<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model · Ctrl+C / Cmd+C copies the model ID"><option value="">Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <div id="work-composer">
 ${require(require("path").join(__dirname,"jev-panel")).html}
 <form id="chat"><span id="topic-picker-label" title="Which earlier exchanges go with the question: all of them or the ones Jev routes to its topic. Choose the decision model next to Auto." hidden><span class="vertex-segment-toggle" id="history-mode" role="group" aria-label="History"><button type="button" data-history="full" class="active" aria-pressed="true">Full history</button><button type="button" data-history="auto" aria-pressed="false">Auto (Jev)</button></span><select id="topic-picker" hidden aria-hidden="true"><option value="full">Full history</option><option value="auto">Auto (Jev)</option></select><select id="decision-provider" aria-label="Decision model for Auto" title="Decision model for Auto, topic tagging and ASK Jev" hidden></select></span><span id="context-optimization-status" class="note" role="status"></span><section id="ai-review-box" aria-label="AI Review" hidden><div class="ai-review-head"><strong id="ai-review-title">AI Review</strong><span id="ai-review-scope" class="note"></span><button type="button" class="secondary" id="ai-review-restart" title="Start a new review of the current changes">Check again</button><button type="button" class="secondary" id="ai-review-close" title="Close the review; the next question goes to the chat" aria-label="Close the review">×</button></div><p id="ai-review-stale" hidden>Changes have updated. This review checks the earlier snapshot. Select Check again to start a new review.</p><details id="ai-review-settings" open><summary id="ai-review-settings-label">Review settings · Technical review</summary><label class="ai-review-task">Requirements for this review (optional)<textarea id="ai-review-task" rows="3" placeholder="Enter requirements relevant to these changes"></textarea></label>${require(require("path").join(__dirname,"git-prompt-bar")).html(require(require("path").join(__dirname,"html-escape")).escapeHtml)}</details><p id="ai-review-status" role="status" aria-live="polite"></p></section><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><details id="review-result-preview" hidden><summary>Attached review result</summary><div id="review-result-body"></div></details><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
@@ -908,10 +911,12 @@ function drawModelCapabilities() {
 }
 document.getElementById('model-details-button').addEventListener('click', () => document.getElementById('model-details-dialog').showModal());
 function drawEffort(provider) {
-  const select = document.getElementById('effort-select'), levels = EFFORTS[provider] || [];
+  const select = document.getElementById('effort-select');
+  const modernCodex=provider==='codex-subscription'&&/^gpt-6(?:[.-]|$)/i.test(document.getElementById('model-select').value);
+  const levels = modernCodex?['none','low','medium','high','xhigh','max']:EFFORTS[provider] || [];
   select.hidden = !levels.length;
   select.replaceChildren(new Option('default', ''), ...levels.map(level => new Option(level, level)));
-  select.value = levels.includes(effort) ? effort : '';
+  select.value = modernCodex&&effort==='minimal'?'none':levels.includes(effort) ? effort : '';
 }
 document.getElementById('effort-select').addEventListener('change', event => {
   effort = event.target.value;
@@ -925,7 +930,7 @@ document.getElementById('provider-select').addEventListener('change', event => {
 });
 document.getElementById('model-select').addEventListener('change', event => {
   if(['vercel-api','openrouter-api','opencode-api'].includes(document.getElementById('provider-select').value))lastVercelModels.set(document.getElementById('provider-select').value+':'+document.getElementById('subprovider-select').value,event.target.value);
-  drawModelCapabilities(); document.getElementById('model-status').textContent = '';
+  drawModelCapabilities(); drawEffort(document.getElementById('provider-select').value); document.getElementById('model-status').textContent = '';
   api.postMessage({ action: 'setModel', model: event.target.value });
 });
 document.querySelectorAll('button[data-action]').forEach(button => {
@@ -1137,32 +1142,45 @@ window.addEventListener('message', event => {
       let body = item.querySelector('.progress-body');
       if (!body) { body = document.createElement('div'); body.className = 'progress-body streaming-answer'; item.appendChild(body); }
       paintTaskScene(item,update);
+      function appendPart(kind, text) {
+        if (!text) return;
+        let part = body.lastElementChild;
+        if (!part?.classList.contains(kind)) {
+          if (!body.querySelector('.stream-part')) body.replaceChildren();
+          else body.querySelector('.stream-placeholder')?.remove();
+          part = document.createElement('div'); part.className = 'stream-part ' + kind;
+          part.textContent = kind === 'thinking' ? (item.dataset.thinkingLabel || 'Thinking') + ':\\n' : 'VERTEX:\\n';
+          body.appendChild(part);
+        }
+        part.textContent += text;
+      }
+      if (typeof update.thinking === 'string' && update.thinking) {
+        if (update.thinkingLabel) item.dataset.thinkingLabel = update.thinkingLabel;
+        const prior = item.dataset.thinking || '';
+        appendPart('thinking', update.thinking.startsWith(prior) ? update.thinking.slice(prior.length) : update.thinking);
+        item.dataset.thinking = update.thinking;
+      }
       const previous = item.dataset.answer || '';
       if(update.stopped)update.answer=previous+(previous?'\\n\\n':'')+'Stopped.';
       if (typeof update.answer === 'string' && (update.answer || !previous)) {
         const answer = update.answer;
-        if (answer.startsWith(previous) && previous) body.textContent += answer.slice(previous.length);
-        else body.textContent = 'VERTEX:\\n' + answer;
+        if (!answer.startsWith(previous) && previous) body.querySelectorAll('.stream-part.answer').forEach(part => part.remove());
+        appendPart('answer', answer.startsWith(previous) ? answer.slice(previous.length) : answer);
         item.dataset.answer = answer;
         item.dataset.status = '';
       }
       if (typeof update.status === 'string') item.dataset.status = update.status;
-      // While there is no answer yet, the status shares the VERTEX: line.
-      if (!item.dataset.answer) body.textContent = 'VERTEX: ' + (item.dataset.status || 'Working…');
+      // Before the first streamed part, the status shares the VERTEX line.
+      if (!body.querySelector('.stream-part')) {
+        let placeholder = body.querySelector('.stream-placeholder');
+        if (!placeholder) { placeholder = document.createElement('div'); placeholder.className = 'stream-placeholder'; body.replaceChildren(placeholder); }
+        placeholder.textContent = 'VERTEX: ' + (item.dataset.status || 'Working…');
+      }
       let status = item.querySelector('.tool-status');
       if (item.dataset.answer && item.dataset.status && !update.done) {
         if (!status) { status = document.createElement('p'); status.className = 'tool-status'; item.appendChild(status); }
         status.textContent = item.dataset.status;
       } else if (status) status.remove();
-      if (typeof update.thinking === 'string' && update.thinking) {
-        let details = item.querySelector('.reasoning');
-        if (!details) {
-          details = document.createElement('details'); details.className = 'reasoning';
-          const summary = document.createElement('summary'); summary.textContent = (update.model || 'Model') + ' reasoning';
-          const pre = document.createElement('pre'); details.append(summary, pre); item.appendChild(details);
-        }
-        details.querySelector('pre').textContent = update.thinking;
-      }
       let limitsLine = item.querySelector('.limits');
       if (typeof update.limits === 'string') {
         if (!limitsLine) { limitsLine = document.createElement('p'); limitsLine.className = 'usage limits'; item.appendChild(limitsLine); }
@@ -1172,8 +1190,12 @@ window.addEventListener('message', event => {
       if (update.done) {
         item.classList.remove('working');
         const answer = item.dataset.answer || '';
-        body.classList.remove('streaming-answer'); body.replaceChildren();
-        markdown('VERTEX:\\n' + (answer || 'No answer returned.'), body);
+        if (!body.querySelector('.stream-part.answer')) appendPart('answer', answer || 'No answer returned.');
+        body.classList.remove('streaming-answer');
+        body.querySelectorAll('.stream-part.answer').forEach(part => {
+          const plain = part.textContent.slice('VERTEX:\\n'.length);
+          part.replaceChildren(); markdown('VERTEX:\\n' + plain, part);
+        });
         if (status) status.remove();
         links(item, update.choices || []);linkProjectFiles(item);linkSapNames(item);
         runLinks(item, update.runs || []);
@@ -1317,7 +1339,7 @@ window.addEventListener('message', event => {
         }
       }
       // The configured model selects its Vercel subprovider automatically; off models stay visible.
-      modelCatalog = data.models;drawModelPickers(data.model);drawModelCapabilities();
+      modelCatalog = data.models;drawModelPickers(data.model);drawModelCapabilities();drawEffort(document.getElementById('provider-select').value);
     }
   }
   if (event.data && event.data.chat) {
