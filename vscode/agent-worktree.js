@@ -58,7 +58,8 @@ async function open(folder, options = {}) {
     const tree = (await git(top, ["write-tree"], false, env)).trim();
     base = (await git(top, COMMIT.concat(["commit-tree", tree, "-p", head, "-m", "VERTEX review snapshot"]), false, env)).trim();
   } finally { fs.rmSync(snapshot, { recursive: true, force: true }); }
-  const dir = path.join(options.tmp || os.tmpdir(), "vertex-wt-" + crypto.randomBytes(5).toString("hex"));
+  const tmpBase = fs.realpathSync(options.tmp || os.tmpdir());
+  const dir = path.join(tmpBase, "vertex-wt-" + crypto.randomBytes(5).toString("hex"));
   await git(top, ["worktree", "add", "--detach", dir, base]);
   try {
     await git(dir, ["add", "-A"]);
@@ -105,8 +106,9 @@ async function open(folder, options = {}) {
     bases.set(change.file, await blobIn(top, change.file, true));
     settled.set(change.file, await blobIn(dir, change.file));
   };
+  const canonicalDir = fs.realpathSync(dir);
   return {
-    folder: path.resolve(folder), top, dir, cwd: sub ? path.join(dir, sub) : dir,
+    folder: fs.realpathSync(path.resolve(folder)), top: fs.realpathSync(top), dir: canonicalDir, cwd: sub ? path.join(canonicalDir, sub) : canonicalDir,
     /** The files the assistant changed since the start, or since the user's last decision on them. */
     async changes() {
       await git(dir, ["add", "-A"]);

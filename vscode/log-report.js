@@ -435,7 +435,7 @@ function conversationTurns(report, sessionId, point) {
       try {
         const extension = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }[shot.media_type];
         if (!report.folder || !extension || !shot.file) throw new Error("Screenshot unavailable");
-        const directory = fs.realpathSync(path.join(report.folder, prompt.logId));
+        const directory = fs.realpathSync(path.resolve(report.folder, prompt.logId));
         const file = fs.realpathSync(shot.file);
         // Logs are untrusted: only attachments actually stored beside this prompt's log may be restored.
         const root = fs.realpathSync(report.folder), relative = path.relative(root, directory);
@@ -629,8 +629,8 @@ function open(vscode, options = {}) {
     if (message?.action === "openScreenshot") {
       // Only a screenshot saved in the configured log folder opens, in VS Code's own image viewer.
       try {
-        const root = path.resolve(vscode.workspace.getConfiguration("vertex.ai").get("logPath", "") || "", "claude_compatible");
-        const file = path.resolve(String(message.file || ""));
+        const root = fs.realpathSync(path.resolve(vscode.workspace.getConfiguration("vertex.ai").get("logPath", "") || "", "claude_compatible"));
+        const file = fs.realpathSync(String(message.file || ""));
         if (!/\.(png|jpe?g|gif|webp)$/i.test(file) || path.relative(root, file).startsWith("..") || path.isAbsolute(path.relative(root, file))) {
           throw new Error("That screenshot is not in the log folder.");
         }

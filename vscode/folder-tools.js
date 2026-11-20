@@ -139,7 +139,7 @@ function create(vscode, options) {
       let stat;
       try { stat = fs.lstatSync(current); } catch (error) { if (error.code === "ENOENT") continue; throw error; }
       if (stat.isSymbolicLink()) throw new Error("Symbolic links are unavailable to local tools.");
-      within(fs.realpathSync(current), base);
+      within(current, base);
     }
     return file;
   }

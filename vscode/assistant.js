@@ -963,7 +963,10 @@ function collect(spawn, file, args, options) {
       if (!timedOut && !settled) armTimeout();
       if (options.onData) { options.onData(String(d)); }
     });
-    child.stderr.on("data", function (d) { stderr += d; });
+    child.stderr.on("data", function (d) {
+      stderr += d;
+      if (!timedOut && !settled) armTimeout();
+    });
     // A stop aborts the signal and kills the child, but what it had already written - a finished message with its
     // usage - still arrives: it is read until the child closes, so the run's accounting is logged before the stop.
     let aborted = null;
