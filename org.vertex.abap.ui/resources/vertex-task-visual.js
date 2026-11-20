@@ -71,50 +71,16 @@ const bitGlyph = (one, x) => one
   ? `<path d="M${x} 14v12M${x - 3} 16.5l3-2.5"/>`
   : `<ellipse cx="${x}" cy="20" rx="4" ry="6"/>`;
 const esc = value => String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-/* The band the search scene runs along. Given what is being looked for, the bits part in the middle and the text
-   itself stands there, lit like a hit; given nothing, it is the plain chain of bits. The text is escaped: it comes
-   from a tool's arguments, which the model wrote. */
-const searchBand = (text) => {
-  const step = 28, x0 = 26, count = 34, middle = 500, hits = [13, 26];
-  const said = String(text || "").replace(/\s+/g, " ").trim().slice(0, 28);
-  // Slots are wider than letters: the word takes the room it needs and the bits step aside for it.
-  const half = said ? (said.length * 11) / 2 + step * 0.5 : 0;
-  let bits = "";
-  for (let i = 0; i < count; i++) {
-    const x = x0 + i * step;
-    if (said && x > middle - half && x < middle + half) continue;
-    bits += `<g class="sw-bit${said || hits.indexOf(i) < 0 ? "" : " sw-hit"}" style="animation-delay:${(i * 0.133).toFixed(2)}s">`
-      + bitGlyph(BITS[i % BITS.length] === "1", x) + `</g>`;
-  }
-  const word = said
-    ? `<g class="sw-bit sw-hit" style="animation-delay:${(Math.round((middle - x0) / step) * 0.133).toFixed(2)}s">`
-      + `<text class="sw-word" x="${middle}" y="20">${esc(said)}</text></g>`
-    : "";
-  return `<svg viewBox="0 0 1000 40" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">${bits}${word}<g class="sw-lens"><circle cx="26" cy="20" r="14" fill="currentColor" fill-opacity=".06" stroke-width="2.2"/><path stroke-width="2.6" d="m36.5 29.5 7 7"/></g></g></svg>`;
-};
-const searchWide = searchBand("");
 const mcpWide = `<svg viewBox="0 0 1000 40" focusable="false" aria-hidden="true"><g class="mw-stage" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path class="mw-cloud" fill="var(--task-paper)" d="M40 34C26 34 22 22 33 17 31 6 48 1 57 9 64-1 84 1 86 12 100 6 114 16 108 25 118 28 116 34 106 34Z"/><text class="mw-label" x="68" y="28" text-anchor="middle" stroke="none">LLM</text><path class="mw-lane" d="M132 12H828"/><path class="mw-lane" d="M828 28H132"/><path stroke-opacity=".5" d="m822 8 5 4-5 4"/><path stroke-opacity=".5" d="m138 24-5 4 5 4"/><path class="mw-ask" d="M132 12H828"/><path class="mw-answer" d="M828 28H132"/><g class="mw-packets"></g><rect x="846" y="3" width="134" height="34" rx="4" fill="var(--task-paper)" stroke-opacity=".55"/><rect class="mw-glow" x="846" y="3" width="134" height="34" rx="4" fill="var(--task-ok)" stroke="none"/><circle class="mw-led" cx="860" cy="11" r="2.2" fill="var(--task-ok)" stroke="none"/><circle class="mw-led" cx="860" cy="20" r="2.2" fill="var(--task-ok)" stroke="none"/><circle class="mw-led" cx="860" cy="29" r="2.2" fill="var(--task-ok)" stroke="none"/><path stroke-opacity=".3" d="M872 7v26"/><text class="mw-label" x="930" y="26" text-anchor="middle" stroke="none">SAP</text><path class="mw-arc" d="M886 9l7 7-5 2 6 9"/><path class="mw-arc mw-arc2" d="M968 10l-6 7 5 2-7 8"/></g></svg>`;
-/* recognize: a screenshot is read. The band is the picture itself - grain under a beam that sweeps it once -
-   and what the beam has passed stays framed, the way the search band keeps its hits lit. Same 4.8s as the
-   others, CSS alone: nothing here has to fall at random. */
-const recognizeWide = (() => {
-  const corner = (x, y, w, h) => `M${x} ${y + 7}V${y}h7M${x + w - 7} ${y}h7v7M${x + w} ${y + h - 7}v7h-7M${x + 7} ${y + h}h-7v-7`;
-  const at = x => ((x / 1000) * 4.8).toFixed(2);
-  const found = (x, y, w, h) => `<g class="kw-box" style="animation-delay:${at(x + w)}s"><path d="${corner(x, y, w, h)}"/></g>`;
-  let grain = "";
-  for (let i = 0; i < 70; i++) {
-    grain += `<rect class="kw-px" x="${126 + i * 12}" y="${8 + ((i * 7) % 6) * 5}" width="6" height="4" rx="1"`
-      + ` style="animation-delay:${at(126 + i * 12)}s"/>`;
-  }
-  return `<svg viewBox="0 0 1000 40" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">`
-    + `<rect x="14" y="3" width="972" height="34" rx="5" fill="var(--task-paper)" stroke-opacity=".5"/>`
-    + `<g class="kw-photo" opacity=".5"><circle cx="48" cy="13" r="4.5"/><path d="M26 32l15-14 9 8 7-6 15 12z"/></g>`
-    + grain
-    + found(150, 8, 150, 24) + found(430, 6, 210, 28) + found(760, 10, 160, 20)
-    + `<g class="kw-beam"><rect x="4" y="3" width="24" height="34" rx="3" fill="currentColor" stroke="none" opacity=".08"/>`
-    + `<rect x="14" y="3" width="3" height="34" rx="1.5" fill="currentColor" stroke="none" opacity=".5"/></g>`
-    + `</g></svg>`;
-})();
+/* A horizontal scanner erases the supplied screenshot from top to bottom in eight seconds.
+   The byte stream rides beside the scanner at the same height. */
+const recognizeWide = `<svg viewBox="0 0 600 100" focusable="false" aria-hidden="true">`
+  + `<defs><clipPath id="vx-recognize-image-clip"><rect x="19" y="20" width="218" height="66" rx="2"/></clipPath></defs>`
+  + `<rect class="kw-screen" x="18" y="7" width="220" height="80" rx="5"/><g class="kw-fallback"><text x="32" y="36">Aa··</text><text x="155" y="49">07.3</text><text x="50" y="75">010 ···</text><path d="M34 63l24-13 17 8 26-19 25 14"/></g>`
+  + `<image class="kw-screen-image" x="19" y="20" width="218" height="66" preserveAspectRatio="xMidYMid meet" clip-path="url(#vx-recognize-image-clip)"/>`
+  + `<rect class="kw-wipe" x="19" y="20" width="218" height="0"/><path class="kw-beam" d="M19 20h218"/>`
+  + `<path class="kw-chrome" d="M18 19h220"/><circle class="kw-dot" cx="29" cy="13" r="1.5"/><circle class="kw-dot" cx="36" cy="13" r="1.5"/><circle class="kw-dot" cx="43" cy="13" r="1.5"/>`
+  + `<g class="kw-bitflow"><text class="kw-bit" x="250" y="22">01000001</text><text class="kw-bit kw-bit-two" x="250" y="22">10110110</text><text class="kw-bit kw-bit-three" x="250" y="22">00110111</text><text class="kw-bit kw-bit-four" x="250" y="22">11001010</text><text class="kw-bit kw-bit-five" x="250" y="22">01100001</text></g></svg>`;
 const HX_STEP = 70, HX_X0 = 40, HX_KEEP = 21;
 const hxColumn = (one, ph, x) => `<g class="hx-col" style="transform:translateX(${x}px)"><path class="hx-r hx-p${ph}" d="M0 9V31"/><text class="hx-n hx-p${ph}" x="0" y="20">${one ? 1 : 0}</text><text class="hx-n hx-p${(ph + 4) % 8}" x="0" y="20">${one ? 0 : 1}</text></g>`;
 const editWide = (() => {
@@ -279,8 +245,10 @@ function html(kind, wide = false, name = "") {
   if (kind === "start") return timed(`<span class="vertex-task-visual task-start" aria-hidden="true">${startScene(name)}</span>`);
   // The wide review is the generation strip: the commit strip's host set to its generate operation.
   if (kind === "review" && wide) return timed(`<span class="task-wide-host" data-operation="generate"><span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${commitWide}${reviewWide}</span></span>`);
-  if (kind === "search") return timed(`<span class="vertex-task-visual task-band" aria-hidden="true">${name ? searchBand(name) : searchWide}</span>`);
-  if (kind === "recognize") return timed(`<span class="vertex-task-visual task-band" aria-hidden="true">${recognizeWide}</span>`);
+  if (kind === "thinking") return timed(`<span class="vertex-task-visual task-thinking-icon" aria-hidden="true"><i class="ai-ring"></i><i class="ai-ring"></i><i class="ai-ring"></i><i class="ai-core">AI</i><i class="ai-spark"></i><i class="ai-spark ai-spark-two"></i><i class="ai-spark ai-spark-three"></i></span>`);
+  if (kind === "search") return timed(`<span class="vertex-task-visual task-search-icon" aria-hidden="true"><span class="search-code"><span class="search-code-track">${"<i></i>".repeat(16)}</span></span><i class="search-lens"></i><i class="search-handle"></i></span>`);
+  if (kind === "tooling") return timed(`<span class="vertex-task-visual task-tooling-icon" aria-hidden="true"><span class="tool-terminal"><i class="tool-title"></i><b class="tool-prompt">&gt;_</b><i class="tool-cursor"></i><i class="tool-line tool-line-one"></i><i class="tool-line tool-line-two"></i><i class="tool-line tool-line-three"></i></span><i class="tool-gear"></i></span>`);
+  if (kind === "recognize") return timed(`<span class="vertex-task-visual task-recognize" aria-hidden="true">${recognizeWide}</span>`);
   if (kind === "mcp") return timed(`<span class="vertex-task-visual task-band" aria-hidden="true">${mcpWide}</span>`);
   if (kind === "edit") return timed(`<span class="vertex-task-visual task-band" aria-hidden="true">${editWide}</span>`);
   if (kind === "pr") return timed(`<span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${prWide}</span>`);
@@ -291,6 +259,35 @@ function html(kind, wide = false, name = "") {
 const css = `
 .vertex-task-visual{--task-paper:var(--vscode-editor-background,Canvas);display:inline-flex;flex:none;width:44px;height:44px;color:var(--vscode-focusBorder,var(--vscode-textLink-foreground,Highlight));vertical-align:middle;pointer-events:none}
 .vertex-task-visual svg{display:block;width:100%;height:100%;overflow:visible}
+.vertex-task-visual.task-thinking-icon,.vertex-task-visual.task-search-icon,.vertex-task-visual.task-tooling-icon{position:relative;width:36px;height:36px;overflow:visible}
+.task-tooling-icon .tool-terminal{position:absolute;left:1px;top:2px;width:29px;height:29px;border:1.5px solid currentColor;border-radius:4px;overflow:hidden}
+.task-tooling-icon .tool-title{position:absolute;left:0;right:0;top:0;height:5px;border-bottom:1px solid currentColor;opacity:.5}
+.task-tooling-icon .tool-title::after{content:'•••';position:absolute;left:2px;top:-5px;font:8px system-ui,sans-serif;letter-spacing:1px}
+.task-tooling-icon .tool-prompt{position:absolute;left:3px;top:7px;font:700 8px/1 var(--vscode-editor-font-family,monospace)}
+.task-tooling-icon .tool-cursor{position:absolute;left:13px;top:9px;width:2px;height:7px;background:currentColor;animation:vertex-tool-cursor 1.1s steps(2,end) infinite}
+.task-tooling-icon .tool-line{position:absolute;left:4px;height:1.5px;border-radius:2px;background:currentColor;transform-origin:left;animation:vertex-tool-line 2.8s steps(10,end) infinite}
+.task-tooling-icon .tool-line-one{top:19px;width:14px}.task-tooling-icon .tool-line-two{top:23px;width:21px;animation-delay:.45s}.task-tooling-icon .tool-line-three{top:27px;width:11px;animation-delay:.9s}
+.task-tooling-icon .tool-gear{position:absolute;right:0;bottom:0;width:15px;height:15px;border:1.5px dashed currentColor;border-radius:50%;background:var(--vscode-editor-background,Canvas);display:grid;place-items:center;animation:vertex-tool-spin 3s linear infinite}
+.task-tooling-icon .tool-gear::after{content:'';width:4px;height:4px;border:1px solid currentColor;border-radius:50%}
+@keyframes vertex-tool-line{0%,10%{transform:scaleX(0);opacity:.2}55%,85%{transform:scaleX(1);opacity:.8}100%{transform:scaleX(0);opacity:0}}
+@keyframes vertex-tool-cursor{50%{opacity:0}}
+@keyframes vertex-tool-spin{to{transform:rotate(360deg)}}
+.task-thinking-icon .ai-ring{position:absolute;inset:3px;border:1px solid currentColor;border-radius:50%;animation:vertex-ai-breathe 3.6s ease-in-out infinite}
+.task-thinking-icon .ai-ring:nth-child(2){inset:8px;animation-delay:-1.2s}.task-thinking-icon .ai-ring:nth-child(3){inset:13px;animation-delay:-2.4s}
+.task-thinking-icon .ai-core{position:absolute;inset:12px;display:grid;place-items:center;border-radius:50%;background:var(--vscode-editor-background,Canvas);color:currentColor;font:600 8px/1 var(--vscode-font-family,sans-serif)}
+.task-thinking-icon .ai-spark{position:absolute;width:3px;height:3px;border-radius:50%;background:currentColor;offset-path:circle(15px at 18px 18px);animation:vertex-ai-orbit 4.2s linear infinite}
+.task-thinking-icon .ai-spark-two{offset-path:circle(10px at 18px 18px);animation-duration:3.2s;animation-delay:-1.7s;opacity:.55}.task-thinking-icon .ai-spark-three{animation-duration:5.5s;animation-delay:-3.1s;opacity:.45}
+@keyframes vertex-ai-breathe{0%,100%{opacity:.18;transform:scale(.86)}50%{opacity:.95;transform:scale(1.08)}}
+@keyframes vertex-ai-orbit{to{offset-distance:100%}}
+.task-search-icon .search-code{position:absolute;left:4px;top:3px;width:26px;height:27px;overflow:hidden;border-radius:50%;mask-image:radial-gradient(circle,#000 65%,transparent 76%)}
+.task-search-icon .search-code-track{position:absolute;left:3px;top:0;display:flex;flex-direction:column;gap:2px;animation:vertex-search-code 2.4s linear infinite}
+.task-search-icon .search-code-track i{display:block;width:14px;height:1.5px;border-radius:2px;background:currentColor;opacity:.3}
+.task-search-icon .search-code-track i:nth-child(8n+3),.task-search-icon .search-code-track i:nth-child(8n+6){width:20px}.task-search-icon .search-code-track i:nth-child(8n+4){width:11px;opacity:.95;box-shadow:0 0 4px currentColor}
+.task-search-icon .search-lens{position:absolute;left:3px;top:2px;width:24px;height:24px;border:2px solid currentColor;border-radius:50%;animation:vertex-search-scan 3s ease-in-out infinite}
+.task-search-icon .search-handle{position:absolute;left:28px;top:27px;width:12px;height:3px;border-radius:3px;background:currentColor;transform:rotate(45deg);transform-origin:left center;animation:vertex-search-handle 3s ease-in-out infinite}
+@keyframes vertex-search-code{from{transform:translateY(-28px)}to{transform:translateY(0)}}
+@keyframes vertex-search-scan{0%,100%{transform:translate(-1px,1px)}50%{transform:translate(2px,-1px)}}
+@keyframes vertex-search-handle{0%,100%{translate:-1px 1px}50%{translate:2px -1px}}
 .vertex-task-visual .review-lens{animation:vertex-review-lens 2.8s ease-in-out infinite}
 .vertex-task-visual .review-scan{animation:vertex-review-scan 2.8s ease-in-out infinite}
 .vertex-task-visual .commit-stack{animation:vertex-commit-stack 3.6s ease-in-out infinite}
@@ -479,26 +476,21 @@ body.vertex-motion-off .vertex-task-visual{display:none!important}
 
 /* The chat's step scenes share the review strip's band: full width, 25:1, never taller than the message line. */
 .vertex-task-visual.task-band{width:100%;height:auto;aspect-ratio:25/1;min-height:30px;max-height:44px}
+.vertex-task-visual.task-recognize{width:100%;height:82px;min-height:82px}
 .vertex-task-visual{--task-ok:var(--vscode-testing-iconPassed,var(--vscode-charts-green,currentColor));
   --task-cut:var(--vscode-gitDecoration-deletedResourceForeground,var(--vscode-errorForeground,currentColor));
   --task-new:var(--vscode-gitDecoration-addedResourceForeground,var(--vscode-testing-iconPassed,currentColor))}
 .task-band *{transform-box:fill-box}
 
-.sw-bit{transform-origin:center;opacity:.38;animation:vertex-sw-bit 4.8s ease-in-out infinite}
-.sw-hit{animation-name:vertex-sw-hit}
-.sw-hit ellipse,.sw-hit path{stroke:var(--task-ok)}
-.sw-hit .sw-word{fill:var(--task-ok)}
-.sw-word{fill:currentColor;stroke:none;font:600 15px var(--vscode-editor-font-family,ui-monospace,monospace);letter-spacing:1px;text-anchor:middle;dominant-baseline:central}
-.sw-lens{animation:vertex-sw-lens 4.8s linear infinite}
-.kw-px{fill:currentColor;stroke:none;opacity:.12;animation:vertex-kw-px 4.8s ease-in-out infinite}
-.kw-box{stroke:var(--task-ok);stroke-width:2.2;opacity:0;animation:vertex-kw-box 4.8s ease-out infinite}
-.kw-beam{animation:vertex-kw-beam 4.8s linear infinite}
-@keyframes vertex-kw-px{0%{opacity:.12}6%{opacity:.5}14%,100%{opacity:.22}}
-@keyframes vertex-kw-box{0%,3%{opacity:0;transform:scale(1.3)}9%{opacity:1;transform:scale(1)}88%{opacity:1}100%{opacity:0}}
-@keyframes vertex-kw-beam{0%{transform:translateX(0);opacity:0}4%{opacity:1}92%{transform:translateX(956px);opacity:1}100%{transform:translateX(978px);opacity:0}}
-@keyframes vertex-sw-bit{0%{transform:scale(1);opacity:.38}4%{transform:scale(1.4);opacity:1}11%,100%{transform:scale(1);opacity:.38}}
-@keyframes vertex-sw-hit{0%{transform:scale(1);opacity:.38}4%{transform:scale(1.45);opacity:1}11%,93%{transform:scale(1.15);opacity:1}100%{transform:scale(1);opacity:.38}}
-@keyframes vertex-sw-lens{0%{transform:translateX(0);opacity:0}4%{opacity:1}88%{transform:translateX(924px);opacity:1}100%{transform:translateX(980px);opacity:0}}
+.kw-screen{fill:var(--task-paper);stroke:currentColor;stroke-opacity:.65;stroke-width:1.5}.kw-chrome{fill:none;stroke:currentColor;stroke-opacity:.22;stroke-width:1.2}.kw-dot{fill:currentColor;opacity:.45}
+.kw-screen-image:not([href]),.has-screenshot .kw-fallback{display:none}.kw-fallback text{fill:currentColor;font:500 11px var(--vscode-editor-font-family,monospace);opacity:.6}.kw-fallback path{fill:none;stroke:currentColor;stroke-opacity:.4;stroke-width:1.5}
+.kw-wipe{fill:var(--task-paper);animation:vertex-kw-wipe 8s linear infinite}.kw-beam{fill:none;stroke:var(--vscode-charts-blue,currentColor);stroke-width:2.5;animation:vertex-kw-beam 8s linear infinite}
+.kw-bitflow{animation:vertex-kw-descend 8s linear infinite}.kw-bit{fill:currentColor;font:500 12px var(--vscode-editor-font-family,monospace);letter-spacing:1px;opacity:0;animation:vertex-kw-bit 3.1s linear infinite}
+.kw-bit-two{animation-delay:-.62s}.kw-bit-three{animation-delay:-1.24s}.kw-bit-four{animation-delay:-1.86s}.kw-bit-five{animation-delay:-2.48s}
+@keyframes vertex-kw-wipe{0%,8%{height:0}83%,93%{height:66px}100%{height:0}}
+@keyframes vertex-kw-beam{0%,8%{translate:0 0;opacity:0}12%{opacity:1}83%{translate:0 66px;opacity:1}93%,100%{translate:0 66px;opacity:0}}
+@keyframes vertex-kw-descend{0%,8%{translate:0 0;opacity:0}12%{opacity:1}83%{translate:0 66px;opacity:1}93%,100%{translate:0 66px;opacity:0}}
+@keyframes vertex-kw-bit{0%{opacity:0;translate:0 0}12%{opacity:.95}72%{opacity:.85}100%{opacity:0;translate:300px 0}}
 
 .mw-label{fill:currentColor;font:500 16px/1 var(--vscode-font-family,sans-serif);letter-spacing:.06em}
 .mw-lane{stroke:currentColor;stroke-opacity:.22;stroke-dasharray:4 6}

@@ -50,7 +50,9 @@ footer { padding: 8px 12px; border-top: 1px solid var(--border); }
 textarea { box-sizing: border-box; width: 100%; min-height: 64px; max-height: 50vh; overflow-y: auto; resize: vertical; padding: 6px; }
 .actions { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
 .actions.top { justify-content: flex-end; margin: 0 0 6px; }
-#working { color: var(--muted); margin-right: auto; }
+#working { color: var(--muted); margin-right: auto; display: inline-flex; align-items: center; gap: 6px; }
+#working-elapsed { font-variant-numeric: tabular-nums; }
+#working-elapsed[hidden] { display: none; }
 #versionid { font: inherit; padding: 3px 6px; color: var(--fg); background: var(--input); border: 1px solid var(--border); border-radius: 4px; }
 
 /* Thin scrollbars in the theme's own colours instead of the engine's wide default. */
@@ -73,12 +75,24 @@ textarea { box-sizing: border-box; width: 100%; min-height: 64px; max-height: 50
   <div class="actions top"><button id="new" type="button">New conversation</button></div>
   <div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" title="Ask without the review's blocks" aria-label="Remove the review context">&#215;</button></div>
   <textarea id="prompt" placeholder="Ask VERTEX ... (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea>
-  <div class="actions"><span id="working"></span></div>
+  <div class="actions"><span id="working"></span><span id="working-elapsed" hidden></span></div>
 </footer>
 <script>
 var INIT = /*INIT*/null/*INIT*/;
 var conversation = [];
 var asking = false;
+var workingStarted = 0, workingTimer = null;
+function showWorkingTime() {
+  var elapsed = document.getElementById("working-elapsed");
+  if (!workingStarted) { elapsed.hidden = true; elapsed.textContent = ""; return; }
+  elapsed.hidden = false;
+  elapsed.textContent = "· " + Math.floor((Date.now() - workingStarted) / 1000) + " s";
+}
+function stopWorkingTime() {
+  workingStarted = 0;
+  if (workingTimer) { clearInterval(workingTimer); workingTimer = null; }
+  showWorkingTime();
+}
 function recall(key) {
   try { return window.localStorage.getItem("vertex.chat." + key) || ""; }
   catch (e) { return ""; }
@@ -197,6 +211,8 @@ function send(selectedFragment) {
   input.value = ""; fitPrompt();
   if (asked) { reviewAsk = null; showReview(); }
   document.getElementById("working").textContent = asking + " is working ...";
+  stopWorkingTime(); workingStarted = Date.now(); showWorkingTime();
+  workingTimer = setInterval(showWorkingTime, 1000);
   var state = { conversation: conversation.slice() };
   if (asked) state.review_ask = { object: asked.object, all: asked.all, blocks: asked.blocks.map(function (b) { return b.block; }) };
   if (selectedFragment) { state.selected_fragment = selectedFragment; }
@@ -248,6 +264,7 @@ function sdeAssistant(raw) {
   }
   var who = "VERTEX" + (data.model ? " · " + data.model : "");
   asking = false;
+  stopWorkingTime();
   document.getElementById("working").textContent = "";
   if (data.error) {
     conversation.push({ role: "assistant", content: "Request failed: " + data.error });

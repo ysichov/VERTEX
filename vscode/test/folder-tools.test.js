@@ -54,6 +54,41 @@ test("a read-only folder turn creates a review copy only on Edit and overlays ch
   assert.match((await agent.call("Read",{file_path:"b.txt"})).text,/updated in project/);
   assert.equal((await agent.call("Grep",{pattern:"after",glob:"*.txt"})).matches[0].file,"a.txt");
 });
+test("review copy line endings do not make a previously read file look stale", async t => {
+  const project=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-lf-project-"));
+  const copy=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-crlf-copy-"));
+  t.after(()=>{fs.rmSync(project,{recursive:true,force:true});fs.rmSync(copy,{recursive:true,force:true});});
+  fs.writeFileSync(path.join(project,"a.txt"),"one\ntwo\n");
+  fs.writeFileSync(path.join(copy,"a.txt"),"one\r\ntwo\r\n");
+  const agent=tools.create({workspace:{getConfiguration:()=>({get:(_key,fallback)=>fallback})}},
+    {cwd:project,projectFolder:project,prepareEdit:async()=>({cwd:copy,pendingChanges:async()=>[]})});
+  t.after(()=>agent.dispose());
+  await agent.call("Read",{file_path:"a.txt"});
+  await agent.call("Edit",{file_path:"a.txt",old_string:"one",new_string:"changed"});
+  assert.match(fs.readFileSync(path.join(copy,"a.txt"),"utf8"),/^changed/);
+});
+test("generated VS Code page paths edit their tracked source in the review copy", async t => {
+  const project=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-pages-project-"));
+  const copy=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-pages-copy-"));
+  t.after(()=>{fs.rmSync(project,{recursive:true,force:true});fs.rmSync(copy,{recursive:true,force:true});});
+  const source=path.join("org.vertex.abap.ui","resources","versions.html");
+  const generated=path.join("vscode","resources","versions.html");
+  fs.mkdirSync(path.dirname(path.join(project,source)),{recursive:true});
+  fs.mkdirSync(path.dirname(path.join(project,generated)),{recursive:true});
+  fs.mkdirSync(path.dirname(path.join(copy,source)),{recursive:true});
+  fs.writeFileSync(path.join(project,source),"original");
+  fs.writeFileSync(path.join(project,generated),"stale copy");
+  fs.writeFileSync(path.join(copy,source),"original");
+  const agent=tools.create({workspace:{getConfiguration:()=>({get:(_key,fallback)=>fallback})}},
+    {cwd:project,projectFolder:project,prepareEdit:async()=>({cwd:copy,pendingChanges:async()=>[]})});
+  t.after(()=>agent.dispose());
+  const generatedPath=path.join(project,generated);
+  assert.equal((await agent.call("Read",{file_path:generatedPath})).text,"1: original");
+  await agent.call("Edit",{file_path:generatedPath,old_string:"original",new_string:"updated"});
+  assert.equal(fs.readFileSync(path.join(copy,source),"utf8"),"updated");
+  assert.equal(fs.readFileSync(generatedPath,"utf8"),"stale copy");
+  assert.equal(agent.changes()[0].file,source.replace(/\\/g,"/"));
+});
 test("in-place sed prepares the copy before Bash can execute",async t=>{
   const project=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-sed-project-"));
   const copy=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-sed-copy-"));

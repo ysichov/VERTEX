@@ -15,11 +15,9 @@ function report(name) {
   }
 }
 
-/* Which waiting scene a tool call deserves, by its name. The folder's own tools split in two - looking at the code
-   and changing it - while everything the SAP side offers is one conversation with the system. Bash has no scene:
-   it is told by its command line instead, and returning null leaves whatever scene is running untouched rather
-   than blanking the message for one step. */
-const SCENES = { Read: "search", Glob: "search", Grep: "search", Edit: "edit", Write: "edit", Bash: null, Verification: null };
+/* The tool's identity determines its scene. Local Bash work uses its own construction mark;
+   only the result returns to the model's reasoning scene. */
+const SCENES = { Read: "search", Glob: "search", Grep: "search", Edit: "edit", Write: "edit", Bash: "tooling", Verification: null };
 
 function scene(name) {
   const tool = String(name || "").replace(/^mcp__vertex__/, "");

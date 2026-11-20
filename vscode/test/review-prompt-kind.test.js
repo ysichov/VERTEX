@@ -35,6 +35,13 @@ test("technical documentation prompt keeps diff evidence and ends with TR detail
     assert.doesNotMatch(prompt, /Review this ABAP change: what it does and any real problem/);
   }
 });
+test("transport description reaches the technical prompt", () => {
+  const state=context();
+  state.sdeSetRequestDescription("S 8000048997: Description");
+  assert.match(state.reviewPrompt(false,null,"technical"),/TR details: ER6K9A1QXV — S 8000048997: Description$/);
+  state.objectName=()=>"OTHER";
+  assert.match(state.reviewPrompt(false,null,"technical"),/TR details: OTHER$/);
+});
 
 test("a created object goes to the prompt whole and named NEW, a changed one named MODIFIED", () => {
   const state = context();

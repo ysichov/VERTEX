@@ -17,6 +17,7 @@ test("Push previews the actual branch and pushes only after explicit invocation,
   assert.equal(git(remote,"rev-parse","refs/heads/topic"),info.head);
 });
 test("GitHub disabled credential prompts explain authentication on the extension host",()=>{
+  assert.match(helper.gitError("! [remote rejected] test -> test (directory file conflict)").message,/Choose a different destination branch name/);
   for(const field of ["Username","Password"]){
     const original="fatal: could not read "+field+" for 'https://github.com': terminal prompts disabled";
     const message=helper.gitError(original).message;

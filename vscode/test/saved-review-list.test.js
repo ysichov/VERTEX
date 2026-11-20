@@ -20,11 +20,11 @@ test('only saved reviews get a link and clicking it opens Review instead of the 
  const nodes=[],selected=[];
  const element=tag=>{const el={tag,children:[],appendChild(child){this.children.push(child)},addEventListener(name,fn){this[name]=fn}};nodes.push(el);return el};
  const root=element('root');
- const context=vm.createContext({document:{getElementById:()=>root,createElement:element},fillUser(){},showPartsPanel(){},status(){},cell(){},asDate:()=>'',asTime:()=>'',sdeSelectObject:value=>selected.push(value),
+ const context=vm.createContext({document:{getElementById:()=>root,createElement:element},fillUser(){},showPartsPanel(){},status(){},cell(){},asDate:()=>'',asTime:()=>'',sdeSetRequestDescription(value){context.requestDescription=value;},sdeSelectObject:value=>selected.push(value),
  table:(columns,rows,fill)=>{assert.equal(columns.length,8);assert.ok(!columns.includes("Review"));const table=element('table');for(const row of rows){const tr=element('tr');fill(tr,row);table.appendChild(tr)}return table}});
  vm.runInContext(page.slice(page.indexOf('function renderRequests('),page.indexOf('/* ---------- versions ---------- */')),context);
- context.renderRequests({user:'DEV',requests:[{request:'K1',review_saved:true,review_sources:['table']},{request:'K2',review_saved:false}]});
+ context.renderRequests({user:'DEV',requests:[{request:'K1',text:'Description one',review_saved:true,review_sources:['table']},{request:'K2',review_saved:false}]});
  const links=nodes.filter(n=>n.tag==='a');assert.equal(links.length,1);assert.equal(links[0].textContent,'K1');
  let prevented=false,stopped=false;links[0].click({preventDefault(){prevented=true},stopPropagation(){stopped=true}});
- assert.ok(prevented&&stopped);assert.equal(selected.length,1);assert.equal(selected[0].name,'K1');assert.equal(selected[0].action,'review');
+ assert.ok(prevented&&stopped);assert.equal(selected.length,1);assert.equal(selected[0].name,'K1');assert.equal(selected[0].action,'review');assert.equal(selected[0].description,'Description one');
 });

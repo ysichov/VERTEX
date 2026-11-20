@@ -12,12 +12,13 @@ test("chat review scene survives progress updates and is removed on completion o
  const dirname=path.join(__dirname,".."),sandbox={module:{exports:{}},require,__dirname:dirname};vm.runInNewContext(fs.readFileSync(path.join(dirname,"sidebar.js"),"utf8")+"\nmodule.exports.render=html;",sandbox);
  const script=sandbox.module.exports.render("test").match(/<script nonce="test">([\s\S]*?)<\/script>/)[1],start=script.indexOf("function paintTaskScene("),end=script.indexOf("\n}\n",start)+2;
  const item={dataset:{},children:[],setAttribute(name,value){this[name]=value;},querySelector(){return this.children[0];},appendChild(child){this.children.push(child);}};
- const context={window:{},taskVisuals:{review:visual.html("review"),commit:visual.html("commit"),edit:visual.html("edit")},document:{createElement(){return {dataset:{},setAttribute(){},remove(){item.children=[];}};}}};vm.runInNewContext(script.slice(start,end),context);
+ const context={window:{},taskVisuals:{review:visual.html("review"),commit:visual.html("commit"),edit:visual.html("edit"),search:visual.html("search"),thinking:visual.html("thinking")},document:{createElement(){return {dataset:{},setAttribute(){},remove(){item.children=[];}};}}};vm.runInNewContext(script.slice(start,end),context);
  context.paintTaskScene(item,{kind:"review"});const first=item.children[0];assert.match(first.innerHTML,/review-lens/);assert.equal(item['aria-busy'],"true");
  context.paintTaskScene(item,{status:"Model request"});assert.equal(item.children[0],first);
  context.paintTaskScene(item,{done:true,answer:"Request failed"});assert.equal(item.children.length,0);assert.equal(item['aria-busy'],"false");
  context.paintTaskScene(item,{kind:"commit"});assert.match(item.children[0].innerHTML,/commit-link/);context.paintTaskScene(item,{done:true});assert.equal(item.children.length,0);
- context.paintTaskScene(item,{kind:"edit"});assert.match(item.children[0].innerHTML,/hx-/);context.paintTaskScene(item,{kind:null,status:"Bash"});assert.equal(item.children.length,0);assert.equal(item.dataset.taskKind,"");context.paintTaskScene(item,{thinking:"Reading logs"});assert.equal(item.children.length,0);
+ context.paintTaskScene(item,{kind:"edit"});assert.match(item.children[0].innerHTML,/hx-/);context.paintTaskScene(item,{kind:null,status:"Bash"});assert.equal(item.dataset.taskKind,"thinking");context.paintTaskScene(item,{thinking:"Reading logs"});assert.equal(item.dataset.taskKind,"thinking");
+ context.paintTaskScene(item,{kind:"search"});assert.equal(item.dataset.taskKind,"search");context.paintTaskScene(item,{thinking:"Reasoning after Grep"});assert.equal(item.dataset.taskKind,"thinking");
 });
 
 test("commit waiting visual covers generation and commit, and stops after success or failure",()=>{
@@ -33,26 +34,51 @@ test("commit waiting visual covers generation and commit, and stops after succes
  node("commit-form").onsubmit({preventDefault(){}});assert.equal(node("commit-working")["data-operation"],"commit");assert.match(node("commit-status").textContent,/Creating a local Git commit/);assert.equal(node("commit-working").hidden,false);listeners[0]({data:{commitDone:{hash:"abc"}}});assert.equal(node("commit-working").hidden,true);assert.equal(context.commitDialog['aria-busy'],"false");assert.equal(node("commit-status").dataset.operationStatus,"success");assert.equal(node("commit-status")["aria-atomic"],"true");listeners[0]({data:{commitDone:{hash:"abc",warning:"Post-commit warning"}}});assert.equal(node("commit-status").dataset.operationStatus,"warning");
 });
 
-test("the search band spells out what is being looked for, in the middle of the bits", () => {
+test("search uses a compact lens with seamless scrolling code", () => {
   const visual = require("../task-visual");
-  const band = visual.html("search", false, "AI logging");
-  const word = /<text class="sw-word"[^>]*>([^<]*)<\/text>/.exec(band);
-  assert.ok(word, "the pattern is drawn as text");
-  assert.equal(word[1], "AI logging");
-  assert.match(band, /class="sw-bit sw-hit"[^>]*><text class="sw-word"/, "and is lit like a hit");
-  assert.match(band, /class="sw-bit"/, "bits still run on both sides of it");
-  // A band with nothing to say is the chain of bits it always was.
-  const plain = visual.html("search", false, "");
-  assert.doesNotMatch(plain, /sw-word/);
-  assert.match(plain, /sw-hit/, "its own lit bits stay");
+  const lens = visual.html("search");
+  assert.match(lens, /task-search-icon/);assert.match(lens, /search-lens/);
+  assert.equal((lens.match(/<i><\/i>/g)||[]).length,16);
+  assert.match(visual.css,/vertex-search-code/);assert.match(visual.css,/translateY\(-28px\)/);
+  assert.doesNotMatch(lens,/task-band|sw-bit/);
 });
 
-test("a pattern from the model is escaped before it is drawn, and a long one is cut", () => {
+test("reasoning uses the AI mark", () => {
   const visual = require("../task-visual");
-  const band = visual.html("search", false, '<script>alert(1)</script>');
-  assert.doesNotMatch(band, /<script>/);
-  assert.match(band, /&lt;script&gt;/);
-  const long = visual.html("search", false, "x".repeat(100));
-  const word = /<text class="sw-word"[^>]*>([^<]*)<\/text>/.exec(long);
-  assert.ok(word[1].length <= 28, "a long pattern is cut to the band: " + word[1].length);
+  assert.match(visual.html("thinking"),/ai-core">AI/);
+  assert.match(visual.css,/vertex-ai-breathe/);
+});
+
+test("local commands use an animated terminal mark", () => {
+  const visual = require("../task-visual");
+  assert.match(visual.html("tooling"),/task-tooling-icon/);
+  assert.match(visual.html("tooling"),/tool-terminal/);
+  assert.match(visual.html("tooling"),/tool-gear/);
+  assert.match(visual.css,/vertex-tool-spin/);
+});
+
+test("screenshot recognition erases the miniature while bytes descend with the beam", () => {
+  const visual = require("../task-visual");
+  const scene = visual.html("recognize");
+  assert.match(scene,/class="kw-screen-image"/);
+  assert.match(scene,/class="vertex-task-visual task-recognize"/);
+  assert.match(scene,/class="kw-wipe"/);assert.match(scene,/class="kw-beam"/);
+  assert.match(scene,/class="kw-bitflow"/);
+  assert.equal((scene.match(/class="kw-bit(?: kw-bit-\w+)?"/g)||[]).length,5);
+  assert.match(visual.css,/vertex-kw-descend 8s/);
+  assert.match(visual.css,/vertex-kw-wipe 8s/);
+});
+
+test("recognition scene fills the miniature from the current screenshot", () => {
+  const dirname=path.join(__dirname,".."),sandbox={module:{exports:{}},require,__dirname:dirname};
+  vm.runInNewContext(fs.readFileSync(path.join(dirname,"sidebar.js"),"utf8")+"\nmodule.exports.render=html;",sandbox);
+  const script=sandbox.module.exports.render("test").match(/<script nonce="test">([\s\S]*?)<\/script>/)[1];
+  const start=script.indexOf("function paintTaskScene("),end=script.indexOf("\n}\n",start)+2;
+  const attrs={};
+  const scene={dataset:{},setAttribute(){},querySelector(selector){return selector==='svg'?{classList:{add(name){attrs.class=name;}}}:selector==='.kw-screen-image'?{setAttribute(name,value){attrs[name]=value;}}:null;}};
+  const item={dataset:{},querySelector:()=>null,appendChild(){},setAttribute(){}};
+  const context={window:{},taskVisuals:{recognize:require("../task-visual").html("recognize")},requestScreenshots:new Map([[17,[{media_type:"image/png",data:"AAAA"}]]]),document:{createElement:()=>scene}};
+  vm.runInNewContext(script.slice(start,end),context);
+  context.paintTaskScene(item,{id:17,kind:"recognize",imageIndex:0});
+  assert.equal(attrs.href,"data:image/png;base64,AAAA");assert.equal(attrs.class,"has-screenshot");
 });

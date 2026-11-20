@@ -131,6 +131,44 @@ test("blame credits each line to the developer whose task it came from, a transp
   assert.deepStrictEqual(payload.OBJ_STATS[0].BT_AUTHORS.map(a => [a.AUTHOR, a.INS_COUNT, a.HUNK_COUNT]), [["DEVA", 1, 1], ["DEVB", 1, 0]]);
 });
 
+test("developer totals include deletions by their removing author without counting modifications twice", async () => {
+  const feed = [
+    { id: "00000", uri: "/d/0", author: "DEVB", transport: "K3B" },
+    { id: "00002", uri: "/d/2", author: "DEVA", transport: "K3A" },
+    { id: "00001", uri: "/d/1", author: "OLD", transport: "K0" }];
+  const sources = {
+    "/d/1": "anchor.\ndrop_a.\nkeep.\ndrop_b.\ntail.\nwrite old.\nend.",
+    "/d/2": "anchor.\nkeep.\ndrop_b.\ntail.\nwrite new.\nend.",
+    "/d/0": "anchor.\nkeep.\ntail.\nwrite new.\nend.\nadded."
+  };
+  const api = {
+    query: async sql => {
+      if (/INNER JOIN e071/.test(sql)) { return { values: [] }; }
+      if (/FROM e070 WHERE trkorr/.test(sql)) {
+        const task = (/WHERE trkorr = '([^']+)'/.exec(sql) || [])[1];
+        return { values: task === "K3" ? [{ TRKORR: "K3", TRSTATUS: "D" }]
+          : task === "K3A" || task === "K3B" ? [{ TRFUNCTION: "S", AS4USER: task === "K3A" ? "DEVA" : "DEVB" }] : [] };
+      }
+      if (/FROM e070 WHERE strkorr/.test(sql)) { return { values: [{ TRKORR: "K3A" }, { TRKORR: "K3B" }] }; }
+      if (/FROM e071/.test(sql) && !/object = 'MERG'/.test(sql)) {
+        return { values: [{ PGMID: "R3TR", OBJECT: "PROG", OBJ_NAME: "ZDELETIONS" }] };
+      }
+      return { values: [] };
+    },
+    revisions: async () => feed,
+    revisionSource: async uri => sources[uri]
+  };
+  const payload = await build(api, "K3", undefined, false, true);
+  const stats = payload.OBJ_STATS[0];
+  assert.ok(stats);
+  assert.deepStrictEqual([stats.INS_COUNT, stats.DEL_COUNT, stats.MOD_COUNT], [1, 2, 1]);
+  const counts = rows => rows.map(a => [a.AUTHOR, a.INS_COUNT, a.DEL_COUNT, a.MOD_COUNT]).sort();
+  assert.deepStrictEqual(counts(stats.BT_AUTHORS), [["DEVA", 0, 1, 1], ["DEVB", 1, 1, 0]]);
+  for (const field of ["INS_COUNT", "DEL_COUNT", "MOD_COUNT"]) {
+    assert.strictEqual(stats.BT_AUTHORS.reduce((sum, a) => sum + a[field], 0), stats[field]);
+  }
+});
+
 test("AVE's ignore rules: generator stamps, generated objects, comment-only objects, empty sections", () => {
   const { stripStamps, generatedObject, commentsOnly, emptySection, maintenanceGenerated } = require("../review-live");
   assert.strictEqual(maintenanceGenerated(["*---*", "*    program for:   TABLEFRAME_ZHR_FG", "*   generation date: 16.07.2019",

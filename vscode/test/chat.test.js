@@ -1335,6 +1335,7 @@ test('host edit completion and a subsequent Bash command clear the edit scene',a
  t.mock.method(compatible,'models',async()=>[{id:'model',capabilities:{tools:true}}]);
  t.mock.method(compatible,'ask',async options=>{
   await options.callTool('Read',{file_path:'a.txt'});
+  await options.callTool('Grep',{pattern:'before',path:root});
   await options.callTool('Edit',{file_path:'a.txt',old_string:'before',new_string:'after'});
   await options.callTool('Bash',{command:'exit 0',purpose:'command'});
   return {model:'model',plan:{answer:'done',navigation:null,build_command:''}};
@@ -1342,7 +1343,8 @@ test('host edit completion and a subsequent Bash command clear the edit scene',a
  const vscode=fakeVscode({provider:'vercel-api',model:'model',shellWithoutAsking:true});vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];
  const updates=[];await chat.create(vscode,{schemas:[],instructions:'',editorContext:()=>null},null,{get:async()=>null})('Edit then inspect',{contextMode:'folder',onProgress:update=>updates.push(update)});
  const edit=updates.findIndex(update=>update.kind==='edit');assert.ok(edit>=0);
+ const search=updates.findIndex(update=>update.kind==='search');assert.ok(search>=0);assert.equal(updates[search+1].kind,null,'search result restores the waiting logo');
  assert.equal(updates[edit+1].kind,null,'edit result clears the helix');
- assert.equal(updates.find(update=>/— Bash/.test(update.status||'')).kind,null,'Bash explicitly clears prior scene');
+ assert.equal(updates.find(update=>/— Bash/.test(update.status||'')).kind,'tooling','Bash uses the local tool scene');
  assert.equal(fs.readFileSync(path.join(root,'a.txt'),'utf8'),'after');
 });

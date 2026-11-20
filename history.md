@@ -2,6 +2,14 @@
 
 The VS Code extension version is 0.9.105. The VSIX is built after the version changes are approved.
 
+## 2026-11-20 — Count deleted rows in review developer totals
+
+Reviews built from ADT with blame enabled now include deleted rows in each developer's totals, so deletion counts agree with the object totals. Modified rows continue to count once as modifications.
+
+## 2026-11-20 — Show chat request duration
+
+The chat shows elapsed seconds beside its working status while a prompt is running, then hides the timer when the response arrives.
+
 ## 2026-11-19 — Build the VSIX without a second model call
 
 In the VERTEX repository, a VSIX request now lets Jev choose whether to build the current version or increase it first. VERTEX itself computes the new version and shows the file diff for Apply; after all version files are applied, it runs the packaging wrapper. An explicit version in the request is used as written.

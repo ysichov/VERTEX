@@ -26,6 +26,12 @@ test("the verification step never shows the MCP scene; it leaves the running sce
   assert.equal(progress.scene("abap_objects_generator_run"), "mcp");
 });
 
+test("local Bash commands show the construction scene", () => {
+  const progress = require("../chat-progress");
+  assert.equal(progress.scene("Bash"), "tooling");
+  assert.equal(progress.scene("mcp__vertex__Bash"), "tooling");
+});
+
 test("the folder's own tools are not counted twice from the endpoint listener", () => {
   const source = require("node:fs").readFileSync(require.resolve("../chat"), "utf8");
   assert.match(source, /if \(localTools && localTools\.schemas\.some\(tool => tool\.name === bare\)\) return;/);

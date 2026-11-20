@@ -275,6 +275,7 @@
   .review .caret { display: inline-block; width: 1.1em; color: var(--vscode-focusBorder, #3498db); cursor: pointer; }
   .review .grpcnt { color: var(--muted); font-weight: normal; }
   .review .lnk { color: var(--vscode-textLink-foreground, #3498db); cursor: pointer; text-decoration: underline; }
+  .review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   a.request-review-link { color: var(--vscode-textLink-foreground, var(--fg)); text-decoration: underline; cursor: pointer; }
   .review a.objlink { color: var(--vscode-textLink-foreground, #3498db); cursor: pointer; text-decoration: underline; }
   .review table.ave tr.created td,
@@ -1259,7 +1260,7 @@ function renderRequests(data) {
     rows, function (tr, r) {
       tr.className = "pick";
       tr.title = "Open " + r.request;
-      tr.addEventListener("click", function () { openRequest(r.request); });
+      tr.addEventListener("click", function () { openRequest(r.request, false, r.text); });
       var reviewCell = document.createElement("td");
       reviewCell.className = "mono";
       if (r.review_saved) {
@@ -1269,7 +1270,7 @@ function renderRequests(data) {
         link.textContent = r.request;
         link.title = "Open saved review in " + (r.review_sources || []).join(" and ");
         link.addEventListener("click", function (event) {
-          event.preventDefault(); event.stopPropagation(); openRequest(r.request, true);
+          event.preventDefault(); event.stopPropagation(); openRequest(r.request, true, r.text);
         });
         reviewCell.appendChild(link);
       } else { reviewCell.textContent = r.request; }
@@ -1286,13 +1287,14 @@ function renderRequests(data) {
 }
 
 /* A request picked from the list opens exactly as its typed number would. */
-function openRequest(number, openReview) {
+function openRequest(number, openReview, description) {
+  sdeSetRequestDescription(description, number);
   // The unified Tools window owns the object selector in its header. Let it
   // take the selection too, so the request that was picked is visible there.
   if (typeof sdeSelectObject === "function") {
     // Opening a found request is a Versions operation. Review is explicitly
     // chosen afterwards; it must not be requested merely by selecting a row.
-    sdeSelectObject({ type: "TR", name: number, action: openReview ? "review" : "diff" });
+    sdeSelectObject({ type: "TR", name: number, action: openReview ? "review" : "diff", description: requestDescription });
     return;
   }
   document.getElementById("type").value = "TR";
@@ -1544,7 +1546,7 @@ function showMask(ops) {
    BLOCKS is the review's, and optional: a plain diff has none. Where one
    begins, its row goes in ahead of the line. The diff is drawn by this one
    function either way, so a block and its lines cannot drift apart. */
-function diffTable(ops, blocks, offset, object) {
+function diffTable(ops, blocks, offset, object, neutralNew) {
   var show = compact ? showMask(ops) : null;
   var tbody = document.createElement("tbody");
   var line = offset || 0;
@@ -1597,7 +1599,7 @@ function diffTable(ops, blocks, offset, object) {
 
     var old = pairs[index] !== undefined ? ops[pairs[index]] : null;
     var tr = document.createElement("tr");
-    if (o.op === "+") { tr.className = old ? "mod" : "ins"; }
+    if (o.op === "+" && !neutralNew) { tr.className = old ? "mod" : "ins"; }
     if (o.op === "-") { tr.className = "del"; }
 
     var ln = document.createElement("td");
@@ -1612,7 +1614,7 @@ function diffTable(ops, blocks, offset, object) {
 
     var mk = document.createElement("td");
     mk.className = "mk";
-    mk.textContent = o.op === "=" ? " " : old ? "~" : o.op;
+    mk.textContent = neutralNew && o.op === "+" ? " " : o.op === "=" ? " " : old ? "~" : o.op;
 
     var cd = document.createElement("td");
     if (old) { markWords(cd, wordDiff(old.text, o.text), "~"); } else { cd.textContent = o.text; }
@@ -1639,7 +1641,7 @@ function diffTable(ops, blocks, offset, object) {
    follows the one-column view: a row is shown when any of its lines is.
    SWAP puts the new version on the left and the old one on the right: that is
    how a version compared with a base reads, the base standing on the right. */
-function sideTable(ops, swap, blocks) {
+function sideTable(ops, swap, blocks, neutralNew) {
   var show = compact ? showMask(ops) : null;
   // A review's blocks stand above the row their first operation is in, across both columns.
   var opens = {};
@@ -1711,7 +1713,7 @@ function sideTable(ops, swap, blocks) {
       ln.className = "ln";
       ln.textContent = cell ? String(cell.n) : "";
       var code = document.createElement("td");
-      code.className = "code " + side[1] + " " + (cell ? cell.cls : "none");
+      code.className = "code " + side[1] + " " + (cell ? neutralNew && cell.cls === "ins" ? "" : cell.cls : "none");
       if (cell && row.words) { markWords(code, row.words, cell.cls === "del" ? "-" : "+"); }
       else { code.textContent = cell ? cell.text : ""; }
       if (cell) { blameMark(code, cell.who); }
@@ -2043,7 +2045,10 @@ var PROMPT_CHOICES = [["Code review", "Prompt for change review"], ["Technical d
 var promptOverrides = { review: null, technical: null }, promptWaiter = null, promptQueue = Promise.resolve();
 function promptBuiltIn(kind) { return kind === "technical" ? TECH_DOC_PROMPT : REVIEW_PROMPT; }
 function promptOpening(kind) { return promptOverrides[kind] === null ? promptBuiltIn(kind) : promptOverrides[kind]; }
-function promptEnding(kind) { return kind === "technical" ? "\n\nTR details: " + objectName() : ""; }
+var requestDescription = "";
+var requestDescriptionFor = "";
+function sdeSetRequestDescription(value, number) { requestDescription = String(value || ""); requestDescriptionFor = String(number || objectName()).toUpperCase(); }
+function promptEnding(kind, description) { description = description || (requestDescriptionFor === objectName().toUpperCase() ? requestDescription : ""); return kind === "technical" ? "\n\nTR details: " + objectName() + (description ? " — " + description : "") : ""; }
 function sdePromptFileReady(raw) {
   if (!promptWaiter) return;
   var complete = promptWaiter; promptWaiter = null;
@@ -2418,10 +2423,11 @@ function renderReviewClass(data) {
     }
     review_ops = s.ops || []; review_blocks = s.blocks || [];
     if (matching) {
-      matching.forEach(function (b) { root.appendChild(blockCard(b, { ops: s.ops || [], ddic_needs: s.ddic_needs })); });
+      matching.forEach(function (b) { root.appendChild(blockCard(b, { ops: s.ops || [], ddic_needs: s.ddic_needs, is_created: s.is_created })); });
       return;
     }
-    root.appendChild(sideBySide ? sideTable(s.ops || [], true, s.blocks || []) : diffTable(s.ops || [], s.blocks || [], 0, part));
+    var neutralNew = Boolean(s.is_created) || (s.ops || []).length > 0 && (s.ops || []).every(function (o) { return o.op === "+"; });
+    root.appendChild(sideBySide ? sideTable(s.ops || [], true, s.blocks || [], neutralNew) : diffTable(s.ops || [], s.blocks || [], 0, part, neutralNew));
   });
   if (classFilter !== "all") {
     if (!shown) { var none = document.createElement("p"); none.textContent = "No blocks match this filter."; root.appendChild(none); }
@@ -2576,7 +2582,8 @@ function renderReviewPart(data) {
     root.appendChild(orphans);
   }
 
-  root.appendChild(sideBySide ? sideTable(ops, true, blocks) : diffTable(ops, blocks));
+  var neutralNew = Boolean(review_part && review_part.is_created) || ops.every(function (o) { return o.op === "+"; });
+  root.appendChild(sideBySide ? sideTable(ops, true, blocks, neutralNew) : diffTable(ops, blocks, 0, null, neutralNew));
 
   var approved = blocks.filter(function (b) { return b.action === "A"; }).length;
   var declined = blocks.filter(function (b) { return b.action === "D"; }).length;
@@ -3060,7 +3067,9 @@ function blockCard(block, body, scope) {
     while (from > 0 && block.op_from - 1 - from < 3 && body.ops[from - 1].op === "=") from--;
     while (to < body.ops.length && to - block.op_to < 3 && body.ops[to].op === "=") to++;
     var offset = body.ops.slice(0, from).filter(function (op) { return op.op !== "-"; }).length;
-    card.appendChild(diffTable(body.ops.slice(from, to), null, offset, scope && scope.object));
+    var neutralNew = Boolean(body.is_created || scope && scope.object && scope.object.is_created)
+      || body.ops.length > 0 && body.ops.every(function (op) { return op.op === "+"; });
+    card.appendChild(diffTable(body.ops.slice(from, to), null, offset, scope && scope.object, neutralNew));
   } else {
     var note = document.createElement("p"); note.textContent = body.ddic_needs || "This block cannot be located in the saved line diff."; card.appendChild(note);
   }
@@ -3233,46 +3242,39 @@ function objectGroups(objects) {
     byName[name].push(o);
   });
   var tables = [];
-  var links = document.createElement("div");
-  [["Expand all", true], ["Collapse all", false]].forEach(function (l, i) {
-    if (i) { links.appendChild(document.createTextNode("  \u00b7  ")); }
-    var a = document.createElement("span"); a.className = "lnk"; a.textContent = l[0];
-    a.addEventListener("click", function () {
+  var links = document.createElement("div"); links.className = "review-actions";
+  [["Expand all", true], ["Collapse all", false]].forEach(function (l) {
+    var button = document.createElement("button"); button.type = "button"; button.textContent = l[0];
+    button.addEventListener("click", function () {
       if (l[1] && review && review.saved === true && !review_live && !review_building) {
         renderPerson("Review: " + objectName(), null, "A:");
       } else { tables.forEach(function (t) { t.fold(!l[1]); }); }
     });
-    links.appendChild(a);
+    links.appendChild(button);
   });
   if (review && review.saved === true && !review_live && !review_building) {
-    links.appendChild(document.createTextNode("  ·  "));
-    var codeReview = document.createElement("span");
-    codeReview.className = "lnk";
+    var codeReview = document.createElement("button"); codeReview.type = "button";
     codeReview.textContent = "Code review";
     codeReview.title = "Open the changed objects (the ticked ones, or all) with the code review prompt";
     codeReview.addEventListener("click", function () { promptKind = "review"; renderPerson("Review: " + objectName(), null, "A:"); });
     links.appendChild(codeReview);
-    links.appendChild(document.createTextNode("  ·  "));
-    var documentation = document.createElement("span");
-    documentation.className = "lnk";
+    var documentation = document.createElement("button"); documentation.type = "button";
     documentation.textContent = "Technical documentation";
     documentation.title = "Open all changed objects and copy a technical documentation prompt";
     documentation.addEventListener("click", function () { promptKind = "technical"; renderPerson("Review: " + objectName(), null, "A:"); });
     links.appendChild(documentation);
   }
   if (canPick) {
-    links.appendChild(document.createTextNode("  ·  "));
     counter.title = "The objects Expand all, Code review and Technical documentation open and put in the prompt; none ticked means all";
     links.appendChild(counter);
     [["All", true], ["None", false]].forEach(function (choice) {
-      links.appendChild(document.createTextNode("  ·  "));
-      var a = document.createElement("span"); a.className = "lnk"; a.textContent = choice[0];
-      a.title = choice[1] ? "Tick every object" : "Clear the selection (all objects are taken)";
-      a.addEventListener("click", function () {
+      var button = document.createElement("button"); button.type = "button"; button.textContent = choice[0];
+      button.title = choice[1] ? "Tick every object" : "Clear the selection (all objects are taken)";
+      button.addEventListener("click", function () {
         promptPick.keys = {}; if (choice[1]) allKeys.forEach(function (k) { promptPick.keys[k] = true; });
         refreshPick();
       });
-      links.appendChild(a);
+      links.appendChild(button);
     });
   }
   if (groups.length > 1 || objects.length && review && review.saved === true && !review_live && !review_building) { box.appendChild(links); }
@@ -3995,6 +3997,7 @@ document.getElementById("selection-send").addEventListener("click", function () 
 });
 
 var INITIAL = /*INIT*/null/*INIT*/;
+if (INITIAL) sdeSetRequestDescription(INITIAL.description, INITIAL.name);
 fillTypes(INITIAL ? INITIAL.type : null);
 showFinder();
 if (INITIAL) {

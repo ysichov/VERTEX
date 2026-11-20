@@ -91,16 +91,43 @@ test("automatic log updates wait for the Flow detail dialog to close and retain 
       dispatchEvent: event => receive(event) },
     MessageEvent: class MessageEvent { constructor(name, options) { this.data = options.data; } },
     rememberReading() {}, render: report => rendered.push(report.id), reportMode: "logs",
-    waitingDetail: {}, vscode: { postMessage() {} }
+    waitingDetail: {}, conversationState: null, vscode: { postMessage() {} }
   };
   vm.createContext(sandbox);
-  vm.runInContext(page.slice(page.indexOf("  var deferredReport = null;"), page.indexOf('  vscode.postMessage({ action: "ready" });')), sandbox);
+  vm.runInContext(page.slice(page.indexOf("  function readingAnchor()"), page.indexOf('  vscode.postMessage({ action: "ready" });')), sandbox);
   receive({ data: { action: "data", automatic: true, report: { id: 1 } } });
   receive({ data: { action: "data", automatic: true, report: { id: 2 } } });
   assert.deepEqual(rendered, []);
   dialogOpen = false; close();
   assert.deepEqual(rendered, [2]);
   close(); assert.deepEqual(rendered, [2], "a close event cannot replay an older report");
+});
+test("automatic log update keeps the row being read at the same screen position", () => {
+  const page=fs.readFileSync(path.join(__dirname,"../../org.vertex.abap.ui/resources/log-report.html"),"utf8");
+  let receive,top=80,shift=0;
+  const row={dataset:{sessionId:"old"},getBoundingClientRect:()=>({top:top+shift,bottom:top+shift+30})};
+  const sandbox={document:{querySelector:()=>null,querySelectorAll:()=>[row],addEventListener(){}},
+    window:{scrollX:0,scrollY:200,scrollTo(){},scrollBy(_x,y){shift-=y;},addEventListener(_name,fn){receive=fn;}},
+    conversationState:null,conversationScreen:{hidden:true},rememberReading(){},render(){top+=45;},reportMode:"logs",
+    waitingDetail:{},vscode:{postMessage(){}}};
+  vm.createContext(sandbox);
+  vm.runInContext(page.slice(page.indexOf("  function readingAnchor()"),page.indexOf('  vscode.postMessage({ action: "ready" });')),sandbox);
+  receive({data:{action:"data",automatic:true,report:{}}});
+  assert.equal(shift,-45);
+  assert.equal(row.getBoundingClientRect().top,80);
+});
+test("automatic log update preserves scrolling inside an open conversation", () => {
+  const page=fs.readFileSync(path.join(__dirname,"../../org.vertex.abap.ui/resources/log-report.html"),"utf8");
+  let receive,pane={scrollTop:320,scrollLeft:40};
+  const sandbox={document:{querySelector:selector=>selector.includes("table-scroll")?pane:null,querySelectorAll:()=>[],addEventListener(){}},
+    window:{scrollX:0,scrollY:0,scrollTo(){},addEventListener(_name,fn){receive=fn;}},
+    conversationState:{id:"one"},conversationScreen:{hidden:false},rememberReading(){},render(){pane={scrollTop:0,scrollLeft:0};},reportMode:"logs",
+    waitingDetail:{},vscode:{postMessage(){}}};
+  vm.createContext(sandbox);
+  vm.runInContext(page.slice(page.indexOf("  function readingAnchor()"),page.indexOf('  vscode.postMessage({ action: "ready" });')),sandbox);
+  receive({data:{action:"data",automatic:true,report:{}}});
+  assert.equal(pane.scrollTop,320);
+  assert.equal(pane.scrollLeft,40);
 });
 
 test("log refresh restores lazy nested disclosures while keeping new steps closed", () => {
@@ -122,6 +149,25 @@ test("log refresh restores lazy nested disclosures while keeping new steps close
   after.children.push(updatedSteps);
   sandbox.disclosureState(after, saved);
   assert.equal(updatedSteps.open, true); assert.equal(updatedTool.open, true); assert.equal(newTool.open, false);
+});
+test("unchanged open prompt reuses its detail across automatic refreshes", () => {
+  const page=fs.readFileSync(path.join(__dirname,"../../org.vertex.abap.ui/resources/log-report.html"),"utf8");
+  const requests=[];
+  const sandbox={vscode:{postMessage:value=>requests.push(value)}};
+  vm.createContext(sandbox);
+  vm.runInContext(page.slice(page.indexOf("  var waitingDetail = {}"),page.indexOf("  function serviceResult(")),sandbox);
+  const first={key:"prompt-1",end:42,lazy:true};
+  sandbox.loadPromptDetails(first,()=>{});
+  assert.equal(requests.length,1);
+  sandbox.waitingDetail[first.key][0]({prompt:{details:[{type:"answer",text:"Done"}]}});
+  delete sandbox.waitingDetail[first.key];
+  const again={key:"prompt-1",end:42,lazy:true};
+  sandbox.loadPromptDetails(again,()=>{});
+  assert.equal(requests.length,1);
+  assert.equal(again.lazy,false);
+  assert.equal(again.details[0].text,"Done");
+  sandbox.loadPromptDetails({key:"prompt-1",end:43,lazy:true},()=>{});
+  assert.equal(requests.length,2);
 });
 
 
