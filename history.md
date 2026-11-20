@@ -1,3 +1,7 @@
+## VSIX 0.9.105
+
+The VS Code extension version is 0.9.105. The VSIX is built after the version changes are approved.
+
 ## 2026-11-19 — Build the VSIX without a second model call
 
 In the VERTEX repository, a VSIX request now lets Jev choose whether to build the current version or increase it first. VERTEX itself computes the new version and shows the file diff for Apply; after all version files are applied, it runs the packaging wrapper. An explicit version in the request is used as written.

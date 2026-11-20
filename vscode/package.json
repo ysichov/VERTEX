@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.104",
+  "version": "0.9.105",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -1089,11 +1089,20 @@
           "scope": "resource",
           "items": {
             "type": "object",
-            "required": ["glob", "command"],
+            "required": [
+              "glob",
+              "command"
+            ],
             "additionalProperties": false,
             "properties": {
-              "glob": { "type": "string", "description": "Changed file glob relative to the repository root, for example **/*.py." },
-              "command": { "type": "string", "description": "Project check command in the agent working folder; uses the existing shell permission setting." }
+              "glob": {
+                "type": "string",
+                "description": "Changed file glob relative to the repository root, for example **/*.py."
+              },
+              "command": {
+                "type": "string",
+                "description": "Project check command in the agent working folder; uses the existing shell permission setting."
+              }
             }
           },
           "markdownDescription": "Required project checks after Code Agent edits, before review. Matching commands run once in the working copy with existing command permissions and a two-minute timeout. Failed checks go back to the model for one repair attempt. Declined/unavailable checks are reported as unverified. Built-in JavaScript/JSON/webview checks run without shell commands."

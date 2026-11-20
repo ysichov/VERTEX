@@ -1457,7 +1457,6 @@ function markdown(text, target) {
       { name: "", cls: "select-cell", width: 34, nosort: true },
       { name: "Conversation", cls: "", width: null, value: function (s) { return String(promptPreview(s.prompts) || "").toLowerCase(); } },
       { name: "Prompts", cls: "num", width: 70, num: true, value: function (s) { return s.prompts.filter(chat).length || s.prompts.length; } },
-      { name: "Providers", cls: "", width: 120, value: function (s) { return (s.models || []).join(" ") + " " + s.provider; } },
       { name: "Run", cls: "num", width: 55, num: true, value: function (s) { return s.toolCalls || 0; } },
        { name: "New in", cls: "num", width: 75, num: true, value: function (s) { return newInput(s.usageByKind.model); } },
       { name: "Out", cls: "num", width: 70, num: true, value: function (s) { return s.usageByKind.model.output || 0; } },
@@ -1488,28 +1487,18 @@ function markdown(text, target) {
       title.title = preview;
       // Where it was held, under the question: with no filter chosen the list mixes places, and the row
       // has to say which one it belongs to. A conversation without a recorded place shows no line.
-      if (s.context) {
-        var place = el("span", "conversation-place", contextLabel(s.context));
-        place.title = s.context.mode === "folder" ? s.context.folder
-          : "SAP system " + s.context.system + (s.context.client ? ", client " + s.context.client : "");
-        title.appendChild(place);
-      }
+      var place = el("span", "conversation-place", s.context ? contextLabel(s.context) : "");
+      if (s.context) place.title = s.context.mode === "folder" ? s.context.folder
+        : "SAP system " + s.context.system + (s.context.client ? ", client " + s.context.client : "");
+      if (s.context) place.appendChild(document.createTextNode(" · "));
+      place.appendChild(el("span", "provider", s.provider));
+      var conversationJev=jevLink(s.usageByKind.jev,s.costs.jev);if(conversationJev){place.appendChild(document.createTextNode(", "));place.appendChild(conversationJev);}
+      title.appendChild(place);
       title.tabIndex = 0;
       main.appendChild(title);
       var actions = el("div", "list-tools");
       main.appendChild(el("td", "num prompt-count", String(s.prompts.filter(chat).length || s.prompts.length)));
       var models = s.models || [];
-      var who = el("td", "identity");
-      var whoLabel = el("div", "identity-label");
-      whoLabel.appendChild(el("span", "provider", s.provider));
-      var conversationJev=jevLink(s.usageByKind.jev,s.costs.jev);if(conversationJev){whoLabel.appendChild(document.createTextNode(", "));whoLabel.appendChild(conversationJev);}
-      who.appendChild(whoLabel);
-      if (models.length) {
-        var modelsLine = el("span", "identity-models", models.join(", "));
-        modelsLine.title = models.join(", ");
-        who.appendChild(modelsLine);
-      }
-      main.appendChild(who);
       main.appendChild(el("td", "num", n(s.toolCalls)));
       main.appendChild(el("td", "num", n(newInput(s.usageByKind.model))));
       main.appendChild(el("td", "num", n(s.usageByKind.model.output)));

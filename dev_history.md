@@ -1,3 +1,7 @@
+## Prepare VSIX 0.9.105
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
 ## 2026-11-19 — Deterministic VSIX skill executor
 
 The matched build-vertex-vsix skill now exits the normal assistant call path. Jev's skill match includes a bounded version-choice question; `vsix-workflow.js` validates package, lockfile, Eclipse feature and bundle versions, computes patch increments, and stages edits in the existing Git review copy. Plain builds use the local Bash tool with normal command approval. Version builds start only after every review file is applied. The wrapper's verified artifact and exit code determine success. The package verifier now requires the executor module. Focused workflow, skill-match and chat-path tests pass.
