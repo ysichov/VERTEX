@@ -33,19 +33,36 @@ async function evaluate(vscode, task, stage, report, evidence, options={}) {
 
 async function verifyTask(vscode, task, answer, evidence, options={}) {
  const changes=(evidence.changes||[]).map(change=>({file:change.file,status:change.status,binary:change.binary,hunks:change.binary?[]:require("./code-review").hunks(change.before||"",change.after||"")}));
- const proof={changes,hostChecks:evidence.hostChecks,pending:evidence.pending,tools:(evidence.tools||[]).filter(tool=>/^(Edit|Write|Verification)$/.test(tool.tool))};
+ const proof={changes,hostChecks:evidence.hostChecks,pending:evidence.pending,tools:(evidence.tools||[]).filter(tool=>/^(Edit|Write|Verification)$/.test(tool.tool)
+   || tool.tool==="Bash" && /(?:^|\s)(?:node\s+--test|npm\s+test|pnpm\s+test|yarn\s+test|pytest|mvn\s+test|gradle\s+test)(?:\s|$)/i.test(String(tool.arguments?.command||"")))};
  // The diff proves exactly what changed; the resulting source lets Jev check
  // surrounding selectors, callers and declarations when the budget permits.
  const limit=180000;
+ const excerpt=(source,hunks,status)=>{
+   const lines=source.replace(/\r\n/g,"\n").split("\n"),ranges=[];
+   for(const h of hunks){
+     const from=status==="deleted"?h.beforeFrom:h.afterFrom,to=status==="deleted"?h.beforeTo:h.afterTo;
+     ranges.push([Math.max(0,from-6),Math.min(lines.length,Math.max(from+1,to)+6)]);
+   }
+   ranges.sort((a,b)=>a[0]-b[0]);
+   const merged=[];for(const range of ranges){const last=merged[merged.length-1];if(last&&range[0]<=last[1])last[1]=Math.max(last[1],range[1]);else merged.push(range.slice());}
+   const text=merged.map(([from,to])=>lines.slice(from,to).map((line,i)=>(from+i+1)+": "+line).join("\n")).join("\n…\n");
+   return {kind:"excerpt",text:text.slice(0,12000),...(text.length>12000?{truncated:true}:{}),totalCharacters:source.length};
+ };
  for(let index=0;index<changes.length;index++){
    const change=evidence.changes[index];
    if(changes[index].binary)continue;
    const source=change.status==="deleted"?change.before:change.after;
    if(typeof source!=="string")continue;
-   changes[index].source={kind:change.status==="deleted"?"before":"after",text:source};
+   if(/\.(?:md|txt|rst)$/i.test(change.file)||/(?:^|[/\\])(?:test|tests|__tests__)[/\\]/i.test(change.file)){
+     changes[index].source={kind:"omitted",reason:"Supporting file; complete changed hunks are included",characters:source.length};
+     continue;
+   }
+   changes[index].source=source.length>12000?excerpt(source,changes[index].hunks,change.status)
+     :{kind:change.status==="deleted"?"before":"after",text:source};
    if(JSON.stringify(proof).length>limit)changes[index].source={kind:"omitted",reason:"decision input limit",characters:source.length};
  }
- const stage={id:1,task,completion_checks:["Assess only the performed code-change step before human diff review: do the exact recorded changes implement the requested edit without introducing a visible defect? Use the complete changed hunks and host lint results. Failed Edit/Write calls are failed attempts, not applied changes. Do not assess completion of the whole task or require subsequent build, packaging, deployment, Apply or human review. Missing evidence means unverified, not failed."]};
+ const stage={id:1,task,completion_checks:["Assess only the performed code-change step before human diff review: do the exact recorded changes implement the requested edit without introducing a visible defect? Use the complete changed hunks, host lint results and recorded test command results. A file type with no built-in checker, such as Markdown, is not by itself evidence that the code edit failed or is incomplete. Failed Edit/Write calls are failed attempts, not applied changes. Do not assess completion of the whole task or require subsequent build, packaging, deployment, Apply or human review. Missing evidence means unverified, not failed."]};
  let result;
  try {if(JSON.stringify(proof).length>limit)throw new Error("The complete change diff exceeds the decision input limit; no changed hunks were silently omitted.");result=await evaluate(vscode,task,stage,{step:"Code changes awaiting human review"},proof,{...options,operation:OPERATION});}
  catch(error){if(options.signal?.aborted)throw error;result={status:"unverified",checks:[],error:error.message};}

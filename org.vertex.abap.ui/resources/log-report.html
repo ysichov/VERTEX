@@ -11,6 +11,7 @@
     background: var(--vscode-editor-background); color: var(--vscode-editor-foreground);
     font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
   }
+  html { overflow-anchor: none; }
   header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
   h1 { font-size: 1.2em; margin: 0 auto 0 0; }
   button {
@@ -62,7 +63,7 @@
   .entry.model > summary .entry-preview { color: var(--vscode-charts-green, var(--vscode-editor-foreground)); }
   .step-note.thinking > summary .entry-preview { color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); }
   .entry.model .detail, .step-note.thinking .detail { color: var(--vscode-editor-foreground); }
-  .entry.tool { --entry-color: var(--vscode-charts-orange, var(--vscode-textLink-foreground)); }
+  .entry.tool { --entry-color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground)); }
   .entry.jev { --entry-color: var(--vscode-charts-purple, var(--vscode-textLink-foreground)); }
   .entry.vertex { --entry-color: var(--vscode-charts-red, var(--vscode-textLink-foreground)); }
   .entry > summary { padding: 6px 8px; cursor: pointer; color: var(--vscode-descriptionForeground); font-weight: 600; }
@@ -88,6 +89,7 @@
   .entry-body { padding: 0 8px 4px; }
   .kind { padding: 4px 8px; color: var(--entry-color); font-size: 0.9em; }
   .table-scroll { overflow-x: auto; }
+  #conversation-screen .table-scroll { flex: 1; min-height: 0; overflow: auto; }
   table.session-table { table-layout: fixed; width:100%; }
   /* At least the fixed columns plus room for the question: below that the pane scrolls instead of hiding it. */
   table.conversation-table { table-layout: fixed; width:100%; }
@@ -601,12 +603,15 @@ function markdown(text, target) {
       };
     });
   }
-  var waitingDetail = {};
+  var waitingDetail = {}, promptDetailCache = Object.create(null);
   function loadPromptDetails(p, done) {
     if (!p.lazy) { done(null); return; }
+    var cached = promptDetailCache[p.key];
+    if (cached && cached.end === p.end) { Object.assign(p, cached.prompt, { lazy: false }); done(null); return; }
     var request = !waitingDetail[p.key];if (request) waitingDetail[p.key] = [];
     waitingDetail[p.key].push(function(reply){
       if (reply.error) { done(reply.error); return; }
+      promptDetailCache[p.key] = { end: p.end, prompt: reply.prompt };
       Object.assign(p, reply.prompt, { lazy: false });done(null);
     });
     if (request) vscode.postMessage({ action: "promptDetail", key: p.key });
@@ -1471,6 +1476,7 @@ function markdown(text, target) {
     sortableHead(list, columns, records);
     report.sessions.forEach(function (s) {
       var main = el("tr", "conversation-row"), detail = el("tr", "conversation-detail");
+      main.dataset.sessionId = s.id;
       var technical = !s.prompts.some(chat);
       if (technical) main.classList.add("technical");
       var pick = el("td", "select-cell");
@@ -1657,6 +1663,7 @@ function markdown(text, target) {
     var several = s.prompts.length > 1;
     function renderPrompt(p, number) {
       var row = el("tr", several ? "compact" : "");
+      row.dataset.promptKey = p.key;
       var cell = el("td", "prompt-cell");
       // The conversation body gets a row of its own, spanning every column, as the conversation list already
       // does: inside the first cell a fixed-layout table squeezes an answer into the Conversation column.
@@ -1765,6 +1772,32 @@ function markdown(text, target) {
   }
 
 
+  function readingAnchor() {
+    if (conversationState && !conversationScreen.hidden) return null;
+    if (typeof document.querySelectorAll !== "function") return null;
+    var selector = "tr[data-session-id]";
+    var rows = Array.from(document.querySelectorAll(selector));
+    var row = rows.find(function (item) { return item.getBoundingClientRect().bottom > 0; });
+    if (!row) return null;
+    return { selector: selector, key: row.dataset.promptKey || row.dataset.sessionId, top: row.getBoundingClientRect().top };
+  }
+  function conversationScroll() {
+    var pane = document.querySelector("#conversation-screen .table-scroll");
+    return conversationState && pane ? { top: pane.scrollTop, left: pane.scrollLeft } : null;
+  }
+  function restoreReadingAnchor(anchor, x, y) {
+    window.scrollTo(x, y);
+    if (!anchor) return;
+    var row = Array.from(document.querySelectorAll(anchor.selector)).find(function (item) {
+      return (item.dataset.promptKey || item.dataset.sessionId) === anchor.key;
+    });
+    if (row) window.scrollBy(0, row.getBoundingClientRect().top - anchor.top);
+  }
+  function restoreConversationScroll(position) {
+    if (!position) return;
+    var pane = document.querySelector("#conversation-screen .table-scroll");
+    if (pane) { pane.scrollTop = position.top; pane.scrollLeft = position.left; }
+  }
   var deferredReport = null;
   document.addEventListener("close", function () {
     if (deferredReport && !document.querySelector("dialog[open]")) {
@@ -1778,17 +1811,21 @@ function markdown(text, target) {
     if (m.action === "data") {
       deferredReport = null;
       var scrollX = window.scrollX, scrollY = window.scrollY;
+      var anchor = m.automatic ? readingAnchor() : null;
+      var inside = conversationScroll();
       rememberReading();
       lastReport = m.report; usageRows = m.usageRows || [];
       render(m.report, m.automatic); if (reportMode === "costs") renderCosts();
-      window.scrollTo(scrollX, scrollY);
-      pendingReadingScroll = Object.keys(waitingDetail).length ? { x: scrollX, y: scrollY } : null;
+      restoreReadingAnchor(anchor, scrollX, scrollY);
+      restoreConversationScroll(inside);
+      pendingReadingScroll = Object.keys(waitingDetail).length ? { x: scrollX, y: scrollY, anchor: anchor, inside: inside } : null;
     }
     if (m.action === "promptDetail") {
       var waiting = waitingDetail[m.key] || []; delete waitingDetail[m.key];
       waiting.forEach(function (done) { done(m); });
       if (pendingReadingScroll && !Object.keys(waitingDetail).length) {
-        window.scrollTo(pendingReadingScroll.x, pendingReadingScroll.y); pendingReadingScroll = null;
+        restoreReadingAnchor(pendingReadingScroll.anchor, pendingReadingScroll.x, pendingReadingScroll.y);
+        restoreConversationScroll(pendingReadingScroll.inside); pendingReadingScroll = null;
       }
     }
     if (m.action === "error") { status.className = "error"; status.textContent = m.error; }

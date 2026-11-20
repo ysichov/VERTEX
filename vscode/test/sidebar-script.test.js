@@ -2,7 +2,7 @@
 const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 
-test("working logo returns after an Edit scene is cleared", () => {
+test("Edit scene changes to AI reasoning when the tool returns", () => {
   const folder = path.join(__dirname, "..");
   const sandbox = { module: { exports: {} }, require, __dirname: folder };
   vm.runInNewContext(fs.readFileSync(path.join(folder, "sidebar.js"), "utf8") + "\nmodule.exports.renderForTest = html;", sandbox);
@@ -13,7 +13,7 @@ test("working logo returns after an Edit scene is cleared", () => {
   vm.runInNewContext(source + "\nthis.paint = paintTaskScene;", context);
   const item = { dataset: { taskKind: "edit", taskSubject: "file.js" }, querySelector: () => null, setAttribute() {} };
   context.paint(item, { kind: null });
-  assert.equal(Object.hasOwn(item.dataset, "taskKind"), false);
+  assert.equal(item.dataset.taskKind, "thinking");
   assert.equal(Object.hasOwn(item.dataset, "taskSubject"), false);
   assert.match(markup, /\.vertex\.task\[data-task-kind\]::before\{display:none\}/);
 });

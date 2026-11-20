@@ -25,7 +25,7 @@ function changeRuns(ops, run) {
         if (at >= 0) { used[at] = true; }
         return at;
       });
-      run(adds, pairs, used);
+      run(adds, pairs, used, dels);
     }
     dels = []; adds = [];
   };
@@ -172,18 +172,21 @@ async function blameOf(api, feed, pair, ops, textOf, ownerOf, numbers) {
 }
 const blamed = (map, text) => { const b = map.find(m => m.TEXT === text); return b && b.AUTHOR ? b.AUTHOR : ""; };
 
-// ZCL_VX_REVIEW_STATS=>FROM_DIFF with a blame map: per author, inserted and modified lines (a modified line is its new
-// text's), a line the map does not know booked on DEF. Deleted lines are not booked on anyone, as in AVE. Blocks are
-// counted from the review's own blocks, so an author's blocks are the blocks the page lists under them.
-function blameAuthors(ops, map, def, hunks) {
+// Per author, inserted and modified lines use the new text's blame; unpaired deleted lines use the deletion map.
+// A line its map does not know is booked on DEF. Blocks are counted from the review's own blocks, so an author's
+// blocks are the blocks the page lists under them.
+function blameAuthors(ops, map, deleted, def, hunks) {
   const by = new Map();
   const at = author => {
     if (!by.has(author)) { by.set(author, { AUTHOR: author, AUTHOR_NAME: "", INS_COUNT: 0, DEL_COUNT: 0, MOD_COUNT: 0,
       HUNK_COUNT: 0, HUNK_INS: 0, HUNK_MOD: 0, HUNK_DEL: 0 }); }
     return by.get(author);
   };
-  changeRuns(ops, (adds, pairs, used) => {
-    pairs.forEach(i => { if (i >= 0) { at(blamed(map, adds[i]) || def).MOD_COUNT++; } });
+  changeRuns(ops, (adds, pairs, used, dels) => {
+    pairs.forEach((i, k) => {
+      if (i >= 0) { at(blamed(map, adds[i]) || def).MOD_COUNT++; }
+      else { at(blamed(deleted, dels[k]) || def).DEL_COUNT++; }
+    });
     adds.forEach((a, k) => { if (!used[k]) { at(blamed(map, a) || def).INS_COUNT++; } });
   });
   hunks.forEach(h => {
@@ -626,7 +629,7 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
     payload.OBJ_STATS.push({ OBJTYPE: p.ptype, CLASS_NAME: p.className, OBJ_NAME: p.part, VERSNO_NEW: versnoNew, VERSNO_OLD: versnoOld,
       AUTHOR: pair.fresh.owner || pair.fresh.author, AUTHOR_NAME: "", INS_COUNT: ins, DEL_COUNT: del, MOD_COUNT: mod, HUNK_COUNT: ranges.length,
       HUNK_INS: hIns, HUNK_MOD: hMod, HUNK_DEL: hDel, DISPLAY_NAME: display, IS_CREATED: !pair.old,
-      BT_AUTHORS: withBlame ? blameAuthors(ops, blame.map, pair.fresh.owner || pair.fresh.author, partHunks) : [] });
+      BT_AUTHORS: withBlame ? blameAuthors(ops, blame.map, blame.deleted, pair.fresh.owner || pair.fresh.author, partHunks) : [] });
     onPart(payload);
   }
 

@@ -404,14 +404,13 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           try {
           const userMessage = "You: " + shown + (asked ? "  [" + review.askLabel(asked) + "]" : "")
             + (images.length ? "  [" + images.length + " screenshot" + (images.length > 1 ? "s" : "") + "]" : "");
-          let taskKind=web?"":/коммит|commit/i.test(shown)?"commit":asked||require("./git-history").reviewContext()||/ревью|review|дифф|diff|проверь\s+(?:код|изменен)/i.test(shown)?"review":"";
+          let taskKind=asked?"review":"thinking";
           await view.webview.postMessage({ progress: { id: requestId, kind:taskKind, user: userMessage, status: taskKind==="review"?"Reviewing changes…":taskKind==="commit"?"Preparing commit message…":"Working…" } });
           // Let the webview paint the question and the initial task animation before
           // tool-context collection starts doing synchronous work.
           await new Promise(resolve => setTimeout(resolve, 0));
             const scope = asked ? { review_ask: { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) } } : undefined;
             const state = web ? {} : (await toolContext(scope)) || {};
-            if(!web&&!taskKind&&(state.review_source||state.vertex_view?.view==="review")){taskKind="review";await view.webview.postMessage({progress:{id:requestId,kind:taskKind,status:"Reading review context…"}});}
             if (pending.cancelled) { await view.webview.postMessage({progress:{id:requestId,stopped:true,done:true}}); return; }
             if (asked) {
               state.review_ask = { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) };
@@ -614,6 +613,10 @@ body.vertex-motion-off *, body.vertex-motion-off *::before, body.vertex-motion-o
 ${require(require("path").join(__dirname,"task-visual")).css}
 #messages .vertex.task[data-task-kind]::before{display:none}
 #messages .vertex.task .task-scene{display:block;width:100%;margin-top:6px}
+#messages .vertex.task:is([data-task-kind="thinking"],[data-task-kind="search"],[data-task-kind="tooling"]) .task-scene{position:absolute;left:0;top:0;width:36px;height:36px;margin:0}
+#messages .vertex.task:is([data-task-kind="thinking"],[data-task-kind="search"],[data-task-kind="tooling"]) .task-timed{width:36px;height:36px}
+#messages .vertex.task:is([data-task-kind="thinking"],[data-task-kind="search"],[data-task-kind="tooling"]) .task-timed>.vertex-task-visual{flex:none}
+#messages .vertex.task:is([data-task-kind="thinking"],[data-task-kind="search"],[data-task-kind="tooling"]) .task-timer{display:none}
 #vercel-row-break { display:none; }
 body[data-provider="vercel-api"] #vercel-row-break, body[data-provider="opencode-api"] #vercel-row-break, body[data-provider="openrouter-api"] #vercel-row-break { display:block; flex-basis:100%; height:0; }
 #subprovider-select[hidden] { display:none; }
@@ -979,6 +982,7 @@ document.getElementById('chat').addEventListener('submit', event => {
   optimisticTask.appendChild(optimisticBody);
   document.getElementById('messages').appendChild(optimisticTask);
   progressItems.set(requestId, optimisticTask);
+  if(images.length)requestScreenshots.set(requestId,images.map(image=>({media_type:image.media_type,data:image.data})));
   api.postMessage({ action: 'chat', requestId, text, model: document.getElementById('model-select').value,
     routeTopics:!document.getElementById('topic-picker-label').hidden&&document.getElementById('topic-picker').value==='auto',
     images: images.map(image => ({ media_type: image.media_type, data: image.data })) });
@@ -1055,18 +1059,28 @@ document.addEventListener('keydown', event => {
   if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'c') copySelectedText(event);
 });
 const progressItems = new Map();
-const taskVisuals=${JSON.stringify(["review", "commit", "search", "mcp", "edit", "recognize"].reduce((all, kind) =>
+const requestScreenshots = new Map();
+const taskVisuals=${JSON.stringify(["review", "commit", "search", "thinking", "tooling", "mcp", "edit", "recognize"].reduce((all, kind) =>
   Object.assign(all, { [kind]: require(require("path").join(__dirname, "task-visual")).html(kind, true) }), {}))};
 function paintTaskScene(item,update){
-      if(update.kind===null){delete item.dataset.taskKind;delete item.dataset.taskSubject;}
-      if(['review','commit','search','mcp','edit','recognize'].includes(update.kind))item.dataset.taskKind=update.kind;
+      const reasoning=typeof update.thinking==='string'&&update.thinking&&!update.kind;
+      if(update.kind===null||reasoning){item.dataset.taskKind='thinking';delete item.dataset.taskSubject;}
+      if(['review','commit','search','thinking','tooling','mcp','edit','recognize'].includes(update.kind))item.dataset.taskKind=update.kind;
       // What a search is looking for travels with the step, so its band can spell the pattern out.
       if(typeof update.subject==='string')item.dataset.taskSubject=update.subject;
       let scene=item.querySelector('.task-scene');
-      if(update.done||update.kind===null){if(scene)scene.remove();}
+      if(update.done){if(scene)scene.remove();}
       else if(taskVisuals[item.dataset.taskKind]){if(!scene){scene=document.createElement('span');scene.className='task-scene';scene.setAttribute('aria-hidden','true');item.appendChild(scene);}const want=item.dataset.taskKind,said=item.dataset.taskSubject||'';
-        if(scene.dataset.kind!==want||scene.dataset.said!==said){scene.dataset.kind=want;scene.dataset.said=said;
-        scene.innerHTML=want==='search'&&said&&typeof window!=='undefined'&&window.vertexTaskVisual?window.vertexTaskVisual.html('search',false,said):taskVisuals[want];
+        if(scene.dataset.kind!==want||scene.dataset.said!==said||(want==='recognize'&&scene.dataset.imageIndex!==String(update.imageIndex||0))){scene.dataset.kind=want;scene.dataset.said=said;scene.dataset.imageIndex=String(update.imageIndex||0);
+        scene.innerHTML=taskVisuals[want];
+        if(want==='recognize'){
+          const pictures=requestScreenshots.get(update.id),index=Math.max(0,Math.min((pictures?.length||1)-1,Number(update.imageIndex)||0));
+          const picture=pictures?.[index],svg=scene.querySelector('svg'),image=scene.querySelector('.kw-screen-image');
+          if(svg&&image&&picture&&/^image\\\/(?:png|jpeg|gif|webp)$/.test(picture.media_type)&&typeof picture.data==='string'){
+            const source='data:'+picture.media_type+';base64,'+picture.data;
+            image.setAttribute('href',source);svg.classList.add('has-screenshot');
+          }
+        }
         // The edit and MCP scenes change at random, which CSS cannot do: they need their driver on the node drawn.
         if(window.vertexTaskVisual)window.vertexTaskVisual.drive(scene);}}
       item.setAttribute('aria-busy',String(!update.done));
@@ -1135,7 +1149,7 @@ window.addEventListener('message', event => {
       document.getElementById('messages').appendChild(item);
       progressItems.set(update.id, item);
     }
-    if (item && update.remove) { item.remove(); progressItems.delete(update.id); }
+    if (item && update.remove) { item.remove(); progressItems.delete(update.id);requestScreenshots.delete(update.id); }
     else if (item) {
       if(update.topic){setTopic(item,update.topic);let prior=item.previousElementSibling;if(prior?.classList.contains('you'))setTopic(prior,update.topic);}
       // The text first, the waiting scene right under it.
@@ -1188,6 +1202,7 @@ window.addEventListener('message', event => {
       }
       if (update.done && update.usage && limitsLine) limitsLine.remove();
       if (update.done) {
+        requestScreenshots.delete(update.id);
         item.classList.remove('working');
         const answer = item.dataset.answer || '';
         if (!body.querySelector('.stream-part.answer')) appendPart('answer', answer || 'No answer returned.');

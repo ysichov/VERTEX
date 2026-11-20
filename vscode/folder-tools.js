@@ -78,6 +78,13 @@ function create(vscode, options) {
     let relative = path.relative(project, absolute);
     if (root !== project && (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)))
       relative = path.relative(root, absolute);
+    // vscode/resources is a generated, ignored copy of the tracked Eclipse pages.
+    // Its files exist in the project but not in a Git review worktree.
+    const parts = relative.split(path.sep);
+    if (parts.length === 3 && parts[0].toLowerCase() === "vscode" && parts[1].toLowerCase() === "resources") {
+      const source = path.join("org.vertex.abap.ui", "resources", parts[2]);
+      if (fs.existsSync(path.join(project, source))) relative = source;
+    }
     return relative;
   };
   function commandLocation(args) {
@@ -94,6 +101,7 @@ function create(vscode, options) {
   const approve = approval.set(vscode);
   const seen = new Map();
   const written = new Map();
+  const sameText = (a, b) => a === b || typeof a === "string" && typeof b === "string" && a.replace(/\r\n/g, "\n") === b.replace(/\r\n/g, "\n");
   const inPlaceSed = command => /(?:^|[\s;&|])sed(?:\.exe)?\s+(?:[^\r\n;&|]*?\s)?(?:-i\b|--in-place\b)/i.test(String(command||""));
   const switchToReview = async () => {
     if (reviewAfter || !options.prepareEdit) return;
@@ -237,7 +245,7 @@ function create(vscode, options) {
       const file = resolve(args.file_path);
       const before = fs.existsSync(file) ? read(file) : null;
       if (!seen.has(file)) seen.set(file, seen.get(path.join(project, relativeToProject(args.file_path))));
-      if (before !== null && seen.get(file) !== before) throw new Error("Read the current file before changing it; it is unread or has changed.");
+      if (before !== null && !sameText(seen.get(file), before)) throw new Error("Read the current file before changing it; it is unread or has changed.");
       if (name === "Write" && typeof args.content !== "string" || name === "Edit" && (typeof args.old_string !== "string" || typeof args.new_string !== "string")) throw new Error("File contents must be strings.");
       const input = { ...args, file_path: file };
       const change = approval.change(name, input, read);

@@ -28,11 +28,12 @@ test('global verification uses its own operation, completed evidence and actual 
  assert.deepEqual(capture().input.state.tool_evidence.changes[0].source,{kind:'after',text:'const x=2;'});
  assert.deepEqual(capture().scope.context,{mode:'folder',folder:'C:/project'});
 });
-test('large unchanged source is explicitly omitted while the complete diff stays available',async t=>{
+test('large unchanged source is narrowed to changed lines and nearby context',async t=>{
  const capture=decision(t),context='/* context */\n'.repeat(15000);
  await checks.verifyTask({},'Change the colour','Done',{changes:[{file:'view.css',before:context+'color: gray;',after:context+'color: blue;'}]},{connection});
  const change=capture().input.state.tool_evidence.changes[0];
- assert.equal(change.source.kind,'omitted');assert.equal(change.source.characters,(context+'color: blue;').length);
+ assert.equal(change.source.kind,'excerpt');assert.equal(change.source.totalCharacters,(context+'color: blue;').length);
+ assert.match(change.source.text,/color: blue;/);assert.ok(change.source.text.length<12000);
  assert.deepEqual(change.hunks[0].after,['color: blue;']);
 });
 
@@ -40,6 +41,30 @@ test('pre-review check receives every changed line and excludes unrelated task c
  const capture=decision(t),body='x'.repeat(800);
  await checks.verifyTask({},'Show dates only for custom range','Build not run',{changes:[{file:'view.js',before:'old',after:body+'\nfrom.hidden = !custom;'}],context:'UNRELATED_HISTORY',hostChecks:{state:'passed'},tools:[]},{connection});
  const state=capture().input.state;assert.equal(state.tool_evidence.changes[0].hunks[0].after[1],'from.hidden = !custom;');assert.doesNotMatch(JSON.stringify(state),/UNRELATED_HISTORY|Build not run/);assert.match(state.stage.completion_checks[0],/Do not assess completion of the whole task/);
+});
+test('Jev sees recorded test commands but not unrelated shell diagnostics',async t=>{
+ const capture=decision(t);
+ await checks.verifyTask({},'Fix deletion totals','Done',{changes:[{file:'review.js',before:'old',after:'new'}],tools:[
+   {tool:'Edit',result:{changed:true}},
+   {tool:'Bash',arguments:{command:'node --test vscode/test/review-live.test.js'},result:{code:0,stdout:'25 passed'}},
+   {tool:'Bash',arguments:{command:'git status --short'},result:{code:0,stdout:'M review.js'}}
+ ]},{connection});
+ const proof=capture().input.state.tool_evidence;
+ assert.equal(proof.tools.length,2);
+ assert.equal(proof.tools[1].result.stdout,'25 passed');
+ assert.match(capture().input.state.stage.completion_checks[0],/no built-in checker/);
+});
+test('decision input keeps code context but omits unchanged supporting test and documentation source',async t=>{
+ const capture=decision(t);
+ await checks.verifyTask({},'Fix count','Done',{changes:[
+   {file:'src/count.js',before:'return 0;',after:'return total;'},
+   {file:'test/count.test.js',before:'old test',after:'new test'},
+   {file:'history.md',before:'old note',after:'new note'}
+ ]},{connection});
+ const changes=capture().input.state.tool_evidence.changes;
+ assert.equal(changes[0].source.text,'return total;');
+ assert.equal(changes[1].source.kind,'omitted');assert.equal(changes[2].source.kind,'omitted');
+ assert.ok(changes[1].hunks.length&&changes[2].hunks.length);
 });
 test('uncertain or unavailable verification stays unverified',async t=>{
  decision(t,'passed',0.5);assert.equal((await checks.verifyTask({},'Build','Done',{}, {connection})).status,'unverified');

@@ -222,6 +222,7 @@ function fields(){
 let pendingPart="";
 function navigate(value,remember){
   try{if(remember!==false&&current.name)navigation.push(Object.assign({},current));current=VertexObjects.normalize(value);
+    if(current.type==="TR")current.description=String(value.description||"");
     if(current.part)choosePart(current.part);backButton.hidden=!navigation.length;fields();if(current.name) run();}
   catch(e){notice(e.message);}
 }
@@ -406,7 +407,8 @@ function run(){
     mcpMount();
     return;
   }
-  try{current=VertexObjects.normalize(localFolderState?{type:"DEVC",name:current.name,action:actionBox.value}:{type:typeBox.value,name:nameBox.value,action:actionBox.value});}
+  try{const previous=current;current=VertexObjects.normalize(localFolderState?{type:"DEVC",name:current.name,action:actionBox.value}:{type:typeBox.value,name:nameBox.value,action:actionBox.value});
+    if(current.type==="TR"&&previous.type==="TR"&&current.name===previous.name)current.description=previous.description||"";}
   catch(e){notice(e.message);return;}
   if(!current.name){notice("Enter an object name.");return;}
   if(typeof sdeVertexContext==="function")sdeVertexContext(JSON.stringify({workspace:current}));
@@ -472,6 +474,7 @@ function mount(service,state,afterLoad){
   const identity=state.type+":"+state.name;
   if(frame&&frame.dataset.identity===identity){
     showFrame(frame);
+    if(service==="versions"&&typeof frame.contentWindow.sdeSetRequestDescription==="function")frame.contentWindow.sdeSetRequestDescription(state.description,state.name);
     // The page kept its own choice while hidden; the list may have moved on.
     if(selectedPart&&frame.dataset.part!==selectedPart.key&&typeof frame.contentWindow.sdeSelectPart==="function"){
       frame.dataset.part=selectedPart.key;frame.contentWindow.sdeSelectPart(selectedPart);

@@ -2,6 +2,10 @@
 
 The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
 
+## 2026-11-20 — Attribute deleted review rows to their removing author
+
+Searched the VS Code review code and Eclipse/shared resources for existing deletion blame handling; reused the live review's existing deletion map and change-run pairing. `changeRuns` now also supplies deleted texts, and `blameAuthors` books only unpaired deletions through `blame.deleted`, falling back to the part owner when no author is known. Modified rows still use the inserted text's author. Added a build-level regression with two removing authors, an insertion and a modification, checking per-author totals against object totals. Targeted review-live/review-front tests: baseline 24 passed; after the change 25 passed, no new failures. No package build or live SAP/host check; version unchanged.
+
 ## 2026-11-19 — Deterministic VSIX skill executor
 
 The matched build-vertex-vsix skill now exits the normal assistant call path. Jev's skill match includes a bounded version-choice question; `vsix-workflow.js` validates package, lockfile, Eclipse feature and bundle versions, computes patch increments, and stages edits in the existing Git review copy. Plain builds use the local Bash tool with normal command approval. Version builds start only after every review file is applied. The wrapper's verified artifact and exit code determine success. The package verifier now requires the executor module. Focused workflow, skill-match and chat-path tests pass.

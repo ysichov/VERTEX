@@ -2,6 +2,7 @@
 const { execFile } = require("node:child_process");
 function gitError(message){
   const text=String(message).trim();
+  if(/directory file conflict/i.test(text))return new Error("The destination branch name conflicts with an existing branch on the remote. Choose a different destination branch name and push again.\n\n"+text);
   if(!/could not read (?:Username|Password) for ['"]https:\/\/github\.com(?:[/'"]|$)/i.test(text)||!/terminal prompts disabled/i.test(text))return new Error(text);
   return new Error(text+"\n\nGitHub HTTPS authentication is required. VERTEX runs Git without interactive credential prompts.\nIn a terminal on the same machine as the VS Code extension host (the remote host for SSH, WSL or containers), run:\n  gh auth login --hostname github.com --git-protocol https --web\n  gh auth setup-git --hostname github.com\nComplete the browser sign-in, then retry the operation in VERTEX.\nIf gh is unavailable, install GitHub CLI or configure a Git credential manager for GitHub HTTPS. A GitHub account password cannot be used for Git authentication.\n\nQuick steps:\n  1. Install Git and GitHub CLI (https://cli.github.com; macOS: brew install gh, or download the .pkg; Windows: winget install GitHub.cli).\n  2. Sign in with the gh commands above.\n  3. Retry Push in VERTEX.\nWithout gh: create a personal access token (https://github.com/settings/tokens, scope repo) and enter it as the password on a one-time git push in a terminal, with a credential helper enabled (macOS: git config --global credential.helper osxkeychain).");
 }
