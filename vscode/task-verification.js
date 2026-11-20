@@ -34,9 +34,20 @@ async function evaluate(vscode, task, stage, report, evidence, options={}) {
 async function verifyTask(vscode, task, answer, evidence, options={}) {
  const changes=(evidence.changes||[]).map(change=>({file:change.file,status:change.status,binary:change.binary,hunks:change.binary?[]:require("./code-review").hunks(change.before||"",change.after||"")}));
  const proof={changes,hostChecks:evidence.hostChecks,pending:evidence.pending,tools:(evidence.tools||[]).filter(tool=>/^(Edit|Write|Verification)$/.test(tool.tool))};
+ // The diff proves exactly what changed; the resulting source lets Jev check
+ // surrounding selectors, callers and declarations when the budget permits.
+ const limit=180000;
+ for(let index=0;index<changes.length;index++){
+   const change=evidence.changes[index];
+   if(changes[index].binary)continue;
+   const source=change.status==="deleted"?change.before:change.after;
+   if(typeof source!=="string")continue;
+   changes[index].source={kind:change.status==="deleted"?"before":"after",text:source};
+   if(JSON.stringify(proof).length>limit)changes[index].source={kind:"omitted",reason:"decision input limit",characters:source.length};
+ }
  const stage={id:1,task,completion_checks:["Assess only the performed code-change step before human diff review: do the exact recorded changes implement the requested edit without introducing a visible defect? Use the complete changed hunks and host lint results. Failed Edit/Write calls are failed attempts, not applied changes. Do not assess completion of the whole task or require subsequent build, packaging, deployment, Apply or human review. Missing evidence means unverified, not failed."]};
  let result;
- try {if(JSON.stringify(proof).length>180000)throw new Error("The complete change diff exceeds the decision input limit; no changed hunks were silently omitted.");result=await evaluate(vscode,task,stage,{step:"Code changes awaiting human review"},proof,{...options,operation:OPERATION});}
+ try {if(JSON.stringify(proof).length>limit)throw new Error("The complete change diff exceeds the decision input limit; no changed hunks were silently omitted.");result=await evaluate(vscode,task,stage,{step:"Code changes awaiting human review"},proof,{...options,operation:OPERATION});}
  catch(error){if(options.signal?.aborted)throw error;result={status:"unverified",checks:[],error:error.message};}
  if(evidence.hostChecks?.state==="failed") result={...result,jev_status:result.status,host_override:true,status:"failed",checks:[...(result.checks||[]),{check:"Host automatic checks failed",status:"failed"}]};
  if(evidence.pending && result.status==="passed") result={...result,jev_status:result.status,host_override:true,status:"unverified",checks:[...(result.checks||[]),{check:"Host tools are still pending",status:"unverified"}]};
@@ -46,9 +57,19 @@ function format(result) {
  if(result.status==="passed")return "";
  return "VERTEX Jev change verification: "+result.status.toUpperCase()+"\n"+(result.error || (result.checks||[]).filter(c=>c.status!=="passed").map(c=>c.status+": "+c.check).join("\n") || "The performed change could not be verified.");
 }
-function canRecover(result, evidence) {
+function canRecover(result, evidence, hostChecks) {
  if(!result || result.status==="passed" || result.error || evidence.pending)return false;
- return !(evidence.tools||[]).some(tool=>tool.error && /user.*(?:declin|denied|refus)|permission.*denied|no longer active/i.test(JSON.stringify(tool.result)));
+ const tools=evidence.tools||[];
+ const unresolved=tools.filter((tool,index)=>tool.error && !(
+   /^(Edit|Write)$/.test(tool.tool) && tools.slice(index+1).some(later=>
+     later.tool===tool.tool && !later.error &&
+     String(later.arguments?.file_path||later.result?.file_path||"").toLowerCase()===
+       String(tool.arguments?.file_path||"").toLowerCase())));
+ // A low-confidence Jev verdict alone is not an actionable repair when the
+ // host checks passed and earlier edit errors were resolved by later edits.
+ if(result.status==="unverified" && hostChecks?.state==="passed" &&
+    !unresolved.length)return false;
+ return !tools.some(tool=>tool.error && /user.*(?:declin|denied|refus)|permission.*denied|no longer active/i.test(JSON.stringify(tool.result)));
 }
 function continuationQuestion(task, evidence) {
  const last=(evidence.tools||[]).slice().reverse().find(tool=>tool.error);

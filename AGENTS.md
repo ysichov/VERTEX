@@ -4,13 +4,11 @@
 
 - Before adding or restyling an interface control, find the same working control already used in the project and reuse its markup, behavior, and theme styling. Do not invent a separate variant for the same action. Check the result in its actual host and theme.
 
-- Keep the current version unless the user requests a version change. Build procedures are documented in `vsix.md` and `BUILD.md`; run them when the user asks for a build.
+- Keep the current version unless the user requests a version change. Version changes are documented in `vsix-version.md`; build procedures are documented in `vsix.md` and `BUILD.md`. Run the build when the user asks for it.
 
 - A full `npm test` in `vscode/` is about 1530 tests with a process per file and takes roughly five minutes. Run it **once** into a file, then read both the `ℹ tests/pass/fail` counters and the `✖` names out of that file. Never put two `npm test` runs in one command to collect the two separately - it doubles the wait for nothing. Compare the `✖` names against a baseline captured before the change: the claim to make is "no new failure", not a raw failure count.
 
-- When the user names a new version, bump it on both hosts together: `vscode/package.json`,
-  `org.vertex.abap.feature/feature.xml` and `org.vertex.abap.ui/META-INF/MANIFEST.MF`. In the same landing write the release into
-  the docs listed below (`history.md`, `dev_history.md`, and every page that states the version).
+- When the user names a new version or requests `+1`, follow `vsix-version.md` for all version files and release references.
   
 
 ## Documentation: update by purpose

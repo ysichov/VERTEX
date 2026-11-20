@@ -463,6 +463,8 @@ async function ask(options) {
     const timeout = options.timeout || TIMEOUT;
     const streaming = claudeLike(options.assistant) && typeof options.onProgress === "function";
     let pending = "", resultEvent = null, generated = "", structured = "", thinking = "", lastAnswer = "", lastStatus = "";
+    let codexPending = "", codexSummary = "";
+    const codexReasons = new Map(), loggedCodexReasons = new Set();
     const toolBlocks = new Map(), steps = new Map();
     const runId = require("crypto").randomBytes(8).toString("hex");
     let noteCount = 0, noteType = "", noteText = "";
@@ -597,6 +599,29 @@ async function ask(options) {
           }
         }
       }
+    } : options.assistant === "codex" && (options.onProgress || options.onStep) ? function (chunk) {
+      codexPending += chunk;
+      let end;
+      while ((end = codexPending.indexOf("\n")) !== -1) {
+        const line = codexPending.slice(0, end).trim();
+        codexPending = codexPending.slice(end + 1);
+        let event;
+        try { event = JSON.parse(line); } catch (_) { continue; }
+        const item = event.item;
+        if (!item || item.type !== "reasoning" || !["item.updated", "item.completed"].includes(event.type)) continue;
+        const id = String(item.id || "reasoning"), current = String(item.text || "");
+        const previous = codexReasons.get(id) || "";
+        if (current && current !== previous) {
+          codexReasons.set(id, current);
+          const added = current.startsWith(previous) ? current.slice(previous.length) : current;
+          codexSummary += (!previous && codexSummary ? "\n\n" : "") + added;
+          options.onProgress?.({ thinking: codexSummary, thinkingLabel: "Reasoning summary" });
+        }
+        if (event.type === "item.completed" && current && !loggedCodexReasons.has(id)) {
+          loggedCodexReasons.add(id);
+          options.onStep?.({ kind: "note", id: runId + ":reasoning:" + id, note: "thinking", text: current });
+        }
+      }
     } : null;
     let result;
     try {
@@ -604,6 +629,7 @@ async function ask(options) {
         { cwd: options.workDir || dir, env: env, input: command.input, timeout: timeout, onData, signal: options.signal });
       // Process a complete final event even when stdout omitted the trailing newline.
       if (streaming && pending.trim()) onData("\n");
+      if (options.assistant === "codex" && codexPending.trim() && onData) onData("\n");
     } finally {
       flushStreamNote();
     }
@@ -743,9 +769,13 @@ function codexCommand(options, dir) {
     args.push("-m", options.model);
   }
   // Codex's own name for the effort level chosen on the panel.
-  if (EFFORTS.codex.includes(options.effort)) {
-    args.push("-c", "model_reasoning_effort=" + options.effort);
+  const modernCodex = /^gpt-6(?:[.-]|$)/i.test(String(options.model || ""));
+  const codexEffort = modernCodex && options.effort === "minimal" ? "none" : options.effort;
+  const allowedEfforts = modernCodex ? ["none", "low", "medium", "high", "xhigh", "max"] : EFFORTS.codex;
+  if (allowedEfforts.includes(codexEffort)) {
+    args.push("-c", "model_reasoning_effort=" + codexEffort);
   }
+  args.push("-c", 'model_reasoning_summary="auto"');
   // Keep attachments in this request's temporary directory, removed by ask's finally block.
   (options.images || []).forEach((image, index) => {
     const extension = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }[image.media_type];
@@ -911,10 +941,17 @@ function collect(spawn, file, args, options) {
     let stderr = "";
     let timedOut = false;
     let settled = false;
-    const timer = setTimeout(function () {
-      timedOut = true;
-      child.kill();
-    }, options.timeout);
+    // The limit is for silence from the assistant, not the whole task. A folder
+    // run can spend many minutes on approvals and tests while still making progress.
+    let timer;
+    const armTimeout = function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        timedOut = true;
+        child.kill();
+      }, options.timeout);
+    };
+    armTimeout();
     const finish = function (code, error) {
       if (settled) { return; }
       settled = true;
@@ -923,6 +960,7 @@ function collect(spawn, file, args, options) {
     };
     child.stdout.on("data", function (d) {
       stdout += d;
+      if (!timedOut && !settled) armTimeout();
       if (options.onData) { options.onData(String(d)); }
     });
     child.stderr.on("data", function (d) { stderr += d; });

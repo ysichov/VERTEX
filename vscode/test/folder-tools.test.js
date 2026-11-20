@@ -8,7 +8,7 @@ function fixture(t, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-local-tools-"));
   const page = {}, asked = [];
   const vscode = { workspace: { getConfiguration: () => ({ get: (key, fallback) => key === 'logPath' ? root : fallback }) }, ViewColumn: { Beside: 2 }, window: {
-    showWarningMessage: async text => { asked.push(text); return options.allow ? "Allow" : undefined; },
+    showWarningMessage: options.showWarningMessage || (async text => { asked.push(text); return options.allow ? "Allow" : undefined; }),
     createWebviewPanel: () => ({ webview: { html: "", onDidReceiveMessage: fn => { page.send = fn; }, postMessage: async () => {} },
       onDidDispose: fn => { page.close = fn; }, dispose: () => page.close(), reveal() {} }) } };
   const steps = [];
@@ -28,6 +28,54 @@ test("a Glob pattern ending in / lists folders, not files", async t => {
   assert.deepEqual((await agent.call("Glob", { pattern: "*" })).matches, ["a.txt"]);
 });
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test("a read-only folder turn creates a review copy only on Edit and overlays changed files", async t => {
+  const project=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-lazy-project-"));
+  const copy=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-lazy-copy-"));
+  t.after(()=>{fs.rmSync(project,{recursive:true,force:true});fs.rmSync(copy,{recursive:true,force:true});});
+  fs.writeFileSync(path.join(project,"a.txt"),"before\n");
+  fs.writeFileSync(path.join(project,"b.txt"),"original\n");
+  let prepared=0;
+  const agent=tools.create({workspace:{getConfiguration:()=>({get:(_key,fallback)=>fallback})}},
+    {cwd:project,projectFolder:project,prepareEdit:async()=>{
+      prepared++;
+      fs.copyFileSync(path.join(project,"a.txt"),path.join(copy,"a.txt"));
+      fs.copyFileSync(path.join(project,"b.txt"),path.join(copy,"b.txt"));
+      return {cwd:copy,pendingChanges:async()=>[]};
+    }});
+  t.after(()=>agent.dispose());
+  assert.match((await agent.call("Read",{file_path:"a.txt"})).text,/before/);
+  assert.equal(prepared,0);
+  await agent.call("Edit",{file_path:"a.txt",old_string:"before",new_string:"after"});
+  assert.equal(prepared,1);
+  assert.equal(fs.readFileSync(path.join(project,"a.txt"),"utf8"),"before\n");
+  assert.match((await agent.call("Read",{file_path:"a.txt"})).text,/after/);
+  fs.writeFileSync(path.join(project,"b.txt"),"updated in project\n");
+  assert.match((await agent.call("Read",{file_path:"b.txt"})).text,/updated in project/);
+  assert.equal((await agent.call("Grep",{pattern:"after",glob:"*.txt"})).matches[0].file,"a.txt");
+});
+test("in-place sed prepares the copy before Bash can execute",async t=>{
+  const project=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-sed-project-"));
+  const copy=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-sed-copy-"));
+  t.after(()=>{fs.rmSync(project,{recursive:true,force:true});fs.rmSync(copy,{recursive:true,force:true});});
+  fs.writeFileSync(path.join(project,"a.txt"),"before\n");
+  let prepared=0;
+  const agent=tools.create({workspace:{getConfiguration:()=>({get:(_key,fallback)=>fallback})}},
+    {cwd:project,projectFolder:project,shellWithoutAsking:true,prepareEdit:async()=>{
+      prepared++;fs.copyFileSync(path.join(project,"a.txt"),path.join(copy,"a.txt"));
+      return {cwd:copy,pendingChanges:async()=>[]};
+    }});
+  t.after(()=>agent.dispose());
+  const result=await agent.call("Bash",{command:"sed -i 's/before/after/' '"+path.join(project,"a.txt")+"'",purpose:"command",target:"project"});
+  assert.equal(prepared,1);
+  assert.equal(result.cwd,fs.realpathSync(copy));
+  assert.equal(fs.readFileSync(path.join(project,"a.txt"),"utf8"),"before\n");
+});
+test("in-place sed cannot edit a folder without a review copy",async t=>{
+  const {agent,root}=fixture(t,{reviewAfter:false,allow:true});
+  await assert.rejects(agent.call("Bash",{command:"sed -i 's/one/changed/' a.txt"}),/review copy/);
+  assert.equal(fs.readFileSync(path.join(root,"a.txt"),"utf8"),"one\ntwo\n");
+});
 
 test("successful VSIX build returns compact artifact proof while retaining its log",t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-vsix-proof-"));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
@@ -122,6 +170,22 @@ test("shell commands require permission and never execute after denial", async t
   agent.dispose();
   await assert.rejects(agent.call("Write", { file_path: "new.txt", content: "bad" }), /no longer active/);
   assert.equal(fs.existsSync(path.join(root, "new.txt")), false);
+});
+
+test("a late Allow cannot start Bash after the model request has ended", async t => {
+  let allow, shown;
+  const waiting = new Promise(resolve => { shown = resolve; });
+  const { agent, root } = fixture(t, { showWarningMessage: () => { shown(); return new Promise(resolve => { allow = resolve; }); } });
+  const marker = path.join(root, "stale.txt");
+  const command = process.platform === "win32" ? "Set-Content -LiteralPath stale.txt -Value stale" : "printf stale > stale.txt";
+  const pending = agent.call("Bash", { command });
+  await waiting;
+  assert.equal(agent.closeApprovals(), 1);
+  await assert.rejects(pending, /model request ended/);
+  await agent.settled();
+  allow("Allow");
+  await tick();
+  assert.equal(fs.existsSync(marker), false);
 });
 
 test("non-ASCII reads stay below the model tool-result byte budget", async t => {

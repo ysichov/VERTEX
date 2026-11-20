@@ -59,8 +59,11 @@
         : event.kind === "tool" ? [detail?.name || "Tool", detail?.input?.description || detail?.input?.file_path || detail?.input?.pattern || ""].filter(Boolean).join(" · ")
         : detail?.routing?.status === "skill" ? "Skill search"
         : detail?.type === "answer" ? "Response" : detail?.type || "Recorded step";
+      const preview = ["thinking", "answer"].includes(detail?.type)
+        ? String(detail.text || "").split(/\r?\n/).map(line => line.replace(/^\s*(?:#{1,6}\s+|[-*]\s+|\d+[.)]\s+)/, "").replace(/\*\*/g, "").trim()).find(Boolean)?.slice(0, 110) || ""
+        : "";
       return { kind: event.kind, title: String(title).replace(/\s+/g," ").slice(0,110), time: event.time || prompt.time || 0, order,
-        detailIndex: event.detail, detailIndices: event.kind === "request" ? event.details : undefined,
+        ...(preview ? { preview } : {}), detailIndex: event.detail, detailIndices: event.kind === "request" ? event.details : undefined,
         skillName: detail?.routing?.skill || detail?.routing?.candidate, skillStatus: detail?.routing?.status,
         skillProbability: detail?.routing?.probability,
         toolId: detail?.tool_id || "", state: detail?.type === "tool" && checks.includes(detail) ? stateOf(detail) : detail?.failed ? "failed" : "recorded" };
@@ -255,6 +258,9 @@
     rootElement.appendChild(shell);
     let renderer = null, scene = null, camera = null, geometry = null, frame = 0, disposed = false, page = 0, zoom = 1, selectedKey = "", view = "steps";
     const pageSize = 48, prompts = groupPrompts(session.prompts || []), meshes = [], nodes = [];
+    const state = options?.state || {};
+    page = Math.max(0, Math.min(state.page || 0, Math.ceil(prompts.length / pageSize) - 1));
+    zoom = state.zoom || 1;
     const totals = contextStats(prompts);
     if(totals.covered){
       const headline=make("div","flow-stats-head");
@@ -464,8 +470,9 @@
     const theme = new win.MutationObserver(layout); theme.observe(doc.body, { attributes: true, attributeFilter: ["class", "style"] });
     const lost = event => { event.preventDefault(); shell.classList.add("flow-fallback"); hint.textContent = "Graphics context lost; flow blocks and details remain available."; };
     renderer?.domElement.addEventListener("webglcontextlost", lost);
-    layout();
-    return () => { disposed = true; if(dialog.open)dialog.close(); if (frame) win.cancelAnimationFrame(frame); resize.disconnect(); theme.disconnect(); viewport.removeEventListener("scroll", schedule); viewport.removeEventListener("wheel", wheelZoom); release(); geometry?.dispose(); renderer?.domElement.removeEventListener("webglcontextlost", lost); renderer?.dispose(); renderer?.forceContextLoss(); shell.remove(); };
+    setView(state.view === "context" ? "context" : "steps");
+    viewport.scrollLeft = state.scrollLeft || 0; viewport.scrollTop = state.scrollTop || 0;
+    return () => { Object.assign(state, { page, zoom, view, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop }); disposed = true; if(dialog.open)dialog.close(); if (frame) win.cancelAnimationFrame(frame); resize.disconnect(); theme.disconnect(); viewport.removeEventListener("scroll", schedule); viewport.removeEventListener("wheel", wheelZoom); release(); geometry?.dispose(); renderer?.domElement.removeEventListener("webglcontextlost", lost); renderer?.dispose(); renderer?.forceContextLoss(); shell.remove(); };
   }
   const api = { summary, timeBreakdown, stages, contextStages, contextStats, chronologicalStages, groupPrompts, groupUsage, usageLines, mount };
   if (typeof module === "object" && module.exports) module.exports = api; else root.vertexLogFlow = api;

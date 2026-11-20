@@ -132,9 +132,16 @@ function reviewQueue(vscode) {
 
 function set(vscode, read = file => fs.readFileSync(file, "utf8")) {
   const queue = reviewQueue(vscode);
+  const pendingDialogs = new Set();
+  const cancelPending = () => {
+    const count = pendingDialogs.size;
+    for (const cancel of [...pendingDialogs]) cancel();
+    return count;
+  };
   return {
     tools: [schema],
-    dispose: () => queue.dispose(),
+    cancelPending,
+    dispose: () => { cancelPending(); queue.dispose(); },
     call: async function (_deps, _name, args) {
       const name = String(args.tool_name || "");
       const input = args.input || {};
@@ -146,7 +153,16 @@ function set(vscode, read = file => fs.readFileSync(file, "utf8")) {
           : !parts.length && !seen.created ? allow(input) : await queue(input, seen, parts);
       } else {
         const choice = "Allow";
-        const answer = await vscode.window.showWarningMessage("VERTEX assistant: " + describe(name, input), { modal: true }, choice);
+        const answer = await new Promise((resolve, reject) => {
+          let settled = false;
+          const finish = value => { if (settled) return; settled = true; pendingDialogs.delete(cancel); resolve(value); };
+          const cancel = () => finish(undefined);
+          pendingDialogs.add(cancel);
+          try {
+            Promise.resolve(vscode.window.showWarningMessage("VERTEX assistant: " + describe(name, input), { modal: true }, choice))
+              .then(finish, error => { if (settled) return; settled = true; pendingDialogs.delete(cancel); reject(error); });
+          } catch (error) { settled = true; pendingDialogs.delete(cancel); reject(error); }
+        });
         decision = answer === choice ? allow(input) : deny("The user denied this action.");
       }
       return { content: [{ type: "text", text: JSON.stringify(decision) }] };

@@ -25,7 +25,7 @@ async function push(folder,request){
   if(!current.remotes.includes(request.remote))throw new Error("Select a configured Git remote.");
   if(typeof request.targetBranch!=="string"||request.targetBranch.startsWith("-"))throw new Error("Invalid destination branch.");
   await git(folder,["check-ref-format","refs/heads/"+request.targetBranch]);
-  await git(folder,["push","--",request.remote,current.head+":refs/heads/"+request.targetBranch]);
+  await git(folder,["push","--set-upstream","--",request.remote,current.branch+":refs/heads/"+request.targetBranch]);
   return {head:current.head,remote:request.remote,branch:request.targetBranch};
 }
 module.exports={git,gitError,info,push};

@@ -15,8 +15,9 @@ test("new task branch retains local edits; switching existing branches never dis
 test("GitHub PR URL uses validated branches and requires the current commit to be pushed",async()=>{
  assert.equal(helper.githubRepository("git@github.com:owner/repo.git"),"https://github.com/owner/repo");assert.equal(helper.githubRepository("https://github.com/owner/repo.git"),"https://github.com/owner/repo");assert.throws(()=>helper.githubRepository("https://example.com/owner/repo"),/github.com/);
  const module={exports:{}};let remoteHead="abc";
- vm.runInNewContext(fs.readFileSync(path.join(__dirname,"../git-branches.js"),"utf8"),{module,URL,require:()=>({info:async()=>({head:"abc",branch:"task",remotes:["origin"]}),git:async(folder,args)=>args[0]==="remote"?"git@github.com:owner/repo.git":args[0]==="ls-remote"?remoteHead+"\trefs/heads/task":""})});
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,"../git-branches.js"),"utf8"),{module,URL,require:()=>({info:async()=>({head:"abc",branch:"task",remotes:["origin"]}),git:async(folder,args)=>args[0]==="remote"?"git@github.com:owner/repo.git":args[0]==="ls-remote"&&remoteHead?remoteHead+"\trefs/heads/task":""})});
  const request={remote:"origin",baseBranch:"main",sourceBranch:"task/test",expectedHead:"abc",expectedBranch:"task"};
- assert.equal(await module.exports.prUrl("folder",request),"https://github.com/owner/repo/compare/main...task%2Ftest?expand=1");remoteHead="old";await assert.rejects(module.exports.prUrl("folder",request),/Push the current commit/);
+ assert.equal(await module.exports.prUrl("folder",request),"https://github.com/owner/repo/compare/main...task%2Ftest?expand=1");remoteHead="old";await assert.rejects(module.exports.prUrl("folder",request),/Use Push/);
+ remoteHead="";await assert.rejects(module.exports.prUrl("folder",request),/not on GitHub yet.*Use Push/);
  await assert.rejects(module.exports.prUrl("folder",{...request,baseBranch:request.sourceBranch}),/must be different/);
 });

@@ -199,6 +199,9 @@ test("Claude's thinking is recorded at block stop before its completed model mes
     send({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Found the markup; " } } });
     send({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "checking logs.js." } } });
     send({ type: "stream_event", event: { type: "content_block_stop", index: 0 } });
+    send({ type: "stream_event", event: { type: "content_block_delta", index: 1,
+      delta: { type: "text_delta", text: "Now the notes." } } });
+    send({ type: "stream_event", event: { type: "content_block_stop", index: 1 } });
     send({ type: "assistant", message: { id: "m1", content: [{ type: "thinking", thinking: "" }, { type: "text", text: "Now the notes." }] } });
     send({ type: "result", subtype: "success", is_error: false, structured_output: PLAN, modelUsage: {} });
     call.child.emit("close", 0);
@@ -206,7 +209,7 @@ test("Claude's thinking is recorded at block stop before its completed model mes
   await assistant.ask(common(spawn, "claude", { onProgress() {},
     onProviderResponse: event => { if (event.scope === "model_response") order.push("model " + event.response.id); },
     onStep: step => order.push(step.note + ": " + step.text) }));
-  assert.deepEqual(order, ["thinking: Found the markup; checking logs.js.", "model m1", "text: Now the notes."]);
+  assert.deepEqual(order, ["thinking: Found the markup; checking logs.js.", "text: Now the notes.", "model m1"]);
 });
 
 test("a streamed tool start closes and records the preceding reasoning segment", async () => {
@@ -326,6 +329,10 @@ test("the effort level reaches Claude Code as --effort and Codex as model_reason
   });
   await assistant.ask(common(codex, "codex", { effort: "high" }));
   assert.ok(codex.calls[0].args.includes("model_reasoning_effort=high"));
+  await assistant.ask(common(codex, "codex", { model: "gpt-6-luna", effort: "minimal" }));
+  assert.ok(codex.calls[1].args.includes("model_reasoning_effort=none"));
+  await assistant.ask(common(codex, "codex", { model: "gpt-6-luna", effort: "max" }));
+  assert.ok(codex.calls[2].args.includes("model_reasoning_effort=max"));
 });
 
 test("pasted screenshots go to Claude Code inside a stream-json message", async () => {
@@ -345,10 +352,8 @@ test("pasted screenshots go to Claude Code inside a stream-json message", async 
     { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" } }]);
 });
 
-test("a screenshot is refused, not dropped, where it cannot be sent", async () => {
-  const image = { media_type: "image/png", data: "x" };
+test("an invalid screenshot is refused before starting Codex", async () => {
   await assert.rejects(assistant.ask(common(spawner(() => {}), "codex", { images: [{ media_type: "text/html", data: "eA==" }] })), /Invalid screenshot/);
-  await assert.rejects(assistant.ask(common(spawner(() => {}), "claude", { images: [image] })), /streaming chat/);
 });
 
 test("every model Claude Code reports is named, the one that wrote most first", async () => {
@@ -577,6 +582,20 @@ test("a run that does not answer is stopped and says so", async () => {
   assert.equal(spawn.calls[0].child.killed, true);
 });
 
+test("assistant activity resets the silence timeout during a long Codex request", async () => {
+  const spawn = spawner(call => {
+    setTimeout(() => call.child.stdout.emit("data", '{"type":"thread.started","thread_id":"live"}\n'), 60);
+    setTimeout(() => call.child.stdout.emit("data", '{"type":"item.completed","item":{"id":"step","type":"reasoning","text":"Test finished"}}\n'), 130);
+    setTimeout(() => {
+      fs.writeFileSync(after(call.args, "-o"), JSON.stringify(PLAN));
+      call.child.emit("close", 0);
+    }, 190);
+  });
+  const result = await assistant.ask(common(spawn, "codex", { timeout: 100, onProgress() {} }));
+  assert.equal(result.plan.reply, "ok");
+  assert.equal(spawn.calls[0].child.killed, undefined);
+});
+
 test("an assistant that is not there is named, not guessed", async () => {
   const empty = folder("vertex-ext-");
   await assert.rejects(assistant.ask(common(spawner(() => {}), "claude", { extensionPath: empty })),
@@ -740,8 +759,8 @@ test("Claude Code's reckoned cost comes back with the answer; the panel writes i
   assert.equal(answer.cost, 0.00312);
   const { usageLine } = require("../sidebar");
   const usage = { input_tokens: 1200, output_tokens: 40, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
-  assert.match(usageLine({ model: "m", usage, cost: 0.00312 }), / · ≈ \$0\.0031$/);
-  assert.match(usageLine({ model: "m", usage, cost: 0.1234567 }), / · ≈ \$0\.1235$/);
+  assert.match(usageLine({ model: "m", usage, cost: 0.00312 }), / · ≈ \$0\.00312$/);
+  assert.match(usageLine({ model: "m", usage, cost: 0.1234567 }), / · ≈ \$0\.1234567$/);
   assert.doesNotMatch(usageLine({ model: "m", usage }), /\$/);
 });
 
@@ -792,6 +811,22 @@ test('Codex JSONL reports exact tokens and original counters without treating su
  });
  const result=await assistant.ask(common(spawn,'codex',{model:'gpt-test',onProviderResponse:event=>events.push(event),onModelCall:event=>calls.push(event)}));
  assert.ok(spawn.calls[0].args.includes('--json'));assert.equal(result.usage.input_tokens,40);assert.equal(result.usage.cache_read_input_tokens,60);assert.equal(result.usage.output_tokens,5);assert.equal(result.model,'gpt-test');assert.equal(events[0].response.usage.input_tokens,100);assert.equal(calls[0].usage.generation_id,'thread-cost:1');assert.equal(calls[0].usage.cost_usd,undefined);
+});
+
+test('Codex requests reasoning summaries and streams only their summary text',async()=>{
+ const updates=[],notes=[];const spawn=spawner(call=>{
+  assert.ok(call.args.includes('model_reasoning_summary="auto"'));
+  fs.writeFileSync(after(call.args,'-o'),JSON.stringify(PLAN));
+  const send=event=>call.child.stdout.emit('data',JSON.stringify(event)+'\n');
+  send({type:'item.updated',item:{id:'r1',type:'reasoning',text:'Check the source'}});
+  send({type:'item.updated',item:{id:'r1',type:'reasoning',text:'Check the source and build'}});
+  send({type:'item.completed',item:{id:'r1',type:'reasoning',text:'Check the source and build'}});
+  send({type:'item.completed',item:{id:'r2',type:'reasoning',text:'Verify output'}});
+  call.child.emit('close',0);
+ });
+ await assistant.ask(common(spawn,'codex',{onProgress:update=>updates.push(update),onStep:step=>notes.push(step)}));
+ assert.deepEqual(updates.map(update=>update.thinking),['Check the source','Check the source and build','Check the source and build\n\nVerify output']);
+ assert.deepEqual(notes.map(note=>note.text),['Check the source and build','Verify output']);
 });
 
 

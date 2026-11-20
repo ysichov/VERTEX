@@ -159,9 +159,10 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       // A model's own reasoning (reasoning_content), kept with the answers option as a thinking note.
       if (on.answers && reasoning) write({ type: "assistant", vertex_step: "claude_note", message: { id: id("note"),
         content: [{ type: "vertex_note", note: "thinking", text: sanitizeText(String(reasoning), []) }] } });
-      const objects = [];
-      const answer = on.answers ? sanitizeText(String(text || ""), objects) : NOT_LOGGED;
-      write({ type: "assistant", vertex_objects: objects, message: { id: id("msg"), model: model || "", usage: {
+      // Answers may contain newly generated code that has no repository or SAP
+      // object to open. Keep the complete protected answer when logging is on.
+      const answer = on.answers ? String(text || "") : NOT_LOGGED;
+      write({ type: "assistant", vertex_objects: [], message: { id: id("msg"), model: model || "", usage: {
         input_tokens: usage && usage.input_tokens || 0,
         output_tokens: usage && usage.output_tokens || 0,
         cache_creation_input_tokens: usage && usage.cache_creation_input_tokens || 0,

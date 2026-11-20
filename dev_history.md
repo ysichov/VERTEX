@@ -1,3 +1,63 @@
+## Prepare VSIX 0.9.105
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## 2026-11-19 — Deterministic VSIX skill executor
+
+The matched build-vertex-vsix skill now exits the normal assistant call path. Jev's skill match includes a bounded version-choice question; `vsix-workflow.js` validates package, lockfile, Eclipse feature and bundle versions, computes patch increments, and stages edits in the existing Git review copy. Plain builds use the local Bash tool with normal command approval. Version builds start only after every review file is applied. The wrapper's verified artifact and exit code determine success. The package verifier now requires the executor module. Focused workflow, skill-match and chat-path tests pass.
+
+## 2026-11-19 — Diagnose and fix Codex selection errors
+
+The 21:54 version-bump request failed before execution because VERTEX sent `model_reasoning_effort=minimal` to `gpt-6-luna`, whose provider error listed none/low/medium/high/xhigh/max. Codex command construction maps minimal to none for GPT-6, and the UI lists supported GPT-6 levels. The 22:00 test request then failed because the initial model picker value `Loading…` was sent as a model ID; the placeholder now has an empty value and chat ignores older placeholder values. The previous worktree's staged Git diff consisted of user project changes synced after its baseline; Git status alone was not evidence of pending agent review. `projectAccess` now supplies the actual pending review file list and warns against that inference. Focused effort and placeholder tests pass; no build or live Codex run.
+
+## 2026-11-19 — Preserve full assistant answer text
+
+`session-log.assistant` previously passed responses through `sanitizeText`, which treats fenced ABAP and `REPORT` lines as source bodies and replaced the rest of a generated chat answer with an object-reference placeholder. It now writes the complete protected text when `log.answers` is enabled and leaves `vertex_objects` empty for that response. Request context and tool-result source omission remain separate paths. Targeted session-log tests: 23 passed; no build or live-host check.
+
+## 2026-11-19 — Lazy Git review copy and read overlay
+
+The first read-only folder request now uses the main project and does not await `agentWorktree.open`. The first Edit/Write invokes `prepareEdit`, creates and syncs the review copy, migrates prior Read snapshots for stale-file checks, and switches writes there. Reads, Glob and Grep continue to use the main folder for unchanged paths; changed paths are resolved from the copy, including new files. In-place `sed -i` also prepares the copy and runs there; an absolute project root in that command is redirected to the copy. Without a Git review copy, in-place sed is rejected. Focused chat edit/recovery tests and folder-tool overlay/sed tests pass. The broader combined run has five existing failures in Stop accounting, build/CLI target expectations and Windows symlink/build fixture behavior; no build or live-host check.
+
+## 2026-11-19 — Explain pre-Jev folder startup delay
+
+The 21:23 calculator request reached its first Jev call at 21:24:49. The review worktree appeared at 21:24:39; project snapshot creation and refresh preceded Jev, while the latter routed in 388 ms. Chat now reports working-copy creation and sync when editing. A later change defers creation until an edit. JavaScript syntax and diff checks passed; no build or live host check.
+
+## 2026-11-19 — Include resulting source in Jev change evidence
+
+`verifyTask` now adds each changed text file's full resulting source to the Jev evidence where the existing 180,000-character proof limit allows. For deleted files it supplies the prior source. Files that do not fit receive explicit omitted metadata with character count, while complete diff hunks and host checks remain. The shared context protection still runs before the decision request. Targeted task-verification tests cover inclusion and explicit omission: 7 passed; no build or live Jev run.
+
+## 2026-11-19 — Do not recover solely from Jev uncertainty
+
+The 16:27 log showed host checks passed for `log-report.html`, while Jev returned `unverified` with passed probability 0.60 and then 0.53, below its 0.80 acceptance threshold. The completion gate treated both verdicts as actionable and emitted started, finished and awaiting-user recovery records. The log contained an initial failed Edit followed by a successful Edit of the same file. `canRecover` now receives host check status and treats such superseded edit failures as resolved; an uncertain verdict with passed checks and no unresolved tool failure does not start recovery. Failed verdicts and actual unresolved tool errors still allow one recovery. Targeted task-verification tests: 6 passed; combined task-verification and chat tests: 84 passed, 3 pre-existing failures in unrelated chat scenarios (Stop accounting, explicit build prompt expectation, unavailable CodeMie CLI). No build or live host run.
+
+## 2026-11-19 — Reset assistant timeout on output
+
+The last Codex folder request reached its 1200-second process deadline just as a targeted test run ended; the deadline counted the whole CLI lifetime, including approvals and tool work. `assistant.collect` now rearms that deadline on stdout data while retaining the original silence timeout, explicit abort and process cleanup. The assistant test covers a Codex request whose total duration exceeds its configured timeout while every interval between outputs stays shorter. Targeted `node --test test/assistant.test.js`: 51 passed, 2 skipped, 0 failed. No build or live provider run was performed.
+
+## 2026-11-19 — Refresh visible conversation logs automatically
+
+Reused the existing log-report refresh/data path, lazy prompt loading and shared Logs/Flow page. Searched both hosts for fs.watch and existing refresh/polling behavior; the existing VS Code local-debug-vars polling pattern provided the lifecycle precedent. The report checks JSONL file names, sizes and timestamps every 1.5 seconds while visible, reparsing only when metadata or the resolved log root changes. Missing directories are retried, hidden panels skip checks, disposal clears the timer, and transient read errors retain the last readable report. The shared page preserves prompt expansion, nested disclosures, pagination, sort order and scroll; Flow retains Steps/Context, page, zoom and viewport position. Targeted log-report/log-flow tests: 46 pass, the same seven named log-report failures as the pre-change baseline (no new failures); both new refresh/disclosure regressions pass. JavaScript files and the shared page's inline scripts parse successfully; git diff --check passes. Version unchanged; no build or live-host check performed.
+
+## 2026-11-19 — Retire approvals after Codex tool timeout
+
+The observed Codex tool call timed out after 300 seconds while its Bash modal was still waiting. Allow roughly 17 minutes later launched the host command, which Stop then aborted after the VSIX verification line. The host now cancels unresolved approval promises as soon as a CLI reply ends, closes further approvals for that tool set, and waits only for commands already launched. A late modal response is ignored. The sidebar replaces the optimistic Working text on its first progress update, preventing duplicate lines. Targeted chat and folder-tool tests cover late Allow and already-running commands; no build run.
+
+## 2026-11-19 — Request Codex reasoning summary
+
+Codex exec is launched with model_reasoning_summary=auto. VERTEX consumes JSONL reasoning item updates and completions, appends new summary text to chat progress, and logs each completed summary once as a thinking note. The output file still supplies the final structured answer. Targeted Codex tests cover cumulative updates, completion deduplication and the CLI option; no live model call or build was run.
+
+## 2026-11-19 — Unified chat stream
+
+The sidebar no longer places streamed thinking in a separate disclosure below the answer. It appends thinking and answer segments in arrival order inside the same progress body, comparing cumulative deltas before appending. On completion, answer segments receive Markdown rendering while thinking remains plain text. The copy action continues to use only the answer.
+
+## 2026-11-19 — Route before matching a project skill
+
+The chat formerly ran Jev skill matching on the isolated current prompt before topic routing. A short repeat prompt therefore had no Build VSIX context even when topic routing later selected the existing topic. Topic routing now completes first; skill matching receives only the selected topic label plus the current request, preserving the no-history skill decision. The skill still requires an execution request and the existing confidence threshold. Targeted skill and routing tests passed; no build run.
+
+## 2026-11-19 — Full-window conversation detail
+
+The shared Logs & Cost page now moves a clicked conversation into a separate screen within the webview, retaining the list DOM and its filters. Back restores the list scroll offset; Refresh retains the selected conversation and Logs/Flow mode when the report reloads. The full-screen Flow header and context totals use compact spacing. Its Steps and Context stage now fills the remaining viewport height instead of stopping at the shared 70vh/700px limit. The existing prompt table, Flow renderer and actions are reused, and the detail screen follows VS Code theme variables. No build was run.
+
 ## 2026-11-18 — Topic routing: uncertain short follow-up keeps full history
 
 **Problem**: A short request such as «исправь» routed with confidence below 0.6 left no context: `uncertainSelection` kept only topics related by words, so with none related `keptIndices` was empty and the model answered without the previous exchange.

@@ -11,6 +11,7 @@ const required = [
     "extension/topic-routing.js",
     "extension/context-dedup.js",
     "extension/skill-match.js",
+    "extension/vsix-workflow.js",
     "extension/THIRD-PARTY-NOTICES.md",
     "extension/package.json",
     "extension/node_modules/abap-adt-api/package.json",
