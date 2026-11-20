@@ -61,8 +61,9 @@ async function prUrl(folder,request){
     +(title?"&title="+encodeURIComponent(title):"")+(body?"&body="+encodeURIComponent(body):"");
   if(url.length>PR_URL_LIMIT)throw new Error("The title and description are too long to hand to GitHub in the page address ("+url.length+" of "+PR_URL_LIMIT+" characters once encoded). Shorten the description and open again; nothing was opened.");
   // The length is checked before the network.
-  const remoteHead=await git(folder,["ls-remote","--exit-code","--heads","--",request.remote,"refs/heads/"+request.sourceBranch]);
-  if(remoteHead.split(/\s/)[0]!==current.head)throw new Error("Push the current commit to the selected source branch before opening PR.");
+  const remoteHead=await git(folder,["ls-remote","--heads","--",request.remote,"refs/heads/"+request.sourceBranch]);
+  if(!remoteHead.trim())throw new Error("The source branch "+request.remote+"/"+request.sourceBranch+" is not on GitHub yet. Use Push… to send it, then open PR again.");
+  if(remoteHead.split(/\s/)[0]!==current.head)throw new Error("The source branch "+request.remote+"/"+request.sourceBranch+" does not contain the current commit. Use Push… first, then open PR again.");
   return url;
 }
 /* What the PR would carry: its commits and its diff against the base branch as the remote-tracking ref has it. */

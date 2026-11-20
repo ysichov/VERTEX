@@ -275,6 +275,7 @@ function create(vscode, options) {
         let failure;
         const capture = commandOutput.collect({ directory: outputDirectory });
         const output = vscode.window?.createOutputChannel ? require("./build-runner").output(vscode) : null;
+        output?.show(true);
         output?.appendLine("> " + args.command + "    (" + location.cwd + ")");
         const child = spawn(win ? "powershell.exe" : "/bin/sh",
         win ? ["-NoProfile", "-NonInteractive", "-Command", "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding; $OutputEncoding = [Console]::OutputEncoding; " + args.command] : ["-lc", args.command],

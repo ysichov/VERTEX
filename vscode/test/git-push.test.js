@@ -11,6 +11,7 @@ test("Push previews the actual branch and pushes only after explicit invocation,
   const info=await helper.info(folder);assert.equal(info.branch,"topic");assert.equal(info.targetBranch,"topic");assert.equal(git(remote,"for-each-ref"),"");
   await assert.rejects(helper.push(folder,{remote:"bad",targetBranch:"topic",expectedHead:info.head,expectedBranch:info.branch}),/configured Git remote/);
   await helper.push(folder,{remote:"origin",targetBranch:"topic",expectedHead:info.head,expectedBranch:info.branch});assert.equal(git(remote,"rev-parse","refs/heads/topic"),info.head);
+  assert.equal(git(folder,"rev-parse","--abbrev-ref","topic@{upstream}"),"origin/topic");
   fs.writeFileSync(path.join(folder,"a.txt"),"two");git(folder,"add",".");git(folder,"commit","-m","two");
   await assert.rejects(helper.push(folder,{remote:"origin",targetBranch:"topic",expectedHead:info.head,expectedBranch:info.branch}),/HEAD or branch changed/);
   assert.equal(git(remote,"rev-parse","refs/heads/topic"),info.head);
