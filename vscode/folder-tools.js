@@ -353,7 +353,21 @@ function create(vscode, options) {
           return result;
         } catch (error) {
           if (options.onStep) options.onStep({ kind: "result", id, name, content: error.message, is_error: true, provider: "local" });
-          throw error;
+          if(name!=="Edit"||!/^The edit's old_string is not in /.test(error.message)||args.replace_all||!args.old_string?.includes('\\"'))throw error;
+          const retryArgs={...args,old_string:args.old_string.replace(/\\"/g,'"'),new_string:args.new_string.replace(/\\"/g,'"')};
+          const probe=approval.change("Edit",{...retryArgs,file_path:resolve(args.file_path)},read);
+          if(probe.error)throw error;
+          const retryId="vertex_edit_retry_"+crypto.randomBytes(8).toString("hex"),retryName="VERTEX Edit retry";
+          if(options.onStep)options.onStep({kind:"use",id:retryId,name:retryName,input:{file_path:resolve(args.file_path),reason:"Remove literal JSON quote escapes after one exact match"},provider:"vertex"});
+          try{
+            const retried=await execute("Edit",retryArgs);
+            retried.edit_normalization="VERTEX retried Edit after removing literal JSON quote escapes from old_string and new_string. The retry succeeded.";
+            if(options.onStep)options.onStep({kind:"result",id:retryId,name:retryName,content:JSON.stringify(retried),is_error:false,provider:"vertex"});
+            return retried;
+          }catch(retryError){
+            if(options.onStep)options.onStep({kind:"result",id:retryId,name:retryName,content:retryError.message,is_error:true,provider:"vertex"});
+            throw retryError;
+          }
         }
       });
       const finished = run.finally(() => { outstanding--; });

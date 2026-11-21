@@ -73,7 +73,7 @@ for(const fixed of [true,false])test(`Jev sends a rejected exact Edit back for o
  let served,calls=0,decisions=0;
  const server={token:'test',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:set=>{served=set;return {route:'/recover',dispose(){}};}};
  t.mock.method(assistant,'ask',async options=>{
-   calls++;if(calls===2){assert.match(options.prompt,/old_string is not/);assert.match(options.instructions,/one host-controlled recovery/);}
+   calls++;if(calls===2){assert.match(options.prompt,/old_string is not/);assert.match(options.prompt,/Read, Glob, Grep, Edit, Write and Bash are available/);assert.match(options.instructions,/one host-controlled recovery/);}
    await served.call({},'Read',{file_path:'index.js'});
    try{await served.call({},'Edit',{file_path:'index.js',old_string:calls===2&&fixed?'const value = 1;':'   const value = 1;',new_string:'const value = 2;'});}catch(error){assert.match(error.message,/old_string is not/);}
    return {model:'test',plan:{answer:calls===2&&fixed?'Fixed':'Edit failed',navigation:null,build_command:''},usage:{input_tokens:10,output_tokens:2}};
@@ -89,6 +89,28 @@ for(const fixed of [true,false])test(`Jev sends a rejected exact Edit back for o
    assert.equal((await ask('continue',{contextMode:'folder',model:'better-model'})).answer.includes('Fixed after continuation'),true);
  }
  }finally{await ask.dispose();}
+});
+
+test("Jev change verification receives the user requests of the routed topic",async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-topic-verification-")),file=path.join(root,"index.js"),before='const label = "Folder";\n';
+ fs.writeFileSync(file,before);t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const copy={folder:root,top:root,dir:root,cwd:root,refresh:async()=>[],remove:async()=>{},changes:async()=>{const after=fs.readFileSync(file,"utf8");return after===before?[]:[{file:"index.js",path:file,before,after,status:"changed"}];}};
+ t.mock.method(require("../agent-worktree"),"open",async()=>copy);
+ t.mock.method(require("../agent-worktree"),"repositoryOf",async()=>root);
+ t.mock.method(require("../worktree-review"),"open",()=>({dispose(){},panel:{}}));
+ t.mock.method(require("../build-runner"),"remembered",()=>"");
+ t.mock.method(require("../review-jev"),"enabled",()=>true);
+ t.mock.method(require("../skill-match"),"isVertexRepository",async()=>false);
+ const topic={id:"topic_0001",label:"Replace Folder label",scope:"folder"};
+ t.mock.method(require("../topic-routing"),"route",async(_v,_prompt,history)=>({topic,history,report:{status:"routed",keptIndices:history.map((_,i)=>i)}}));
+ let served,verifiedTask;
+ const server={token:"test",start:async()=>({url:"http://127.0.0.1:1/mcp"}),registerTools:set=>{served=set;return {route:"/chat",dispose(){}};}};
+ t.mock.method(assistant,"ask",async()=>{await served.call({},"Read",{file_path:"index.js"});await served.call({},"Edit",{file_path:"index.js",old_string:before.trim(),new_string:'const label = "Project";'});return {model:"test",plan:{answer:"Updated",navigation:null,build_command:""},usage:{}};});
+ t.mock.method(require("../task-verification"),"verifyTask",async(_v,task)=>{verifiedTask=task;return {status:"passed",checks:[]};});
+ const vscode=fakeVscode({provider:"codex-subscription",model:"test"});vscode.workspace.workspaceFolders=[{uri:{scheme:"file",fsPath:root}}];
+ const ask=chat.create(vscode,{schemas:[],editorContext:()=>null},server,{get:async()=>null});
+ ask.restoreConversation([{question:"Remove the Folder label",answer:"First attempt failed",topic}]);
+ try{await ask("repeat the changes",{contextMode:"folder",routeTopics:true});assert.match(verifiedTask,/Remove the Folder label.*repeat the changes/s);assert.doesNotMatch(verifiedTask,/First attempt failed/);}finally{await ask.dispose();}
 });
 
 test('standalone Folder builds do not trigger the code-change review check',async t=>{
@@ -176,6 +198,40 @@ function fakeVscode(settings) {
       input: { uri: { scheme: "file", fsPath: "C:\\git\\z_calc.prog.abap" } } }] }] } }
   };
 }
+
+test("VERTEX can select a project folder without changing the VS Code workspace",async t=>{
+ const workspace=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-open-workspace-"));
+ const selected=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-selected-project-"));
+ t.after(()=>{fs.rmSync(workspace,{recursive:true,force:true});fs.rmSync(selected,{recursive:true,force:true});});
+ const vscode=fakeVscode({provider:"codex-subscription",contextMode:"folder"});
+ vscode.workspace.workspaceFolders=[{uri:{scheme:"file",fsPath:workspace}}];
+ vscode.Uri={file:fsPath=>({fsPath,scheme:"file"})};
+ vscode.window.showOpenDialog=async()=>[{fsPath:selected}];
+ const stored=new Map(),memory={get:(key,fallback)=>stored.get(key)??fallback,update:async(key,value)=>stored.set(key,value)};
+ const ask=chat.create(vscode,{schemas:[],editorContext:()=>null},null,{get:async()=>null},null,null,memory);
+ assert.equal(chat.currentWorkingFolder(vscode),workspace);
+ const state=await ask.chooseContextFolder();
+ assert.equal(state.contextFolder,selected);assert.equal(chat.currentWorkingFolder(vscode),selected);
+ assert.equal(vscode.workspace.workspaceFolders[0].uri.fsPath,workspace);
+  assert.equal(stored.get("vertex.ai.selectedFolder:"+workspace),selected);
+  vscode.window.activeTextEditor={document:{uri:{scheme:"file",fsPath:path.join(workspace,"README.md")}}};
+  vscode.workspace.getWorkspaceFolder=()=>vscode.workspace.workspaceFolders[0];
+  assert.equal(chat.currentWorkingFolder(vscode),selected,"explicit selection overrides the active editor's workspace folder");
+  vscode.window.showQuickPick=async items=>items.find(item=>item.kind==="auto");
+  assert.equal((await ask.chooseContextFolder()).contextFolder,workspace);
+  assert.equal(chat.currentWorkingFolder(vscode),workspace);
+ await ask.dispose();
+});
+test("review task contains only user requests of the selected topic, in order",()=>{
+ const topic={id:"topic_0002"};
+ const conversation=[{role:"user",content:"Another project",topic:{id:"topic_0001"}},
+  {role:"user",content:"Show percent progress for 20000 entries",topic},
+  {role:"assistant",content:"I already changed it",topic},
+  {role:"user",content:"Improve the existing program",topic}];
+ const task=chat.reviewTask(conversation,topic,"Update the progress indicator");
+ assert.match(task,/Show percent progress.*Improve the existing program.*Update the progress indicator/s);
+ assert.doesNotMatch(task,/Another project|I already changed it/);
+});
 
 test("matched VSIX build uses Jev decision and local Bash without the selected LLM", async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-skill-build-"));

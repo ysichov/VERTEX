@@ -62,6 +62,7 @@ function read(vscode, id) {
 // A provider switched off keeps its model ticks; it is only left out of every
 // provider choice. The one in use cannot be switched off.
 function isOn(vscode, id) { return !read(vscode, id).off; }
+const hasKeyProfiles = id => id === "anthropic-api" || Boolean(compatible.PROVIDERS[id]);
 function offered(vscode, includeDecisions = false) { return PROVIDERS.filter(p => (includeDecisions || !p.decisionOnly) && isOn(vscode, p.id)); }
 
 async function write(vscode, id, config) {
@@ -246,20 +247,21 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     const { scope, checks } = await checkScope(id);
     let error, result;
     try {
-      await require("./model-detection").probe(vscode, secrets, id, model, extensionPath, executable);
-      result = { available: true, reason: "", checkedAt: new Date().toISOString() };
+      const check = await require("./model-detection").probe(vscode, secrets, id, model, extensionPath, executable);
+      result = { available: true, reason: check?.reason || "", checkedAt: new Date().toISOString() };
     } catch (e) { error = e; result = { available: false, reason: String(e.message || e), checkedAt: new Date().toISOString() }; }
     Object.defineProperty(checks, model, { value: result, enumerable: true, configurable: true, writable: true });
     if (secrets?.store) await secrets.store(scope, JSON.stringify(checks));
     if (!error) await clearUnavailable(vscode, id, model).catch(() => {});
     post({ checkedRow: { provider: id, model, ...result } });
     if (error) throw error;
+    return result;
   }
 
   async function load(id, fresh = false) {
     const generation = loadGeneration.get(id) || 0;
     const send = message => { if (generation === (loadGeneration.get(id) || 0)) post(message); };
-    const profiles = (id === "anthropic-api" || compatible.PROVIDERS[id]) && secrets
+    const profiles = hasKeyProfiles(id) && secrets
       ? await keyProfiles.list(secrets, id) : null;
     let source = null;
     const codemie = id === "codemie" ? Object.assign(assistant.codemieProfiles(),
@@ -363,7 +365,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
       return;
     }
     const id = String(message.provider || "");
-    if (!PROVIDERS.some(p => p.id === id)) { return; }
+    if (!PROVIDERS.some(p => p.id === id)) return;
     if (message.action === "load") { await load(id, true); return; }
     if (message.action === "source") {
       if (id !== "claude" && id !== "codex") { return; }
@@ -396,7 +398,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
       return;
     }
     if (message.action === "key") {
-      if ((id !== "anthropic-api" && !compatible.PROVIDERS[id]) || !secrets) { return; }
+      if (!hasKeyProfiles(id) || !secrets) { return; }
       const provider = PROVIDERS.find(item => item.id === id);
       const profile = await vscode.window.showInputBox({ prompt: "Name for the " + provider.label + " key (existing name replaces that key)",
         value: "DEFAULT", ignoreFocusOut: true,
@@ -413,7 +415,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
       return;
     }
     if (message.action === "select-key") {
-      if (!secrets || (id !== "anthropic-api" && !compatible.PROVIDERS[id])) { return; }
+      if (!secrets || !hasKeyProfiles(id)) { return; }
       try { await keyProfiles.select(secrets, id, String(message.name || "")); }
       catch (e) { post({ provider: id, saveError: e.message }); return; }
       availableModels.delete(id); forget(id);
@@ -447,6 +449,9 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
       if (!use) { fail("Choose the provider in use."); return; }
       const mine = plan.find(p => p && p.id === use.id);
       if (!mine || !mine.on) { fail(use.label + " is in use and stays switched on. Switch to another provider first."); return; }
+      if (use.id === "mf0-api" && !mine.rows?.some(row => row.on && row.modelKind === "language" && row.available !== false)) {
+        fail("MF0.AI: enable at least one text model for chat."); return;
+      }
       const api = use.id === "anthropic-api" || compatible.PROVIDERS[use.id];
       if (api && (!secrets || !(await keyProfiles.getActiveKey(secrets, use.id)).key)) {
         fail("Enter the " + use.label + " key first."); return;
@@ -571,13 +576,13 @@ const sortModels = ${require("./model-capabilities").sortModels.toString()};
 const groupModels = ${require("./model-capabilities").groupModels.toString()};
 const detailLines = ${require("./model-capabilities").detailLines.toString()};
 let use = INIT.use;
-let apiExpanded = use.endsWith("-api") && !["vercel-api", "openrouter-api", "opencode-api", "typesafe-api"].includes(use);
+let apiExpanded = false;
 let scanning = false, scanningProvider = "";
 const checkStatus = {}, checkErrors = {};
 // Per provider: on, and its rows once read (null while loading or when it could not be read).
 const state = {};
 INIT.providers.forEach(p => { state[p.id] = { label: p.label, on: p.on, rows: null, profiles: null,
-  source: null, hideUnavailable: true, grouped: false, collapsedGroups: new Set(), groupSorts: new Map(), expanded: p.id === INIT.use }; });
+  source: null, hideUnavailable: true, grouped: false, collapsedGroups: new Set(), groupSorts: new Map(), expanded: false }; });
 const $ = id => document.getElementById(id);
 function say(text, kind) { $("said").textContent = text || ""; $("said").className = kind || "note"; }
 function el(tag, props) { return Object.assign(document.createElement(tag), props || {}); }

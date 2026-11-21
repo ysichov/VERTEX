@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.105",
+  "version": "0.9.109",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -936,6 +936,7 @@
             "opencode-api",
             "typesafe-api",
             "nvidia-api",
+            "mf0-api",
             "vercel-api",
             "lmstudio-local",
             "ollama-local"

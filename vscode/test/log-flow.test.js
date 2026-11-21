@@ -147,6 +147,21 @@ test("graph index preserves verification retries, Jev and review without bodies"
   assert.equal(steps.at(-1).title,"Review");
 });
 
+test("operation groups carry a bounded first-line note preview and portable file names", () => {
+  const prompt = { details: [{ type: "tool", name: "Read", input: { file_path: "C:\\src\\main.js", description: "Inspect source" } },
+    { type: "tool", name: "Edit", input: { path: "src/view.js" } }], events: [
+    { kind: "note", model: { text: "\nInspect the source\nFull explanation" } }, { kind: "tool", detail: 0 },
+    { kind: "note", model: { text: "Update the view" } }, { kind: "tool", detail: 1 }] };
+  const items = flow.summary(prompt).eventItems;
+  assert.deepEqual(items.map(item => item.kind), ["note", "tool", "note", "tool"]);
+  assert.deepEqual(items.filter(item => item.kind === "tool").map(item => item.notePreview), ["Inspect the source", "Update the view"]);
+  assert.deepEqual(items.filter(item => item.kind === "tool").map(item => item.noteEventIndex), [0, 2]);
+  assert.deepEqual(items.filter(item => item.kind === "tool").map(item => item.fileName), ["main.js", "view.js"]);
+  const stages = flow.chronologicalStages({ ...prompt, flow: flow.summary(prompt) });
+  assert.deepEqual(stages.filter(item => item.kind === "note" || item.kind === "tool").map(item => item.kind), ["note", "tool", "note", "tool"]);
+  assert.doesNotMatch(JSON.stringify(items), /Full explanation/);
+});
+
 test("missing check outcomes remain unknown and tool failures remain failed", () => {
   assert.equal(flow.summary({details:[{type:"tool",name:"Verification",tool_id:"u"},{type:"tool result",tool_id:"u",failed:true,text:"VERTEX automatic checks: UNVERIFIED"}]}).checks[0].state,"unverified");
   assert.equal(flow.summary({details:[{type:"tool",name:"Verification",tool_id:"x"}]}).checks[0].state,"unknown");

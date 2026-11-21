@@ -1,5 +1,10 @@
 "use strict";
 const test=require('node:test'),assert=require('node:assert/strict'),checks=require('../task-verification');
+test('successful local reads disprove a claimed connection error',()=>{
+ const evidence={tools:[{tool:'Read',arguments:{file_path:'vscode/log-flow.js'},result:{text:'source'}}],omitted_tools:0,pending:0};
+ assert.equal(checks.falseLocalConnectionClaim('Чтение завершилось ошибкой соединения с локальным инструментом VERTEX.',evidence),true);
+ assert.equal(checks.falseLocalConnectionClaim('Чтение завершилось ошибкой соединения с локальным инструментом VERTEX.',{...evidence,tools:[{...evidence.tools[0],error:true}]}),false);
+});
 const connection={provider:'typesafe-api',model:'jev-latest',key:'test'};
 test('recovery is bounded by an actionable decision, completed tools and existing user approval',()=>{
  assert.equal(checks.canRecover({status:'failed'},{tools:[{error:true,result:'old_string is not in file'}]}),true);

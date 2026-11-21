@@ -38,7 +38,7 @@ test("visible log report follows file changes, retries failures and stops pollin
     require: name => name === "fs" ? fakeFs : name === "./usage-report" ?
       { ...realRequire("./usage-report"), browserEngine: () => "" } :
       name === "./review-jev" ? { enabled: () => false } : realRequire(name),
-    setInterval: (fn, delay) => { assert.equal(delay, 1500); timers.set(1, fn); return 1; },
+    setInterval: (fn, delay) => { assert.equal(delay, 500); timers.set(1, fn); return 1; },
     clearInterval: id => timers.delete(id)
   };
   vm.createContext(sandbox);

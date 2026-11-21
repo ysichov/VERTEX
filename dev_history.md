@@ -1,6 +1,67 @@
+## Prepare VSIX 0.9.109
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## 2026-11-21 — Worktree review discard controls
+
+The review's Decline previously had two meanings: an optional reason retained a change and sent a rework prompt, while an empty reason dropped it only after Apply. Closing without Apply offered only Apply or Cancel; Cancel left the working copy intact. Decline now always calls `copy.revert` on Apply and never triggers `vertex.chatSend`. The page has Decline All, confirmed Delete Declined for marked files, and Delete All Changes. Closing offers deletion even without marks, plus a multi-select file picker when more than one file waits; unselected files remain pending. The copy's revert restores the current folder version, so declined changes do not overwrite user edits. Focused worktree and code-review tests cover mixed decisions, deletion on close and partial or full deletion.
+
+## 2026-11-21 — Review the latest correction in its topic
+
+The OTR_AI_TRANSLATOR log for removing an unwanted `MESSAGE` showed Jev routing the correction toward the existing EN→UK topic but assigning no topic because its route confidence was 0.39. A later continuation backfilled a new topic and unrelated dependency. Git History then assessed the three-line diff against earlier requests without the correction and returned “Нет”. Routing now retains the preceding topic when it is both the model's chosen route and the only retained topic. For saved logs, review-topic prefers that prompt's own single kept routing decision over a later backfilled tag. The real saved log now resolves the original requests and the “just skip, no message” correction, excluding the unrelated declined-file topic. The review completion question now assesses the latest actionable request against the current diff, using earlier requests as constraints; insufficient context should yield “Неясно” rather than an unsupported “Нет”. Focused routing, review-topic and Jev tests passed.
+
+## 2026-11-21 — Git review topic from saved edits
+
+Git History ASK Jev now resolves the changed file against saved Edit, Write and approved Review log steps in the selected project folder. It uses the latest matching step per file and sends every user request under its recorded topic, in chronological order. A whole-diff request combines the topics attached to its files; equal-time ties retain all topics. This removes the dependency on the current chat, which may be empty when reviewing yesterday's changes. The OTR_AI_TRANSLATOR log resolved the progress-indicator diff to both user requests in its topic. Focused Git History, Jev and topic-lookup tests passed.
+
+The later OTR_AI_TRANSLATOR review selected a pull-restoration topic whose earlier turns depended on the original `Z_TR_VOCAB_EN_FILL` compilation task. The saved-edit lookup discarded that dependency and sent Jev only the restoration wording. It now follows recorded topic dependencies within the same conversation, including dependencies recorded on earlier turns of the selected topic, and includes their requests before the follow-up. The regression covers a final edit with no dependency tag after an earlier restoration turn linked to the original task.
+
+The original misroute was earlier: Jev opened a new topic for “the pull overwrote the last commit; fix it” although it referred to the preceding task. Topic routing now keeps an explicit restoration of previous work in the preceding topic when no different named object is introduced, even if Jev returns `new`. This makes subsequent prompts and approvals belong to one topic. Dependency traversal remains for already saved logs, which cannot be retagged. A focused routing regression reproduces the erroneous `new` decision.
+
+ASK Jev's change-category, priority and vague recommendation questions were removed from this review. It now asks whether the context is sufficient and whether an automated reviewer would approve the visible change against the user requests. The review shows the model's probability for the positive auto-approve answer, even when its preferred answer is no. The percentage is colored continuously from red through yellow to green; it remains advisory and does not apply a change.
+
+Whole-review ASK Jev previously rejected a JSON state over 90,000 characters before sending it. It now assesses each changed file separately, splitting only a file that exceeds the per-request size. If Jev reports insufficient context, the file is retried with additional changed files, prioritizing the same folder and staying below 80,000 characters. The result reports the lowest auto-approval probability, file/decision counts and retry count; missing dependencies outside the diff still surface as insufficient context. A single oversized block still needs a narrower review.
+
+## Prepare VSIX 0.9.108
+
+## 2026-11-21 — Folder selection and review decision context
+
+The Folder control now offers a project picker backed by current VS Code workspace folders and at most eight explicitly chosen recent folders, stored per workspace. `workingFolder` honors the selected folder for chat tools, Git History and build routing; automatic selection remains available. A switch away from a working copy with pending changes uses the existing review/discard guard. Focused folder-selection tests passed; no VSIX was built.
+
+The worktree review passes all user requests tagged with the current topic, in order, to Jev with the current diff. It excludes assistant replies and tool results. ASK Jev now supports review, file and block scopes; the user-request verdict appears first. The existing stale-diff guard and human Apply decision remain. Focused Jev and worktree-review tests passed. The topic router preserves a low-confidence `previous` decision and backfills the trailing unassigned exchanges after a successful answer. Flow uses blue for an LLM request and green for its response.
+
+## 2026-11-21 — Exact Edit retry after literal quote escaping
+
+The 11:01 folder chat log showed an `Edit` whose `old_string` contained literal `\\"` sequences while the source used plain quotes. The first Edit correctly failed exact matching, but the model then claimed no write tools were available despite a recovery request listing them. `folder-tools` now logs that first failure, preflights one exact match after removing only literal JSON quote escapes, then logs a separate VERTEX Edit retry. The tool result names the intervention; retry failure is returned to the model. Task evidence treats the retry as an Edit so a successful retry resolves the earlier failure. The recovery prompt puts the last error and available tools after the diagnostic data. Focused successful and failed retry tests passed. The user's requested folder-link UI change was left for a new VERTEX attempt.
+
+The 11:17 Change verification with Jev received `original_task: "повтори пожалуйста правки"` even though routing had selected the prior topic labeled with the actual Folder-link request. The diff included both successful edits, but Jev had no task details to compare it with and answered unverified. `chat.finishTask` now uses the ordered user requests of the routed topic for verification, the same task context passed to the worktree review. A focused chat test restores a prior topic and confirms Jev receives its request and the current follow-up, without assistant replies. No change to the user's prepared Folder-link diff was made.
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## 2026-11-20 — Compact log-report header actions
+
+Moved the existing refresh button directly after the heading and transferred the flexible spacing to that button. Replaced the settings text with a gear, retaining the settings ID and adding matching title and accessible label. Searched both hosts for Log Settings, gear icons and icon-button controls; reused the shared vertex-icon-button geometry and existing theme-aware button rules. The shared HTML is the source for the VS Code resource copy. No build or live host/theme check was performed; runtime behavior remains unverified.
+
+## Prepare VSIX 0.9.107
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## Prepare VSIX 0.9.106
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## 2026-11-20 — Compare canonical project folders for review reuse
+
+`agent-worktree.open` stores a real path, while `chat.copyFor` and the current-copy lookup compared it to `path.resolve` using case-sensitive equality. On Windows the same folder can be represented with different casing, causing a false "another folder" rejection while review changes are pending. Both lookups now compare real paths with Windows case folding. Syntax check passed. The focused chat suite has unrelated existing failures in its host-dependent checks; no package build was run.
+The 19:22 session log showed successful `Read` calls but a final answer claiming a local-tool connection error. The completion gate now recognizes that contradiction when all recorded file calls succeeded and asks the executor once to continue from the actual host results. Added a focused regression for the claim detector.
+
 ## Prepare VSIX 0.9.105
 
 The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## 2026-11-20 — Group Flow tool cards
+
+Reused the Flow node buttons and theme variables. Note events now remain in the chronological stage list as clickable Thinking nodes; each note and its following tools share one container until the next note or non-tool stage. This prevents separate Thinking rows and a single long tool block. The graph index keeps only the bounded first line of note text and omits answer previews. Focused Flow tests: 15 passed. No package build or live host check.
 
 ## 2026-11-20 — Attribute deleted review rows to their removing author
 

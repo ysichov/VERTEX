@@ -27,6 +27,24 @@ test("a Glob pattern ending in / lists folders, not files", async t => {
   assert.deepEqual((await agent.call("Glob", { pattern: "**/" })).matches, ["docs/", "docs/img/", "src/"]);
   assert.deepEqual((await agent.call("Glob", { pattern: "*" })).matches, ["a.txt"]);
 });
+test("Edit tells the model when VERTEX safely normalizes escaped quotes",async t=>{
+ const {agent,root,steps}=fixture(t);
+ fs.writeFileSync(path.join(root,"a.txt"),'<span id="folder-name">Folder</span>');
+ await agent.call("Read",{file_path:"a.txt"});
+ const result=await agent.call("Edit",{file_path:"a.txt",old_string:'<span id=\\"folder-name\\">Folder</span>',new_string:'<a id=\\"folder-name\\">Project</a>'});
+  assert.match(result.edit_normalization,/removing literal JSON quote escapes/);
+ assert.equal(fs.readFileSync(path.join(root,"a.txt"),"utf8"),'<a id="folder-name">Project</a>');
+  assert.deepEqual(steps.filter(step=>step.kind==="result").map(step=>[step.name,step.is_error]),[["Read",false],["Edit",true],["VERTEX Edit retry",false]]);
+});
+test("a failed VERTEX Edit retry is logged and returned to the model",async t=>{
+ let root;const events=[];
+ const fixtureResult=fixture(t,{onStep:step=>{events.push(step);if(step.name==="VERTEX Edit retry"&&step.kind==="use")fs.writeFileSync(path.join(root,"a.txt"),"changed meanwhile");}});
+ root=fixtureResult.root;
+ fs.writeFileSync(path.join(root,"a.txt"),'<span id="folder-name">Folder</span>');
+ await fixtureResult.agent.call("Read",{file_path:"a.txt"});
+ await assert.rejects(fixtureResult.agent.call("Edit",{file_path:"a.txt",old_string:'<span id=\\"folder-name\\">Folder</span>',new_string:'<a id=\\"folder-name\\">Project</a>'}),/Read the current file before changing it/);
+ assert.deepEqual(events.filter(step=>step.kind==="result").map(step=>[step.name,step.is_error]),[["Read",false],["Edit",true],["VERTEX Edit retry",true]]);
+});
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 test("a read-only folder turn creates a review copy only on Edit and overlays changed files", async t => {

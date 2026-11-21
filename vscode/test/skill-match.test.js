@@ -2,6 +2,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
+const fs = require("node:fs");
+const os = require("node:os");
+const { execFileSync } = require("node:child_process");
 const skill = require("../skill-match");
 
 const root = path.resolve(__dirname, "../..");
@@ -61,4 +64,18 @@ test("a repeat request gives skill matching the routed topic", async () => {
 
 test("missing skill leaves the request untouched", async () => {
   assert.equal((await skill.match(null, "пересобери", path.join(root, "no-such-folder"))).matched, false);
+});
+
+test("another Git project never runs Jev skill matching", async () => {
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-other-skill-"));
+  try {
+    execFileSync("git", ["init", "-q", other]);
+    execFileSync("git", ["-C", other, "remote", "add", "origin", "https://github.com/example/other.git"]);
+    const skills = path.join(other, ".agents", "skills", "build-vertex-vsix");
+    fs.mkdirSync(skills, { recursive: true });
+    fs.copyFileSync(path.join(root, ".agents", "skills", "build-vertex-vsix", "SKILL.md"), path.join(skills, "SKILL.md"));
+    assert.equal(await skill.isVertexRepository(other), false);
+    const result = await skill.match(null, "пересобери", other, { evaluate: () => { throw new Error("Jev must not run"); } });
+    assert.equal(result.status, "unavailable");
+  } finally { fs.rmSync(other, { recursive: true, force: true }); }
 });

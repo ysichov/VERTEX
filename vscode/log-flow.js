@@ -52,20 +52,29 @@
       return { kind: "tool", label: "Tool " + (++toolNumber) + " · " + (call?.name || "unknown"),
         detail: String(detail).replace(/\s+/g, " ").slice(0, 100), time: eventTime(details.indexOf(call)) };
     });
+    let noteEventIndex = null, notePreview = "";
     const eventItems = (prompt.events || []).map((event, order) => {
-      if (event.kind === "model" || event.kind === "note") return null;
+      if (event.kind === "note") {
+        noteEventIndex = order;
+        notePreview = String(event.model?.text || "").split(/\r?\n/).map(line => line.trim()).find(Boolean)?.slice(0, 110) || "";
+        return { kind: "note", title: "Thinking", time: event.time || prompt.time || 0, order,
+          preview: notePreview, noteEventIndex, notePreview, state: "recorded" };
+      }
+      if (event.kind === "model") return null;
       const detail = details[event.detail];
       const title = event.kind === "request" ? "LLM request and context" : event.kind === "tool_result" ? (event.tool || "Tool") + " result"
         : event.kind === "tool" ? [detail?.name || "Tool", detail?.input?.description || detail?.input?.file_path || detail?.input?.pattern || ""].filter(Boolean).join(" · ")
         : detail?.routing?.status === "skill" ? "Skill search"
         : detail?.type === "answer" ? "Response" : detail?.type || "Recorded step";
-      const preview = ["thinking", "answer"].includes(detail?.type)
+      const preview = detail?.type === "thinking"
         ? String(detail.text || "").split(/\r?\n/).map(line => line.replace(/^\s*(?:#{1,6}\s+|[-*]\s+|\d+[.)]\s+)/, "").replace(/\*\*/g, "").trim()).find(Boolean)?.slice(0, 110) || ""
         : "";
       return { kind: event.kind, title: String(title).replace(/\s+/g," ").slice(0,110), time: event.time || prompt.time || 0, order,
         ...(preview ? { preview } : {}), detailIndex: event.detail, detailIndices: event.kind === "request" ? event.details : undefined,
         skillName: detail?.routing?.skill || detail?.routing?.candidate, skillStatus: detail?.routing?.status,
         skillProbability: detail?.routing?.probability,
+        noteEventIndex, notePreview,
+        fileName: String(detail?.input?.file_path || detail?.input?.path || "").split(/[\\/]/).pop(),
         toolId: detail?.tool_id || "", state: detail?.type === "tool" && checks.includes(detail) ? stateOf(detail) : detail?.failed ? "failed" : "recorded" };
     }).filter(Boolean);
     const routing = details.findLast(d => d.routing?.contextReduction)?.routing;
@@ -275,7 +284,7 @@
       const excluded=make("span","flow-bar-excluded");excluded.style.width=totals.percent+"%";
       bar.append(sent,excluded);stats.append(headline,comparison,reasons,bar);
     }else stats.textContent="No recorded context selections in this conversation";
-    const colors = { prompt: "--vscode-charts-blue", user: "--vscode-charts-blue", request: "--vscode-charts-green", included: "--vscode-charts-green", answer: "--vscode-charts-green", model: "--vscode-charts-green", tool: "--vscode-charts-orange", steps: "--vscode-charts-orange", jev: "--vscode-charts-purple", excluded: "--vscode-charts-red", vertex: "--vscode-charts-red", checks: "--vscode-charts-yellow", review: "--vscode-charts-purple" };
+    const colors = { prompt: "--vscode-charts-blue", user: "--vscode-charts-blue", request: "--vscode-charts-blue", included: "--vscode-charts-green", answer: "--vscode-charts-green", model: "--vscode-charts-green", note: "--vscode-charts-purple", tool: "--vscode-charts-orange", steps: "--vscode-charts-orange", jev: "--vscode-charts-purple", excluded: "--vscode-charts-red", vertex: "--vscode-charts-red", checks: "--vscode-charts-yellow", review: "--vscode-charts-purple" };
     function color(variable, fallback) {
       const probe = make("span"); probe.style.color = "var(" + variable + ",var(" + (fallback || "--vscode-editor-foreground") + "))"; shell.appendChild(probe);
       const value = win.getComputedStyle(probe).color; probe.remove(); return value;
@@ -326,8 +335,8 @@
       const maxBlockTokens = Math.max(1, ...blocks.flat().filter(node => node.kind === "included" || node.kind === "excluded")
         .map(node => Number(node.estimatedTokens || 0)));
       const nodeHeight = node => view === "context" && node.kind === "section" ? 40 : view === "context" && (node.kind === "included" || node.kind === "excluded")
-        ? 52 + Math.round(108 * Math.sqrt(Number(node.estimatedTokens || 0) / maxBlockTokens)) : node.kind === "prompt" && view === "steps" ? 92 : 72;
-      const height = Math.max(672, ...blocks.map(items => (view==="context"?242:88) + items.reduce((sum, node) => sum + nodeHeight(node) + 24, 0)));
+        ? 52 + Math.round(108 * Math.sqrt(Number(node.estimatedTokens || 0) / maxBlockTokens)) : node.kind === "prompt" && view === "steps" ? 92 : view === "steps" && node.kind === "tool" ? 42 : 72;
+      const height = Math.max(672, ...blocks.map(items => (view==="context"?242:88) + items.reduce((sum, node, row) => sum + nodeHeight(node) + 24 + (view === "steps" && node.kind === "tool" && items[row - 1]?.kind !== "note" && (items[row - 1]?.kind !== "tool" || items[row - 1]?.noteEventIndex !== node.noteEventIndex) ? 32 : 0), 0)));
       const surface = color("--vscode-editorWidget-background"), border = color("--vscode-panel-border");
       shown.forEach((group, index) => {
         const prompt = group.prompt;
@@ -369,13 +378,31 @@
           }
         }
         let cursorY = view==="context"?230:76;
+        let thinkingGroup = null;
         recordedStages.forEach((node, row) => {
           const topicIndex = Number(String(node.topicId || "").slice(6));
           const topicColor = Number.isFinite(topicIndex) && topicIndex > 0 ? "--vscode-charts-" + ["blue", "green", "orange", "purple", "red", "yellow"][topicIndex % 6] : null;
-          const y = cursorY, accent = color(node.state === "failed" ? "--vscode-errorForeground" : node.state === "unknown" || node.state === "unverified" ? "--vscode-descriptionForeground" : view === "context" && (node.kind === "included" || node.kind === "excluded") ? colors[node.kind] : topicColor || colors[node.kind]);
+          if (view === "steps" && node.kind === "tool" && (!thinkingGroup || thinkingGroup.dataset.noteEventIndex !== String(node.noteEventIndex)) && recordedStages[row - 1]?.kind !== "note") cursorY += 32;
+          const y = cursorY, accent = color(node.state === "failed" ? "--vscode-errorForeground" : node.state === "unknown" || node.state === "unverified" ? "--vscode-descriptionForeground" : view === "steps" && node.kind === "request" ? colors.request : view === "steps" && node.title === "Response" ? colors.answer : view === "context" && (node.kind === "included" || node.kind === "excluded") ? colors[node.kind] : topicColor || colors[node.kind]);
           const isPrompt = node.kind === "prompt" && view === "steps";
           const left = 12, blockWidth = 236, blockHeight = nodeHeight(node);
           cursorY += blockHeight + 24;
+          if (view === "steps" && (node.kind === "note" || node.kind === "tool")) {
+            if (node.kind === "note" || !thinkingGroup || thinkingGroup.dataset.noteEventIndex !== String(node.noteEventIndex)) {
+              thinkingGroup = make("div", "flow-thinking-group");
+              thinkingGroup.dataset.noteEventIndex = String(node.noteEventIndex);
+              thinkingGroup.style.top = (node.kind === "note" ? y - 8 : y - 28) + "px";
+              if (node.kind === "tool") {
+                const heading = make("button", "flow-thinking-heading", node.notePreview || "Recorded operations");
+                heading.type = "button"; heading.title = node.notePreview || "Open operation details";
+                heading.onclick = () => choose(node.prompt || prompt, node.noteEventIndex != null
+                  ? { kind: "note", title: node.notePreview || "Assistant text", noteEventIndex: node.noteEventIndex } : node, heading);
+                thinkingGroup.appendChild(heading);
+              }
+              lane.appendChild(thinkingGroup);
+            }
+            thinkingGroup.style.height = (cursorY - Number.parseFloat(thinkingGroup.style.top) - 12) + "px";
+          } else thinkingGroup = null;
           if(node.kind==="section"){
             const section = make("div", "flow-section " + node.sectionRole);
             section.style.top = y + "px";
@@ -387,11 +414,11 @@
           if (row < recordedStages.length - 1) plane(x + 24, y + blockHeight - 2, 2, 26, border, 1);
           plane(x + left, y, blockWidth, blockHeight, accent, node.state === "unknown" ? .05 : node.kind === "excluded" ? .04 : .12);
           plane(x + left, y, 3, blockHeight, accent, 1);
-          const button = make("button", "flow-node " + node.state + " " + node.kind + (isPrompt ? " flow-prompt" : "")); button.type = "button";
+          const button = make("button", "flow-node " + node.state + " " + node.kind + (isPrompt ? " flow-prompt" : "") + (view === "steps" && node.kind === "tool" ? " flow-operation" : "") + (view === "steps" && node.kind === "note" ? " flow-thinking-note" : "")); button.type = "button";
           button.style.height = blockHeight + "px";
           const target = node.prompt || prompt;
           button.classList.toggle("selected", selectedKey === String(target.key || target.time) + ":" + node.kind + ":" + node.title);
-          button.style.top = y + "px"; button.style.setProperty("--flow-accent", accent);
+          button.style.top = (thinkingGroup && (node.kind === "tool" || node.kind === "note") ? y - Number.parseFloat(thinkingGroup.style.top) : y) + "px"; button.style.setProperty("--flow-accent", accent);
           button.setAttribute("aria-label", "Prompt " + (page * pageSize + index + 1) + ": " + node.title + ", " + node.label);
           button.title = node.title + ": " + node.label;
           if (isPrompt) {
@@ -406,8 +433,8 @@
             footer.title=info.join(" · ");
             button.appendChild(footer);
           } else {
-            button.appendChild(make("strong", "", (view === "steps" && node.stepNumber ? node.stepNumber + ". " : "") + node.title));
-            button.appendChild(make("span", "", node.label));
+            button.appendChild(make("strong", "", (view === "steps" && node.stepNumber ? node.stepNumber + ". " : "") + (view === "steps" && node.kind === "tool" ? node.title.split(" · ")[0] + (node.fileName ? " · " + node.fileName : "") : node.kind === "note" ? "Thinking · " + (node.preview || "Assistant text") : node.title)));
+            if (view !== "steps" || node.kind !== "tool" && node.kind !== "note") button.appendChild(make("span", "", node.label));
             if (node.prompt && node.prompt !== prompt && node.prompt.usage) {
               const own = groupUsage({ prompt: node.prompt }, node.prompt.costKind === "jev" ? "jev" : "model");
               if (own.costReported || own.input || own.output || own.cacheRead || own.cacheWrite) {
@@ -417,7 +444,7 @@
               }
             }
           }
-          button.onclick = () => choose(target, node, button); lane.appendChild(button); nodes.push({ node, button });
+          button.onclick = () => choose(target, node, button); (thinkingGroup && (node.kind === "tool" || node.kind === "note") ? thinkingGroup : lane).appendChild(button); nodes.push({ node, button });
         });
         world.appendChild(lane);
         if (index) plane(x - 20, 38, 20, 2, border, 1);

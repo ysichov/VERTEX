@@ -13,7 +13,8 @@
   }
   html { overflow-anchor: none; }
   header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-  h1 { font-size: 1.2em; margin: 0 auto 0 0; }
+  h1 { font-size: 1.2em; margin: 0; }
+  #refresh { margin-right: auto; }
   button {
     background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
     border: 1px solid var(--vscode-button-border, transparent); padding: 3px 10px; cursor: pointer; font: inherit;
@@ -213,6 +214,15 @@
    .flow-prompt .flow-usage { min-width: 0; color: var(--vscode-descriptionForeground); font-size: .68em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .flow-node .flow-topic-badge { position: absolute; top: 7px; right: 9px; display: inline-block; width: auto; padding: 0 6px; border: 1px solid currentColor; border-radius: 4px; font-size: .8em; font-weight: bold; line-height: 18px; }
   .flow-node.flow-child strong::before { content: "↳ "; color: var(--vscode-descriptionForeground); }
+  .flow-thinking-group { position: absolute; left: 8px; width: 244px; box-sizing: border-box; padding: 5px 9px; border: 1px solid var(--vscode-panel-border); border-left: 3px solid var(--vscode-charts-purple, var(--vscode-focusBorder)); background: var(--vscode-editorWidget-background); color: var(--vscode-editor-foreground); }
+  .flow-thinking-group > .flow-thinking-heading { display: block; width: 100%; padding: 0; border: 0; background: inherit; color: var(--vscode-charts-purple, var(--vscode-focusBorder)); font: inherit; font-size: .85em; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  .flow-thinking-heading:hover { text-decoration: underline; }
+  .flow-thinking-heading:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
+  button.flow-node.flow-thinking-note { left: 9px; width: 220px; padding: 7px 9px; border: 0; background: transparent; text-align: left; }
+  button.flow-node.flow-thinking-note strong { color: var(--vscode-charts-purple, var(--vscode-focusBorder)); font-size: .85em; }
+  button.flow-node.flow-operation { left: 9px; width: 220px; padding: 7px 9px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background); gap: 0; justify-content: center; }
+  button.flow-node.flow-operation:hover { background: var(--vscode-list-hoverBackground); }
+  button.flow-node.flow-operation strong { font-size: .85em; }
   .flow-node span { font-size: .85em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   button.flow-node:hover { background: var(--vscode-list-hoverBackground); }
   button.flow-node:focus-visible, button.flow-node.selected { border-color: var(--vscode-focusBorder); outline: 1px solid var(--vscode-focusBorder); }
@@ -231,6 +241,7 @@
 <body>
 <header>
   <h1>Logs &amp; Cost</h1>
+  <button id="refresh" title="Refresh session logs" aria-label="Refresh session logs">↻</button>
   <div id="date-range" class="list-tools" aria-label="Date range">
   <button data-date="previous" title="Previous period" aria-label="Previous period">←</button>
   <label><select data-date="period" class="log-context"><option value="all">All dates</option><option value="day" selected>Day</option><option value="week">Week</option><option value="month">Month</option><option value="year">Year</option><option value="custom">Custom range</option></select></label>
@@ -240,8 +251,7 @@
   <label>To <input type="date" data-date="to" id="to" class="log-context"></label>
   </div>
   <div class="vertex-segment-toggle" role="group" aria-label="Report"><button id="view-logs" class="active" aria-pressed="true">Logs</button><button id="view-flow" aria-pressed="false">Flow</button><button id="view-costs" aria-pressed="false">Usage &amp; Cost</button></div>
-  <button id="settings" title="Enable vertex.ai.log.request to see VERTEX instructions and context for new prompts.">Log Settings</button>
-  <button id="refresh" title="Refresh session logs" aria-label="Refresh session logs">↻</button>
+  <button id="settings" class="vertex-icon-button" title="Log Settings" aria-label="Log Settings"><span aria-hidden="true">&#9881;</span></button>
   <button id="clear-conversations" disabled>Clear selected conversations</button>
 </header>
 <div id="status" class="muted">Loading…</div>
@@ -1194,6 +1204,10 @@ function markdown(text, target) {
     function show() {
       if (version !== flowDetailVersion || !inspector.isConnected) return;
       if(node.prompt){serviceResult(prompt,inspector);return;}
+      if(node.kind==="note" && node.noteEventIndex!=null){
+        var note=(prompt.events||[])[node.noteEventIndex]?.model;
+        if(note?.text){inspector.appendChild(richText(note.text));return;}
+      }
       if(node.kind==="request" && node.detailIndices){node.detailIndices.forEach(function(index){var part=detailSection((prompt.details||[])[index],prompt,"");if(part)inspector.appendChild(part);});return;}
       if(node.detailIndex!=null){
         var recorded=(prompt.details||[])[node.detailIndex];

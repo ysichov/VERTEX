@@ -13,7 +13,7 @@ async function probe(vscode, secrets, id, model, extensionPath, executable) {
   else if (id === "anthropic-api" || compatible.PROVIDERS[id]) {
     const apiKey = (await require("./key-profiles").getActiveKey(secrets, id)).key;
     if (id === "anthropic-api") result = await require("./anthropic").ask({ ...options, apiKey });
-    else { result=await compatible.probe(id, apiKey, model,compatible.requestJson,options);audit.finish(result);return; }
+    else { result=await compatible.probe(id, apiKey, model,compatible.requestJson,options);audit.finish(result);return result; }
   } else result = await require("./assistant").ask({ ...options, extensionPath: extensionPath(id), executable: await executable(id),
     profile: require("./assistant").profileFor(vscode, id) });
   if (!result?.plan?.answer?.trim()) throw new Error("The model returned no answer.");
@@ -34,7 +34,7 @@ async function detect(providers, list, check, report, cancelled = () => false) {
       if (cancelled()) break;
       if (model.checked === true || model.available === true) { checked++; continue; }
       report({ provider: provider.id, model: model.label || model.id, index: index + 1, total: models.length });
-      try { await check(provider.id, model.id); rows[index] = { ...model, on: true, available: true, checked: true }; }
+      try { const result = await check(provider.id, model.id); rows[index] = { ...model, on: true, available: true, checked: true, ...(result?.reason ? { reason: result.reason } : {}) }; }
       catch (error) {
         const reason = String(error.message || error);
         rows[index] = { ...model, on: false, available: false, checked: true, reason, availabilitySource: "probe" };

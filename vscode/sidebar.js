@@ -76,8 +76,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     if(pendingChat)throw new Error("Wait for the active request to finish before restoring a Jev step.");
     require("./jev").validate(input?.state,input?.questions);
     if(!["typesafe-api","opencode-api","gemini-api"].includes(input.provider)||typeof input.model!=="string")throw new Error("Invalid Jev provider or model in this step.");
+    await vscode.commands.executeCommand("vertex.launcher.focus");
     if(!currentView||!ready){
-      await vscode.commands.executeCommand("vertex.launcher.focus");
       for(let waited=0;(!currentView||!ready)&&waited<5000;waited+=100)await new Promise(resolve=>setTimeout(resolve,100));
       if(!currentView||!ready)throw new Error("Open the VERTEX panel and try again.");
     }
@@ -226,6 +226,15 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
       let fileLinksUpdated=0;
       const updateFileLinks=async(force=false)=>{if(!ready||!force&&Date.now()-fileLinksUpdated<3000)return;fileLinksUpdated=Date.now();try{await view.webview.postMessage({localFiles:await require("./file-links").catalog(vscode)});}catch(_){};};
       const showFolder = async () => {if(!ready)return;await view.webview.postMessage({folder:ask.state().contextFolder??require("./chat").currentWorkingFolder(vscode),contextMode:ask.state().contextMode});await updateFileLinks();};
+      const clearConversation = async () => {
+        await closeReview();
+        require("./session-log").reset();
+        await vscode.commands.executeCommand("vertex.resetTranspilerRunNumbers");
+        ask.newConversation();
+        reviewAsk = null;
+        await view.webview.postMessage({ cleared: true });
+        await showReview();
+      };
       const messages = view.webview.onDidReceiveMessage(async message => {
         if (!message || typeof message !== "object") { return; }
         if (message.action === "closeAiReview") {
@@ -295,6 +304,17 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if(message.action==="setContextMode"){try{await view.webview.postMessage({ai:await ask.setContextMode(message.mode)});await showFolder();}catch(error){vscode.window.showWarningMessage("VERTEX: "+error.message);}return;}
+        if(message.action==="chooseContextFolder"){
+          if(pendingChat||continuing||reviewSurface?.running)return;
+          try{
+            const previous=require("./chat").currentWorkingFolder(vscode);
+            const state=await ask.chooseContextFolder();
+            const current=require("./chat").currentWorkingFolder(vscode);
+            if(previous!==current&&!require("./chat").sameProjectFolder(previous,current))await clearConversation();
+            await view.webview.postMessage({ai:state});await showFolder();
+          }catch(error){vscode.window.showWarningMessage("VERTEX: "+error.message);}
+          return;
+        }
         if (message.action === "configModels") { ask.configModels(); return; }
         if (message.action === "clearReview") {
           reviewAsk = null;
@@ -325,21 +345,14 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         // Git History of the folder shown in the header, in the same window the Tools window opens.
         if (message.action === "gitHistory") {
-          try { await require("./git-history").open(vscode, require("./chat").currentWorkingFolder(vscode)); }
+          try { const folder=require("./chat").currentWorkingFolder(vscode);await require("./git-history").open(vscode,folder); }
           catch (error) { vscode.window.showErrorMessage("VERTEX Git History: " + error.message); }
           return;
         }
         if (message.action === "newConversation") {
           if (pendingChat || continuing || reviewSurface?.running) return;
           if (!await ask.confirmDiscardChanges()) return;
-          await closeReview();
-          // A new conversation writes to a new log file.
-          require("./session-log").reset();
-          await vscode.commands.executeCommand("vertex.resetTranspilerRunNumbers");
-          ask.newConversation();
-          reviewAsk = null;
-          await view.webview.postMessage({ cleared: true });
-          await showReview();
+          await clearConversation();
           return;
         }
         if(message.action==="openProjectFile"){try{await require("./file-links").open(vscode,message.reference);}catch(error){vscode.window.showWarningMessage("VERTEX: "+error.message);}return;}
@@ -696,8 +709,8 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 #ai-review-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #ai-review-scope{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #chat #ai-review-box button{width:auto;margin:0}
-#chat #ai-review-close{padding:0 6px;line-height:18px;background:transparent;color:var(--vscode-foreground);opacity:.7}
-#chat #ai-review-close:hover{opacity:1}
+#chat #ai-review-close{flex:none;width:28px;height:28px;padding:0;line-height:24px;font-size:20px;font-weight:700;color:var(--vscode-errorForeground,var(--vscode-foreground));background:var(--vscode-inputValidation-errorBackground,var(--vscode-editorWidget-background));border:1px solid var(--vscode-errorForeground,var(--vscode-focusBorder));border-radius:4px}
+#chat #ai-review-close:hover{color:var(--vscode-button-foreground);background:var(--vscode-errorForeground,var(--vscode-button-background))}
 #ai-review-stale{margin:6px 0 0;padding:4px 8px;border-left:3px solid var(--vscode-editorWarning-foreground)}
 #ai-review-stale[hidden]{display:none}
 #ai-review-settings{margin:6px 0 0}#ai-review-settings>summary{cursor:pointer;color:var(--vscode-descriptionForeground)}
@@ -732,7 +745,7 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button><button type="button" class="secondary" id="mcp-servers" title="MCP servers: descriptions, versions, toolsets and tools" aria-label="MCP servers: descriptions, versions, toolsets and tools" hidden>ⓘ</button><button type="button" class="secondary" id="mcp-update" hidden>Update</button>
-</span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div></div>
+</span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden><a href="#" class="link" id="folder-name" title="Choose a project folder for VERTEX without changing the VS Code workspace"></a> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div></div>
 <details id="conversation-history"><summary>Conversations · Continue a chat<span id="topic-now"></span></summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"><button type="button" class="secondary" id="history-refresh">Refresh</button></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
 <div id="topic-view" class="line" hidden><label for="topic-view-select">Show conversation</label><select id="topic-view-select" aria-label="Visible conversation topic"><option value="current">Current topic</option><option value="all">All topics</option></select></div>
 <main id="messages" aria-live="polite"><p class="chat-empty">Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
@@ -740,7 +753,7 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model · Ctrl+C / Cmd+C copies the model ID"><option value="">Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <div id="work-composer">
 ${require(require("path").join(__dirname,"jev-panel")).html}
-<form id="chat"><span id="topic-picker-label" title="Which earlier exchanges go with the question: all of them or the ones Jev routes to its topic. Choose the decision model next to Auto." hidden><span class="vertex-segment-toggle" id="history-mode" role="group" aria-label="History"><button type="button" data-history="full" class="active" aria-pressed="true">Full history</button><button type="button" data-history="auto" aria-pressed="false">Auto (Jev)</button></span><select id="topic-picker" hidden aria-hidden="true"><option value="full">Full history</option><option value="auto">Auto (Jev)</option></select><select id="decision-provider" aria-label="Decision model for Auto" title="Decision model for Auto, topic tagging and ASK Jev" hidden></select></span><span id="context-optimization-status" class="note" role="status"></span><section id="ai-review-box" aria-label="AI Review" hidden><div class="ai-review-head"><strong id="ai-review-title">AI Review</strong><span id="ai-review-scope" class="note"></span><button type="button" class="secondary" id="ai-review-restart" title="Start a new review of the current changes">Check again</button><button type="button" class="secondary" id="ai-review-close" title="Close the review; the next question goes to the chat" aria-label="Close the review">×</button></div><p id="ai-review-stale" hidden>Changes have updated. This review checks the earlier snapshot. Select Check again to start a new review.</p><details id="ai-review-settings" open><summary id="ai-review-settings-label">Review settings · Technical review</summary><label class="ai-review-task">Requirements for this review (optional)<textarea id="ai-review-task" rows="3" placeholder="Enter requirements relevant to these changes"></textarea></label>${require(require("path").join(__dirname,"git-prompt-bar")).html(require(require("path").join(__dirname,"html-escape")).escapeHtml)}</details><p id="ai-review-status" role="status" aria-live="polite"></p></section><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><details id="review-result-preview" hidden><summary>Attached review result</summary><div id="review-result-body"></div></details><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
+<form id="chat"><span id="topic-picker-label" title="Which earlier exchanges go with the question: all of them or the ones Jev routes to its topic. Choose the decision model next to Auto." hidden><span class="vertex-segment-toggle" id="history-mode" role="group" aria-label="History"><button type="button" data-history="full" class="active" aria-pressed="true">Full history</button><button type="button" data-history="auto" aria-pressed="false">Auto (Jev)</button></span><select id="topic-picker" hidden aria-hidden="true"><option value="full">Full history</option><option value="auto">Auto (Jev)</option></select><select id="decision-provider" aria-label="Decision model for Auto" title="Decision model for Auto, topic tagging and ASK Jev" hidden></select></span><span id="context-optimization-status" class="note" role="status"></span><section id="ai-review-box" aria-label="AI Review" hidden><div class="ai-review-head"><strong id="ai-review-title">AI Review</strong><span id="ai-review-scope" class="note"></span><button type="button" class="secondary" id="ai-review-restart" title="Start a new review of the current changes">Check again</button><button type="button" class="secondary" id="ai-review-close" title="Close AI Review and continue with the ordinary chat, its history and tools" aria-label="Close AI Review and continue in chat">×</button></div><p id="ai-review-stale" hidden>Changes have updated. This review checks the earlier snapshot. Select Check again to start a new review.</p><details id="ai-review-settings" open><summary id="ai-review-settings-label">Review settings · Technical review</summary><label class="ai-review-task">Requirements for this review (optional)<textarea id="ai-review-task" rows="3" placeholder="Enter requirements relevant to these changes"></textarea></label>${require(require("path").join(__dirname,"git-prompt-bar")).html(require(require("path").join(__dirname,"html-escape")).escapeHtml)}</details><p id="ai-review-status" role="status" aria-live="polite"></p></section><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><details id="review-result-preview" hidden><summary>Attached review result</summary><div id="review-result-body"></div></details><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
 <button class="secondary" data-action="tools" id="tools"><span class="tools-logo" aria-hidden="true"></span>VERTEX Tools</button>
 </div>
 </div>
@@ -858,6 +871,7 @@ window.addEventListener('message',event=>{const data=event.data||{};
 });
 let projectFileAliases=new Set();
 document.querySelectorAll('[data-context]').forEach(button=>button.addEventListener('click',()=>api.postMessage({action:'setContextMode',mode:button.dataset.context})));
+document.getElementById('folder-name').onclick=event=>{event.preventDefault();api.postMessage({action:'chooseContextFolder'});};
 const findFileReferences=${require(require("path").join(__dirname,"file-links")).references.toString()};
 // The effort levels of the chosen assistant; hidden for one that takes none (API providers, Copilot).
 const EFFORTS = { 'claude-subscription': ['low', 'medium', 'high', 'xhigh', 'max'], codemie: ['low', 'medium', 'high', 'xhigh', 'max'],
@@ -1238,8 +1252,8 @@ window.addEventListener('message', event => {
   }
   if (event.data && typeof event.data.folder === 'string') {
     const folder = event.data.folder, name = document.getElementById('folder-name');
-    document.getElementById('folder-line').hidden = !folder||contextMode==='sap';
-    name.textContent = folder.split(/[\\\\/]/).filter(Boolean).pop() || folder;
+    document.getElementById('folder-line').hidden = contextMode==='sap';document.getElementById('git-history').hidden=!folder;
+    name.textContent = folder.split(/[\\\\/]/).filter(Boolean).pop() || 'Choose a folder';
     name.title = folder;
   }
   if (event.data && Array.isArray(event.data.systems)) {

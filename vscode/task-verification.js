@@ -96,6 +96,13 @@ function continuationQuestion(task, evidence) {
    ? "После повторной попытки выполнение задачи не подтверждено."+(reason?" Последняя записанная ошибка инструмента: "+reason:"")+"\n\nПродолжить работу? Напишите «продолжай» в этом чате. При необходимости сначала смените модель и затем продолжите: исходная задача и результаты попыток останутся в истории."
    : "Task completion was not confirmed after the recovery attempt."+(reason?" Last recorded tool error: "+reason:"")+"\n\nContinue working? Type ‘continue’ in this chat. You can switch models first; the original task and attempt results remain in the conversation history.";
 }
+function falseLocalConnectionClaim(answer, evidence) {
+ const tools=evidence?.tools||[];
+ if(!tools.length || evidence.omitted_tools || evidence.pending || tools.some(tool=>tool.error))return false;
+ if(!tools.some(tool=>/^(Read|Grep|Glob)$/.test(tool.tool)))return false;
+ return /(?:ошибк[^.!?\n]{0,100}соединени|соединени[^.!?\n]{0,100}ошибк|connection[^.!?\n]{0,100}(?:error|fail)|(?:error|fail)[^.!?\n]{0,100}connection)/i.test(String(answer||""))
+   && /(?:локальн|local)/i.test(String(answer||""));
+}
 function createEvidence() {
  const tools=[],pending=new Map(),startedAt=new Date().toISOString();let count=0,changeAttempted=false;
  const bounded=(value,limit)=>{
@@ -114,4 +121,4 @@ function createEvidence() {
    }
  },snapshot(){return {started_at:startedAt,tools:tools.slice(),pending:pending.size,total_tools:count,omitted_tools:Math.max(0,count-tools.length),change_attempted:changeAttempted};}};
 }
-module.exports={OPERATION,evaluate,verifyTask,format,createEvidence,canRecover,continuationQuestion};
+module.exports={OPERATION,evaluate,verifyTask,format,createEvidence,canRecover,continuationQuestion,falseLocalConnectionClaim};

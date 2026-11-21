@@ -1,6 +1,51 @@
+## VSIX 0.9.109
+
+The VS Code extension version is 0.9.109. The VSIX is built after the version changes are approved.
+
+## VSIX 0.9.108
+
+The VS Code extension version is 0.9.108. The VSIX is built after the version changes are approved.
+
+## 2026-11-21 — Discard assistant changes from review
+
+Decline now discards a selected assistant file change when Apply is selected, without sending a rework request. Delete Declined removes only the marked files while leaving others pending. Decline All marks every file, and Delete All Changes removes all pending assistant edits after confirmation. Closing a review offers deletion even if no files were marked; a multi-file review can choose which files to delete while keeping the others for later. These actions leave the user's folder unchanged for declined files.
+
+An explicit correction to the preceding task now stays in that task's topic when it is the only retained topic despite a low routing confidence. Git History can also recover that link from existing logs. ASK Jev assesses the latest requested change in the current diff, with earlier requests as constraints, so a small follow-up is not judged as though it had to recreate all earlier work.
+
+## 2026-11-21 — Project picker and topic-aware Jev review
+
+Folder mode can now choose a project from the VERTEX panel without opening that folder as the VS Code workspace. The picker offers workspace folders, recently chosen folders and automatic selection from the active file. Git History and builds use the selected project.
+Assistant change reviews now offer ASK Jev for the whole review and each file, alongside block checks. Jev receives the user requests in that conversation topic and judges the visible diff against the latest refined task. A request to restore the previous task after a pull stays in that task's topic, so its prompts remain together. Git History ASK Jev finds the latest saved Edit, Write or approved Review for each changed file, then sends all user requests in the recorded topic and its dependencies; a whole diff can include multiple linked topics. This also keeps the original task visible for older logs that recorded a restoration as a separate topic, including after reopening a project with an empty current chat. A continuation of an unassigned exchange now gives the preceding unassigned chain the same topic, including low-confidence continuation decisions. Flow colors the LLM request blue and the response green.
+
+## 2026-11-21 — Recover an Edit with escaped quotes
+
+If an assistant sends literal JSON quote escapes in `Edit.old_string`, VERTEX keeps the failed Edit in the log, checks whether removing those escapes produces one exact match, and records a separate retry. The retry result tells the assistant what VERTEX changed; a failed retry returns its actual error. Recovery prompts also state the last tool error and that folder tools remain available.
+Jev's change check now receives the earlier user requests in the routed topic along with a short follow-up such as “repeat the changes”, so it can judge the diff against the actual requested edit.
+
+## 2026-11-20 — Compact Logs & Cost header
+
+Refresh now sits beside the Logs & Cost heading. Log Settings is a gear button with a hover tooltip.
+
+## VSIX 0.9.107
+
+The VS Code extension version is 0.9.107. The VSIX is built after the version changes are approved.
+
+## VSIX 0.9.106
+
+The VS Code extension version is 0.9.106. The VSIX is built after the version changes are approved.
+
+## 2026-11-20 — Keep pending review available on Windows
+
+VERTEX now recognizes the same project folder across Windows path casing and aliases, so a pending review no longer blocks further edits in that folder as though it were a different project.
+When a model reports a local connection error after successful file-tool calls, VERTEX sends it back to finish the task using the recorded results.
+
 ## VSIX 0.9.105
 
 The VS Code extension version is 0.9.105. The VSIX is built after the version changes are approved.
+
+## 2026-11-20 — Group Flow operations under Thinking
+
+Flow Steps now places each Thinking entry and the following tool operations in the same block, with compact, clickable operation cards. Each new Thinking entry starts a new block.
 
 ## 2026-11-20 — Count deleted rows in review developer totals
 

@@ -11,7 +11,10 @@ function buildQuestions(drafts) {
     const choices = {};
     if (draft.type === "choice") {
       if(lines.length < 2 || lines.length > 255)throw new Error("Enter 2–255 answer options.");
-      lines.forEach((line,index)=>{choices['option_'+(index+1)]=line;});q.criteria=choices;
+      const original=draft.originalCriteria;
+      if(original && JSON.stringify(Object.values(original))===JSON.stringify(lines))Object.assign(choices,original);
+      else lines.forEach((line,index)=>{choices['option_'+(index+1)]=line;});
+      q.criteria=choices;
     } else if(draft.type === "score") {
       if(lines.length < 2 || lines.length > 10)throw new Error("Enter 2–10 scale levels, lowest first.");
       q.criteria=lines;
@@ -81,8 +84,9 @@ function restoreJevDraft(input){
   jevRestoredState={text:field.value,value:input.state};
   jevDrafts=Object.entries(input.questions).map(([id,q])=>({id,type:q.type,instructions:q.instructions,criteriaText:q.type==='choice'?Object.values(q.criteria).join('\\n'):q.type==='score'?q.criteria.join('\\n'):''}));
   jevNextQuestion=Math.max(0,...jevDrafts.map(d=>Number(d.id.match(/^question_(\\d+)$/)?.[1])||0));
+  for(const draft of jevDrafts)if(draft.type==='choice')draft.originalCriteria=input.questions[draft.id].criteria;
   renderJevQuestions();document.getElementById('jev-result').replaceChildren();
-  document.getElementById('jev-status').textContent='Restored from Session Logs. Edit and Run Jev to create a new step.';
+  document.getElementById('jev-status').textContent=input.fromReview?'Loaded from review. Edit or select Run Jev.':'Restored from Session Logs. Edit and Run Jev to create a new step.';
   field.focus();
 }
 document.getElementById('jev-expand-context').addEventListener('click',()=>{

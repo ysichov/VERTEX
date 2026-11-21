@@ -6,12 +6,30 @@ const modelConfig = require("../model-config");
 const assistant = require("../assistant");
 
 test("API provider catalog matches the ABAP-AI-Code key providers", () => {
-  assert.deepEqual(Object.keys(api.PROVIDERS), ["openai-api", "mistral-api", "gemini-api", "groq-api",
+  assert.deepEqual(Object.keys(api.PROVIDERS), ["openai-api", "mistral-api", "gemini-api", "mf0-api", "groq-api",
     "cerebras-api", "openrouter-api", "nvidia-api", "vercel-api", "opencode-api", "typesafe-api", "lmstudio-local", "ollama-local"]);
   for (const id of Object.keys(api.PROVIDERS)) {
     assert.ok(modelConfig.PROVIDERS.some(provider => provider.id === id && provider.setting === id));
     assert.match(api.PROVIDERS[id].base, api.PROVIDERS[id].local ? /^http:\/\/localhost:\d+\/v1$/ : /^https:\/\//);
   }
+});
+
+test("MF0 uses its catalog and native text endpoint through the provider interface", async () => {
+  const models = await api.models("mf0-api", "", () => assert.fail("Catalog should be local"));
+  assert.equal(models.length, 40);
+  assert.equal(models.find(model => model.id === "qwen-2-pro").modelKind, "image");
+  const result = await api.ask({ assistant: "mf0-api", model: "glm-5.3-flash", apiKey: "fixture", prompt: "hello",
+    mf0Request: async (url, request) => {
+      assert.equal(url, "https://www.mf0.ai/api/v1/generations");
+      assert.equal(request.headers["X-API-Key"], "fixture");
+      assert.equal(JSON.parse(request.body).model, "glm-5.3-flash");
+      return { ok: true, json: async () => ({ ok: true, text: "hello" }) };
+    } });
+  assert.equal(result.plan.answer, "hello");
+  const availability = await require("../mf0-models").probe("fixture", { id: "glm-5.3-flash", kind: "text" },
+    async () => ({ status: 402, json: async () => ({ error: "insufficient_balance" }) }));
+  assert.equal(availability.available, true);
+  assert.match(availability.status, /insufficient balance/);
 });
 
 test("local LM Studio and Ollama servers are reached over HTTP without a key", async () => {

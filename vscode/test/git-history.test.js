@@ -138,8 +138,11 @@ test('uncommitted refresh updates the same panel and clears obsolete review cont
  const git=(...args)=>execFileSync('git',args,{cwd:folder,windowsHide:true});
  git('init');git('config','user.name','Test');git('config','user.email','test@example.test');
  fs.writeFileSync(path.join(folder,'a.txt'),'base');git('add','.');git('commit','-m','base');fs.writeFileSync(path.join(folder,'a.txt'),'first');
- const vscode={ViewColumn:{Active:1},window:{createWebviewPanel(){panels++;return {webview:{set html(v){html=v;},onDidReceiveMessage(fn){receive=fn;},postMessage(){}},onDidDispose(fn){close=fn;},onDidChangeViewState(){}};}}};
+ let reveals=0;
+ const vscode={ViewColumn:{Active:1},window:{createWebviewPanel(){panels++;return {webview:{set html(v){html=v;},onDidReceiveMessage(fn){receive=fn;},postMessage(){}},onDidDispose(fn){close=fn;},onDidChangeViewState(){},reveal(){reveals++;}};}}};
  const opening=history.openCommit(vscode,folder,{working:true});assert.match(html,/data-operation="generate"/);assert.match(html,/generate-scene/);assert.match(html,/Reading files and preparing/);await opening;assert.match(html,/id="review-refresh"/);assert.match(html,/first/);
+ const existingHtml=html;await history.openCommit(vscode,folder,{working:true});
+ assert.equal(reveals,1);assert.equal(panels,1);assert.equal(html,existingHtml);
  fs.writeFileSync(path.join(folder,'a.txt'),'second');await receive({action:'refresh'});assert.match(html,/second/);assert.equal(panels,1);
  git('checkout','--','a.txt');await receive({action:'refresh'});assert.match(html,/0 files/);assert.doesNotMatch(html,/id="commit-open"/);assert.match(html,/id="review-refresh"/);
 });

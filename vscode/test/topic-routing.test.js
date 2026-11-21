@@ -94,11 +94,25 @@ test('a follow-up can establish the topic of an unassigned previous exchange wit
  const selected=routing.apply('реальные баги найдены?',history,scope,[],{route:{choice:'previous'}});
  assert.equal(selected.topic.id,'topic_0001');assert.equal(selected.topic.label,'дубли, риски, ошибки?');
  assert.deepEqual(selected.history,history);
+ assert.deepEqual(selected.backfillIndices,[0,1]);
  const changed=routing.apply('Different task',history,scope,[],{route:{choice:'new'}});
  assert.equal(changed.topic.label,'Different task');
  assert.equal(routing.input('First request',[],[]).questions.route.criteria.previous,undefined);
  assert.throws(()=>routing.apply('First request',[],scope,[],{route:{choice:'previous'}}),/Invalid previous/);
  assert.equal(routing.input('Follow-up',h,routing.catalog(h,scope)).questions.route.criteria.previous,undefined);
+});
+
+test('low-confidence previous route assigns one topic to the trailing unassigned chain',async t=>{
+ const history=[...h,{role:'user',content:'Нужно поле TR_EN'},{role:'assistant',content:'Добавим поле.'},{role:'user',content:'Искать английский в других программах'},{role:'assistant',content:'Проверю.'}];
+ const review=require('../review-jev'),jev=require('../jev'),accounting=require('../ai-accounting');
+ t.mock.method(review,'connection',async()=>({key:'fixture',model:'jev-test'}));
+ t.mock.method(accounting,'begin',()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+ t.mock.method(jev,'evaluate',async()=>({model:'jev-test',usage:{},answers:{route:{choice:'previous',confidence:0.3},need_topic_0001:{choice:'skip'},need_topic_0002:{choice:'skip'}}}));
+ const result=await routing.route({},'Ищи все варианты',history,scope);
+ assert.equal(result.topic.id,'topic_0003');
+ assert.equal(result.report.status,'routed');
+ assert.deepEqual(result.backfillIndices,[4,5,6,7]);
+ assert.deepEqual(result.history,history.slice(4));
 });
 
 test('a question Jev cannot place still leaves out the topics it ruled out', () => {
@@ -147,8 +161,9 @@ test('replays the Providers screenshot misroute: uncertain routing keeps only re
     return {model:'jev-test',usage:{},answers};
   });
   const result=await routing.route({},question,history,scope);
-  assert.equal(result.report.status,'pruned');
-  assert.match(result.report.reason,/confidence 0.36/);
+  assert.equal(result.report.status,'routed');
+  assert.equal(result.topic.id,'topic_0005');
+  assert.match(result.report.reason,/created a new topic/);
   assert.deepEqual(result.history,history.slice(0,4));
   assert.deepEqual(result.report.keptIndices,[0,1,2,3]);
 });
@@ -168,6 +183,31 @@ test('a short, uncertain follow-up keeps the full history instead of an empty on
     need_topic_0001:{choice:'skip',confidence:0.8},need_topic_0002:{choice:'skip',confidence:0.8}}}));
   const result=await routing.route({},'исправь',history,scope);
   assert.deepEqual(result.history,history,'a short uncertain request must not lose the previous exchange');
-  assert.equal(result.topic,null);
+  assert.equal(result.topic.id,'topic_0003');
   assert.match(result.report.reason,/full history retained/);
+});
+test('a pull that overwrote the last task stays in the same topic even if Jev chooses new',async t=>{
+ const original=topic('topic_0001','Fix Z_TR_VOCAB_EN_FILL declarations');
+ const history=[{role:'user',content:'Z_TR_VOCAB_EN_FILL declarations do not compile',topic:original},{role:'assistant',content:'The corrections are ready for review.',topic:original}];
+ const review=require('../review-jev'),jev=require('../jev'),accounting=require('../ai-accounting');
+ t.mock.method(review,'connection',async()=>({key:'fixture',model:'jev-test'}));
+ t.mock.method(accounting,'begin',()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+ t.mock.method(jev,'evaluate',async()=>({model:'jev-test',usage:{},answers:{route:{choice:'new',confidence:0.91},need_topic_0001:{choice:'skip'}}}));
+ const result=await routing.route({},'я встречным pull затер последним коммитом - исправь плиз',history,scope);
+ assert.equal(result.topic.id,'topic_0001');
+ assert.deepEqual(result.history,history);
+ assert.equal(result.report.basis,'previous-task-continuation');
+});
+test('a low-confidence correction stays in its only retained previous topic',async t=>{
+ const current=topic('topic_0001','Skip EN to UK in the report'),other=topic('topic_0002','Other review');
+ const history=[{role:'user',content:'Other review',topic:other},{role:'assistant',content:'Done',topic:other},
+   {role:'user',content:'Skip EN to UK',topic:current},{role:'assistant',content:'Added a message and return',topic:current}];
+ const review=require('../review-jev'),jev=require('../jev'),accounting=require('../ai-accounting');
+ t.mock.method(review,'connection',async()=>({key:'fixture',model:'jev-test'}));
+ t.mock.method(accounting,'begin',()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+ t.mock.method(jev,'evaluate',async()=>({model:'jev-test',usage:{},answers:{route:{choice:'topic_0001',confidence:0.39},need_topic_0001:{choice:'keep',confidence:0.86},need_topic_0002:{choice:'skip',confidence:0.7}}}));
+ const result=await routing.route({},'А зачем ты сделал сообщение? Просто пропускай.',history,scope);
+ assert.equal(result.topic.id,'topic_0001');
+ assert.equal(result.report.status,'routed');
+ assert.deepEqual(result.history,history.slice(2));
 });

@@ -163,6 +163,13 @@ function reviewSnapshot(changes, title, folder, limit = 180000) {
 /* A commit of the history on VERTEX's review page, read only: ASK AI on a block, a file or the whole commit. */
 // Per folder for this session: whether the hidden extensions are shown on the Uncommitted changes page.
 const showHidden=new Map();
+function jevContext(files,message,title,task="") {
+  const review=require("./code-review"),scope=message.scope==="review"?"review":message.scope==="file"?"file":"block";
+  const selected=scope==="review"?files:files.filter(item=>item.id===message.file);
+  if(!selected.length||scope==="block"&&!Number.isInteger(message.hunk))return null;
+  const blocks=selected.filter(item=>!item.binary).flatMap(item=>review.askContext(item.parts,scope==="block"?[message.hunk]:null,item.after,"local",item.path).blocks.map(block=>({...block,file:item.path})));
+  return {scope,object:scope==="review"?title:selected[0].path,blocks,task};
+}
 async function openCommit(vscode, folder, commit) {
   try{return await openCommitReview(vscode,folder,commit);}
   catch(error){
@@ -175,12 +182,12 @@ async function openCommitReview(vscode, folder, commit) {
   const working = commit.working === true;
   const key = folder + "|" + (working ? "working" : commit.hash);
   if (commitPanels.has(key)) {
-    if (!working) { commitPanels.get(key).reveal(vscode.ViewColumn.Active); return; }
-    commitPanels.get(key).dispose();
+    commitPanels.get(key).reveal(vscode.ViewColumn.Active);
+    return;
   }
   const path = require("path"), review = require("./code-review");
   const title = working ? "Uncommitted changes" : "Commit " + commit.short;
-  const panel = vscode.window.createWebviewPanel("vertex.commitReview", title, vscode.ViewColumn.Active, { enableScripts: true });
+  const panel = vscode.window.createWebviewPanel("vertex.commitReview", title, vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true });
   require("./ai-availability").attach(panel);
   let disposed=false,untrackLinks=()=>{};
   commitPanels.set(key,panel);
@@ -206,8 +213,14 @@ async function openCommitReview(vscode, folder, commit) {
   const hiddenCount=()=>changes.filter(c=>isHidden(c.file)).length;
   let files = makeFiles(visible());
   require("./review-jev").bind(vscode,panel,message=>{
-    const file=files.find(item=>item.id===message.file);if(!file||file.binary||!Number.isInteger(message.hunk))return null;
-    return review.askContext(file.parts,[message.hunk],file.after,"local",file.path);
+    const context=jevContext(files,message,title);
+    if(!context)return null;
+    if(message._topicTask===undefined){
+      const paths=message.scope==="review"?files.map(file=>file.path):[files.find(file=>file.id===message.file)?.path].filter(Boolean);
+      message._topicTask=require("./review-topic").fromLogs(vscode,folder,paths);
+    }
+    context.task=message._topicTask;
+    return context;
   });
   untrackLinks = require("./file-links").register(panel,()=>files.map(f=>({id:f.id,path:path.resolve(folder,f.path),relative:f.path})));
   const shownChanges=()=>visible();
@@ -529,4 +542,4 @@ function open(vscode, folder) {
   panel.onDidDispose(() => { panel = undefined; });
 }
 
-module.exports = { open, markGenerated, readCommits, readCommitChanges, readWorkingChanges, openCommit, reviewContext, reviewSnapshot };
+module.exports = { open, markGenerated, readCommits, readCommitChanges, readWorkingChanges, openCommit, reviewContext, reviewSnapshot, jevContext };

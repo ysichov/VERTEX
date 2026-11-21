@@ -1,9 +1,7 @@
 "use strict";
 
-/* The review at the end of an answer: the assistant's working copy against the user's folder, file by file, on
-   VERTEX's review page. Apply copies the approved files into the folder. A declined file with a reason stays in
-   the copy for the assistant to rework; without a reason its change is dropped (the copy gets the user's
-   version back). The outcome is what the assistant is told before its next answer. */
+/* The review at the end of an answer: Apply copies approved files into the user's folder and drops declined
+   changes from the assistant's working copy. Delete Changes drops every pending change. */
 
 const path = require("path");
 const review = require("./code-review");
@@ -14,7 +12,7 @@ function aiContext(changes, folder, task = "", scope = null) {
     review.askContext(review.hunks(change.before, change.after), scope && Number.isInteger(scope.hunk) ? [scope.hunk] : null,
       change.after, "local", change.file).blocks.map(block => ({ ...block, file: change.file })));
   blocks.forEach((block, i) => { block.block = i + 1; });
-  return { system: "local", object: scope ? scope.file : path.basename(folder), all: true, total: blocks.length,
+  return { system: "local", object: scope ? scope.file : path.basename(folder), scope: scope ? Number.isInteger(scope.hunk) ? "block" : "file" : "review", all: !scope, total: blocks.length,
     blocks, files: selected.map(change => change.file), task, logContext: { mode: "folder", folder } };
 }
 
@@ -27,8 +25,9 @@ function open(vscode, copy, changes, onDone, options = {}) {
   require("./ai-availability").attach(panel);
   const byId = new Map(changes.map((change, i) => ["f" + (i + 1), change]));
   require("./review-jev").bind(vscode,panel,message=>{
-    const change=byId.get(message.file);if(!change||change.binary||!Number.isInteger(message.hunk))return null;
-    return review.askContext(review.hunks(change.before,change.after),[message.hunk],change.after,"local",change.path);
+    const scope=message.scope==="review"?null:message.scope==="file"?{file:byId.get(message.file)?.file}:Number.isInteger(message.hunk)?{file:byId.get(message.file)?.file,hunk:message.hunk}:undefined;
+    if(scope===undefined||scope?.file&&!byId.has(message.file))return null;
+    return aiContext(changes,copy.folder||copy.top,options.task||"",scope);
   });
   panel.webview.html = review.filesReviewHtml([...byId].map(([id, change]) => ({
     id, path: change.path, treePath: change.file, label: path.basename(change.file), conflict: change.conflict, merged: change.merged, binary: change.binary,
@@ -68,6 +67,19 @@ function open(vscode, copy, changes, onDone, options = {}) {
     }
     if (finished) return;
     if (message.action === "decisions") { marked = decisionsOf(message); return; }
+    if (message.action === "deleteChanges" || message.action === "deleteDeclined") {
+      const selected=message.action==="deleteChanges"?new Set(byId.keys()):new Set((Array.isArray(message.files)?message.files:[]).filter(id=>byId.has(id)));
+      if(!selected.size){await panel.webview.postMessage({action:"error",message:"Decline at least one file to delete it."});return;}
+      const label=message.action==="deleteChanges"?"Delete All Changes":"Delete Declined";
+      const answer=await vscode.window.showWarningMessage("Delete "+selected.size+" assistant change(s)? Your folder will not be changed.",
+        {modal:true,detail:"Selected changes will be reset in the assistant's working copy; other files will remain pending."},label);
+      if(answer!==label){await panel.webview.postMessage({action:"error",message:"Changes kept for review."});return;}
+      finished=true;
+      const outcome=await carryOut({approved:new Set(),declined:selected});
+      await panel.webview.postMessage({action:"saved",message:summary(outcome)});
+      onDone(outcome);
+      return;
+    }
     if (message.action !== "apply") return;
     const decided = decisionsOf(message);
     if ([...byId.keys()].some(id => !decided.approved.has(id) && !decided.declined.has(id))) {
@@ -77,18 +89,16 @@ function open(vscode, copy, changes, onDone, options = {}) {
     finished = true;
     const outcome = await carryOut(decided);
     await panel.webview.postMessage({ action: "saved", message: summary(outcome) });
-    // Something reached the folder: the assistant's build command is offered there (unless the folder remembers one,
-    // which the conversation runs by itself).
-    // Not while declined files go back to the assistant: it is about to change them again.
-    if (outcome.applied.length && !outcome.reworked.length && offered) await panel.webview.postMessage({ action: "offerBuild", command: offered });
+    // Something reached the folder: the assistant's build command is offered there.
+    if (outcome.applied.length && offered) await panel.webview.postMessage({ action: "offerBuild", command: offered });
     onDone(outcome);
   });
   // The page reports its marks as they are made, so closing it can offer to apply them.
-  let marked = { approved: new Set(), declined: new Map() };
+  let marked = { approved: new Set(), declined: new Set() };
   function decisionsOf(message) {
     return { approved: new Set((Array.isArray(message.approved) ? message.approved : []).filter(id => byId.has(id))),
-      declined: new Map((Array.isArray(message.declined) ? message.declined : [])
-        .filter(d => d && byId.has(d.id)).map(d => [d.id, String(d.reason || "").trim()])) };
+      declined: new Set((Array.isArray(message.declined) ? message.declined : [])
+        .map(d => typeof d==="string"?d:d?.id).filter(id => byId.has(id))) };
   }
   /* Does what was decided; an undecided file stays in the copy for the next review. */
   async function carryOut(decided) {
@@ -96,7 +106,6 @@ function open(vscode, copy, changes, onDone, options = {}) {
     for (const [id, change] of byId) {
       try {
         if (decided.approved.has(id)) { await copy.apply(change); outcome.applied.push(change.file); if (change.merged) outcome.merged.push(change.file); }
-        else if (decided.declined.get(id)) { await copy.keep(change); outcome.reworked.push({ file: change.file, reason: decided.declined.get(id), overlapped: change.conflict }); }
         else if (decided.declined.has(id)) { await copy.revert(change); outcome.dropped.push(change.file); }
         else outcome.closed.push(change.file);
       } catch (error) { outcome.failed.push({ file: change.file, error: error.message }); }
@@ -109,13 +118,19 @@ function open(vscode, copy, changes, onDone, options = {}) {
     if (finished) return;
     finished = true;
     const count = marked.approved.size + marked.declined.size;
-    // Replaced by a newer review (quiet), or closed with nothing marked: nothing is done, the files come up again.
-    if (!panel.quiet && count) {
+    // Replaced by a newer review (quiet): leave the changes for the new page.
+    if (!panel.quiet) {
       const left = byId.size - count;
-      const answer = await vscode.window.showWarningMessage("The review was closed without Apply. Apply the decisions you made?",
+      const answer = await vscode.window.showWarningMessage("The review was closed without Apply. What should happen to the assistant's changes?",
         { modal: true, detail: marked.approved.size + " approved, " + marked.declined.size + " declined"
-          + (left ? "; " + left + " not decided stay for the next review." : ".") }, "Apply");
-      if (answer === "Apply") { onDone(await carryOut(marked)); return; }
+          + (left ? "; " + left + " not decided." : ".") }, ...(count?["Apply Decisions"]:[]),...(byId.size>1?["Choose Files to Delete"]:[]),"Delete All Changes","Keep for Later");
+      if (answer === "Apply Decisions") { onDone(await carryOut(marked)); return; }
+      if (answer === "Choose Files to Delete") {
+        const picked=await vscode.window.showQuickPick([...byId].map(([id,change])=>({label:change.file,id})),
+          {canPickMany:true,placeHolder:"Select assistant changes to delete"});
+        if(picked?.length){onDone(await carryOut({approved:new Set(),declined:new Set(picked.map(item=>item.id))}));return;}
+      }
+      if (answer === "Delete All Changes") { onDone(await carryOut({approved:new Set(),declined:new Set(byId.keys())})); return; }
     }
     // Closed without deciding: nothing is copied; the changes stay in the copy and come up again after the next answer.
     onDone({ applied: [], merged: [], reworked: [], dropped: [], failed: [], closed: changes.map(c => c.file) });
@@ -126,7 +141,6 @@ function open(vscode, copy, changes, onDone, options = {}) {
 function summary(outcome) {
   const said = [];
   if (outcome.applied.length) said.push("copied into your folder: " + outcome.applied.join(", "));
-  if (outcome.reworked.length) said.push("sent back with your reasons: " + outcome.reworked.map(r => r.file).join(", "));
   if (outcome.dropped.length) said.push("dropped: " + outcome.dropped.join(", "));
   if (outcome.failed.length) said.push("not done: " + outcome.failed.map(f => f.error).join(" "));
   return said.length ? "Done - " + said.join("; ") + "." : "Done.";
@@ -137,11 +151,9 @@ function report(outcome) {
   const lines = [];
   if (outcome.applied.length) lines.push("Approved and copied into the user's folder: " + outcome.applied.join(", ") + ".");
   if ((outcome.merged || []).length) lines.push("Of these, merged with the user's own change made meanwhile (your working copy now has the merged file): " + outcome.merged.join(", ") + ".");
-  if (outcome.dropped.length) lines.push("Declined without a reason; your change was dropped and the working copy has the user's version again: " + outcome.dropped.join(", ") + ".");
+  if (outcome.dropped.length) lines.push("Declined; your change was dropped and the working copy has the user's version again: " + outcome.dropped.join(", ") + ".");
   if (outcome.failed.length) lines.push("Approved but not copied: " + outcome.failed.map(f => f.error).join(" "));
   if (outcome.closed && outcome.closed.length) lines.push("Not decided by the user yet, still waiting in the working copy: " + outcome.closed.join(", ") + ".");
-  outcome.reworked.forEach(r => lines.push("Declined " + r.file + " - the user's reason: " + r.reason
-    + (r.overlapped ? " (the user had changed this file too and the changes overlapped: your working copy now holds the user's version; redo your change on top of it)" : "")));
   return lines.join("\n");
 }
 

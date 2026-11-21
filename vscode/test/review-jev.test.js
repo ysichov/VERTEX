@@ -18,16 +18,64 @@ test("ASK Jev requires a saved active key and an enabled provider/model without 
  env.values.modelConfig["typesafe-api"].enabled=["jev-latest"];env.values.modelConfig["typesafe-api"].off=true;assert.equal(await service.connection(env.vscode),null);
  env.values.modelConfig["typesafe-api"].off=false;env.data.clear();assert.equal(await service.connection(env.vscode),null);
 });
-test("ASK Jev sends exactly four questions and only the selected diff context without applying decisions",async t=>{
+test("ASK Jev asks for context and auto-approval probability with only the selected diff",async t=>{
  const env=await setup();await service.rememberSuccess("synthetic-key","jev-latest");let calls=0;
  t.mock.method(require("../ai-accounting"),"begin",()=>({callbacks:{},finish(){},fail(){}}));
  t.mock.method(require("../jev"),"evaluate",async(provider,key,model,state,questions)=>{
-  calls++;assert.equal(provider,"typesafe-api");assert.equal(key,"synthetic-key");assert.equal(Object.keys(questions).length,4);
+  calls++;assert.equal(provider,"typesafe-api");assert.equal(key,"synthetic-key");assert.equal(Object.keys(questions).length,3);
   assert.deepEqual(state.block.before,context().blocks[0].before);assert.equal(state.otherFiles,undefined);assert.equal(state.block.hiddenSource,undefined);return result();
  });
  const input=context();input.otherFiles="not selected";input.blocks[0].hiddenSource="must not send";
- const answer=await service.assess(env.vscode,input);assert.equal(calls,1);assert.equal(answer.rows.length,4);assert.match(answer.rows[3].answer,/reviewer still decides/);
+ const answer=await service.assess(env.vscode,input);assert.equal(calls,1);assert.equal(answer.rows.length,3);assert.equal(answer.rows[1].label,"Задача выполнена?");assert.equal(answer.rows[1].answer,"Да");assert.equal(answer.rows[2].label,"Auto-approve likelihood");assert.equal(answer.rows[2].answer,"90%");assert.equal(answer.rows[2].likelihood,0.9);
  await assert.rejects(service.assess(env.vscode,{blocks:[...context().blocks,...context().blocks]}),/one current diff block/);
+});
+test("review-level Jev receives the topic's user requests and all changed blocks",async t=>{
+ const env=await setup();let seen;
+ t.mock.method(require("../ai-accounting"),"begin",()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+ t.mock.method(require("../jev"),"evaluate",async(_provider,_key,_model,state,questions)=>{
+  seen={state,questions};return {model:"jev-test",elapsedMs:1,usage:{},answers:Object.fromEntries(Object.entries(questions).map(([id,q])=>[id,{choice:Object.keys(q.criteria)[0],probabilities:{[Object.keys(q.criteria)[0]]:0.9}}]))};
+ });
+ const input={...context(),scope:"review",task:"1. Show percent progress for 20000 entries\n2. Improve the existing program",blocks:[context().blocks[0],{...context().blocks[0],block:2,after:["progress = percent."]}]};
+ const answer=await service.assess(env.vscode,input);
+ assert.equal(seen.state.scope,"review");assert.equal(seen.state.blocks.length,2);
+ assert.equal(seen.state.task,input.task);assert.deepEqual(Object.keys(seen.questions),["context","completed","autoapprove"]);
+ assert.match(seen.questions.completed.instructions,/latest actionable request/);
+ assert.match(seen.questions.completed.instructions,/do not require already implemented work to reappear/);
+ assert.equal(answer.rows[1].label,"Задача выполнена?");assert.equal(answer.scope,"review");
+});
+test("whole-review Jev assesses files separately and expands insufficient context",async t=>{
+ const env=await setup();const calls=[];
+ t.mock.method(require("../ai-accounting"),"begin",()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+ t.mock.method(require("../jev"),"evaluate",async(_provider,_key,_model,state,questions)=>{
+  calls.push(state);const insufficient=state.object==="a.js"&&!state.primary_file;
+  return {model:"jev-test",elapsedMs:1,usage:{},answers:Object.fromEntries(Object.entries(questions).map(([id,q])=>[id,{choice:id==="context"&&insufficient?"insufficient":Object.keys(q.criteria)[0],probabilities:id==="autoapprove"?{yes:state.object==="b.js"?0.7:0.8,no:state.object==="b.js"?0.3:0.2}:{[Object.keys(q.criteria)[0]]:0.9}}]))};
+ });
+ const block=context().blocks[0];const input={...context(),scope:"review",task:"Improve both files",blocks:[{...block,file:"a.js"},{...block,file:"b.js"}]};
+ const answer=await service.assess(env.vscode,input);
+ assert.equal(calls.length,3);assert.deepEqual(calls.map(call=>call.blocks.map(block=>block.file)),[["a.js"],["a.js","b.js"],["b.js"]]);
+ assert.equal(answer.files,2);assert.equal(answer.expanded,1);assert.equal(answer.rows.at(-1).answer,"70%");
+});
+test("whole-review completion reflects partial and failed files",async t=>{
+ const env=await setup();
+ t.mock.method(require("../ai-accounting"),"begin",()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+ let second="partial";
+ t.mock.method(require("../jev"),"evaluate",async(_provider,_key,_model,state,questions)=>({model:"jev-test",elapsedMs:1,usage:{},answers:Object.fromEntries(Object.entries(questions).map(([id,q])=>[id,{choice:id==="completed"&&state.object==="b.js"?second:Object.keys(q.criteria)[0],probabilities:{yes:0.8,no:0.2}}]))}));
+ const block=context().blocks[0],input={...context(),scope:"review",task:"Change both files",blocks:[{...block,file:"a.js"},{...block,file:"b.js"}]};
+ let answer=await service.assess(env.vscode,input);
+ assert.equal(answer.rows.find(row=>row.label==="Задача выполнена?").answer,"Частично");
+ second="no";answer=await service.assess(env.vscode,input);
+ assert.equal(answer.rows.find(row=>row.label==="Задача выполнена?").answer,"Нет");
+});
+test("whole-review Jev accepts a diff above the former 90000-character limit",async t=>{
+ const env=await setup();let calls=0;
+ t.mock.method(require("../ai-accounting"),"begin",()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+ t.mock.method(require("../jev"),"evaluate",async(_provider,_key,_model,_state,questions)=>{
+  calls++;return {model:"jev-test",elapsedMs:1,usage:{},answers:Object.fromEntries(Object.entries(questions).map(([id,q])=>[id,{choice:Object.keys(q.criteria)[0],probabilities:id==="autoapprove"?{yes:0.8,no:0.2}:{[Object.keys(q.criteria)[0]]:0.9}}]))};
+ });
+ const block=context().blocks[0],blocks=Array.from({length:28},(_,index)=>({...block,file:`src/file${index}.js`,after:["x".repeat(4000)]}));
+ assert.ok(JSON.stringify(blocks).length>90000);
+ const answer=await service.assess(env.vscode,{...context(),scope:"review",blocks});
+ assert.equal(calls,28);assert.equal(answer.files,28);assert.equal(answer.rows.at(-1).answer,"80%");
 });
 test("ASK Jev prevents duplicate block requests, rejects stale results and cancels on disposal",async t=>{
  const env=await setup();await service.rememberSuccess("synthetic-key","jev-latest");

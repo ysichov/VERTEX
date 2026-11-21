@@ -3,6 +3,15 @@
 // Only skill metadata is sent to Jev. The body and linked references load after a match.
 const fs = require("fs");
 const path = require("path");
+const { execFile } = require("child_process");
+
+function isVertexRepository(root) {
+  if (!root) return Promise.resolve(false);
+  return new Promise(resolve => execFile("git", ["config", "--get", "remote.origin.url"],
+    { cwd: root, windowsHide: true, encoding: "utf8" }, (error, output) => {
+      resolve(!error && /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/|git:\/\/github\.com\/)ysichov\/VERTEX(?:\.git)?\/?$/i.test(String(output).trim()));
+    }));
+}
 
 function discover(root) {
   if (!root) return [];
@@ -53,6 +62,7 @@ function decision(question, skills, topic) {
 }
 
 async function match(vscode, question, root, options = {}) {
+  if (!await isVertexRepository(root)) return { matched: false, status: "unavailable" };
   const skills = discover(root);
   if (!skills.length) return { matched: false, status: "unavailable" };
   let audit;
@@ -79,4 +89,4 @@ async function match(vscode, question, root, options = {}) {
   }
 }
 
-module.exports = { discover, load, decision, match };
+module.exports = { discover, load, decision, match, isVertexRepository };

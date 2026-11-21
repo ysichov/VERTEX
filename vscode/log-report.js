@@ -549,7 +549,7 @@ function open(vscode, options = {}) {
   // The page gets the list only - each prompt without its details, steps and Jev input - and asks for one prompt's
   // full record when it is opened: the whole log folder can be tens of megabytes, too much to hold in a webview.
   const view = panel;
-  let full = null, promptIndex = new Map(), lastState = null, refreshing = false, ready = false, disposed = false;
+  let full = null, promptIndex = new Map(), lastState = null, refreshing = false, refreshPending = false, ready = false, disposed = false;
   // Check metadata only while visible. Do not reparse an unchanged log folder every second.
   const logState = async root => {
     const resolved = require("./session-log").resolveRoot(root);
@@ -570,7 +570,8 @@ function open(vscode, options = {}) {
     return JSON.stringify([folder, files.sort((a,b) => a[0].localeCompare(b[0]))]);
   };
   const refresh = async (automatic = false) => {
-    if (disposed || refreshing || automatic && (!ready || !view.visible)) return;
+    if (disposed || automatic && (!ready || !view.visible)) return;
+    if (refreshing) { refreshPending = true; return; }
     refreshing = true;
     try {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
@@ -584,9 +585,15 @@ function open(vscode, options = {}) {
     } catch (error) {
       if (!disposed && !automatic) await view.webview.postMessage({ action: "error", error: error.message });
       // Transient writes/deletes are retried on the next tick; keep the last readable report.
-    } finally { refreshing = false; }
+    } finally {
+      refreshing = false;
+      if (refreshPending && !disposed) {
+        refreshPending = false;
+        Promise.resolve().then(() => refresh(true));
+      }
+    }
   };
-  const timer = setInterval(() => refresh(true), 1500);
+  const timer = setInterval(() => refresh(true), 500);
   timer.unref?.();
   const visibility = view.onDidChangeViewState?.(() => { if (view.visible) return refresh(true); });
   panel.webview.onDidReceiveMessage(async message => {
