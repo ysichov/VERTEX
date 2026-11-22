@@ -1,3 +1,23 @@
+## 2026-11-22 — Correct Flow Step chronology and actor labels
+
+The Step timeline had grouped the user question under LLM and kept screenshots inside that card. It now creates a User run, adds compact screenshot nodes immediately after the question, and then orders recorded operations by time. Model-side runs and request cards use the prompt's recorded model name; VERTEX operations remain separately labeled. Screenshot tiles reuse the existing theme-aware tile styling. No build or runtime verification performed.
+
+## 2026-11-22 — Continue a topic from Session Logs; anchor thinking scene
+
+Session Logs passes the selected topic ID separately from its restored turns. Continuation now uses that explicit topic when present and falls back to the final restored turn's topic for ordinary Continue. The chat initially filters to the selected topic, then switches to Current topic on submit; this prevents a newly Jev-routed exchange from staying hidden under the old pinned topic. The thinking scene now moves into the active thinking block and anchors to its bottom edge, so growing reasoning text does not leave it at the top of the message. Version remains 0.9.112.
+
+## Prepare VSIX 0.9.112
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## Flow Step view
+
+Added a prompt selector to Flow's Step mode so the chronological user/model/tool events for any request can be inspected horizontally; the latest request remains selected by default. The user prompt is forced to the first position even when linked screenshot-recognition records have earlier timestamps, and compact screenshot observation tiles accompany it. Consecutive LLM-side events (user input, Thinking and responses) share a column; consecutive VERTEX-side events (tools, results and routing/recognition operations, including the LLM request handoff) share the next column, with their cards stacked vertically. Column height grows to fit the longest run. Cards keep a fixed readable width and extend the scrollable flow as columns are added, rather than dividing a fixed lane into narrower cards. Fit uses the selected flow's full width. The selected request is retained with the view state. Tool call cards continue to open the existing detail inspector, which pairs the saved result with each call. Horizontal Step cards now render Edit previews as removed and added lines with distinct theme-aware styling, up to two lines per side, and show short input/result excerpts for other tools when their arguments and result are logged; the detail inspector remains available for the full content. LLM request event previews use the logged user prompt; Response event previews use the answer detail and a theme-aware green foreground. The final answer card uses the logged answer body, including screenshot-recognition text. Step remains styled with theme variables.
+
+## Prepare VSIX 0.9.110
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
 ## Prepare VSIX 0.9.109
 
 The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
@@ -7409,3 +7429,22 @@ The Context… button and its Context selection window are gone. The line under 
 ## 2026-11-12 — History list replaces Route topics
 
 The Route topics (Jev) checkbox and the New topic choice are gone. While TypeSafe Jev is on, the chat has one history toggle, without a caption: Full history (the default), Auto (Jev) for the user to switch on, and a third segment for a topic chosen by hand (T1, T2...). Without Jev there is no list and the whole history goes. Version remains 0.9.85. The user found three ways to say one thing (checkbox, Auto, New topic) and asked for either Auto or Full, only with Jev, opted into by the user. New topic went: New conversation does that. routeMode keeps full/auto as the vertex.ai.context.routeTopics setting; a topic is a choice for the next questions only.
+# 2026-11-21 — MF0.AI asynchronous text generation
+
+MF0 returns HTTP 202 with `generation.id`, `status: queued` and `result: null`; it does not return model text synchronously. After the user verified `GET /api/v1/generations/{id}` and `generation.result.text`, MF0 chat now polls that route with the same API key and no Idempotency-Key until success, failure or expiry/timeout. On success it records `costUsd` as `cost_usd` alongside the model response. The standalone DeepSeek check can resume an existing generation ID to avoid a duplicate POST. The route was confirmed from the user's MF0 response; the integration was not run against their key in this change.
+
+## 2026-11-21 — MF0.AI models entered by the user
+
+Removed the hardcoded MF0 model catalog and generation-based availability probes. LLM Providers now takes a model ID through a local Add action, with no Check controls; existing prefilled catalog selections are cleared once. Switching the chat working folder also clears the visible conversation-history list immediately. The list is loaded for the current folder only when the user opens Conversations again.
+
+## 2026-11-21 — MCP startup scene on first SAP request
+
+If VERTEX starts in Folder mode, it defers the selected MCP server until the first SAP request. That `prepare()` path did not show the startup animation used when changing servers from the UI. `prepare()` now reports its start and ready states to chat progress; the existing start scene renders with the selected server name while connecting, then the thinking scene resumes.
+
+Session Logs now expose the review-card actions on saved Jev records in conversation answers, chronological steps, technical child-operation results and Jev detail entries. Test in Jev chat sends the exact recorded decision input to the existing chat-draft command. Rerun reevaluates that input with its recorded provider and model, active key profile, provider accounting and a visible inline result; no diff or chat context is reconstructed. If a log has no saved decision input, both actions remain visible but disabled. No tests or package build were run, per the user's instruction.
+
+The latest Session Logs entry showed a request to apply a local project edit through SAP MCP while chat context was in SAP-only mode. That mode intentionally removes the local folder and its edit tools. The context picker is now two checkboxes, SAP and Folder, plus an exclusive Zero context checkbox. Both sends project files/reviews and SAP editor/tools in one request. The mode is `both` in chat setup, topic scope and logs; choosing a folder preserves the combined selection. No tests or build were run, per the user's instruction.
+## Prepare VSIX 0.9.111
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+

@@ -3,6 +3,30 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const sessionFileCache = new Map();
+
+function dateKey(time) {
+  const date = new Date(time), pad = value => String(value).padStart(2, "0");
+  return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
+}
+function dateRange(filter) {
+  const valid = value => typeof value === "string" && /^\d{4}-\d\d-\d\d$/.test(value) ? value : "";
+  return { from: valid(filter?.from), to: valid(filter?.to) };
+}
+function fileNameDate(name) {
+  const match = /_(\d{4})(\d{2})(\d{2})_\d{6}(?:_[\w.-]+)?\.jsonl$/i.exec(name);
+  return match ? match[1] + "-" + match[2] + "-" + match[3] : "";
+}
+function fileInDateRange(name, stat, filter, currentNames) {
+  const { from, to } = dateRange(filter);
+  if (!from && !to) return true;
+  const today=dateKey(Date.now());
+  if (currentNames?.has(name)&&(!from||today>=from)&&(!to||today<=to)) return true;
+  const named = fileNameDate(name);
+  if (named) return (!from || named >= from) && (!to || named <= to);
+  const dates = [stat ? dateKey(stat.mtimeMs) : ""];
+  return dates.some(date => date && (!from || date >= from) && (!to || date <= to));
+}
 
 const emptyUsage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 const sumUsage = (into, usage) => {
@@ -110,12 +134,14 @@ function parseSession(text, file) {
     const priorPrompt=current, detailStart=current?.details.length||0, timelineStart=current?.timeline.length||0;
     try {
     if (!session.conversation && typeof record.vertex_conversation === "string") session.conversation = record.vertex_conversation;
-    // Where the conversation was held. Only the two shapes the log writes are accepted; a log without it
+    // Where the conversation was held. Only known modes are accepted; a log without it
     // stays uncontexted rather than being guessed from its file name or its content.
     if (!session.context) {
       const held = record.vertex_context;
       if (held && typeof held === "object" && typeof held.mode === "string") {
-        if (held.mode === "folder" && typeof held.folder === "string" && held.folder) session.context = { mode: "folder", folder: held.folder };
+        if (held.mode === "zero") session.context = { mode: "zero" };
+        else if (held.mode === "both" && typeof held.folder === "string" && held.folder && typeof held.system === "string" && held.system) session.context = { mode: "both", folder: held.folder, system: held.system, ...(typeof held.client === "string" && held.client ? { client: held.client } : {}) };
+        else if (held.mode === "folder" && typeof held.folder === "string" && held.folder) session.context = { mode: "folder", folder: held.folder };
         else if (held.mode === "sap" && typeof held.system === "string" && held.system) {
           session.context = { mode: "sap", system: held.system, ...(typeof held.client === "string" && held.client ? { client: held.client } : {}) };
         }
@@ -155,12 +181,25 @@ function parseSession(text, file) {
       if (current && record.input) current.decision = record.input;
       continue;
     }
+    if (record.type === "vertex_user_interjection") {
+      if (current) {
+        current.events ||= [];
+        current.events.push({ kind: "user_interjection", id: record.id || "", actor: "User",
+          text: String(record.text || "[not logged]"), time: Number.isFinite(time) ? time : null, state: "queued" });
+      }
+      continue;
+    }
+    if (record.type === "vertex_user_interjection_applied") {
+      const event = current?.events?.findLast(item => item.kind === "user_interjection" && item.id === record.id);
+      if (event) event.state = "sent";
+      continue;
+    }
     // The report travels whole as well as prettified: the page reads Jev's answers as a table from it.
     if(record.type==="vertex_orchestration"){if(current)current.details.push({type:record.report?.kind==="plan"?"Orchestrator JSON plan":record.report?.kind==="execution_mode"?"Orchestrator mode":record.report?.kind==="stage_verification"?"Orchestrator stage verification with Jev":"Orchestrator stage",text:prettyJson(record.report)});continue;}
     if(record.type==="vertex_tool_selection"){if(current)current.details.push({type:"Orchestrator tool selection",text:prettyJson(record.report)});continue;}
     if(record.type==="vertex_task_recovery" || record.type==="vertex_task_verification" && record.report?.recovery){if(current)current.details.push({type:"Recovery: "+(record.report?.recovery||"state"),text:[record.report?.attempt?"Attempt "+record.report.attempt:"",record.report?.status?"Last verdict: "+record.report.status:"",record.report?.error||""].filter(Boolean).join("\n"),failed:record.report?.recovery==="error"});continue;}
     if(record.type==="vertex_task_verification"){if(current)current.details.push({type:record.report?.scope==="changes"?"Change verification with Jev":"Task verification with Jev",verification:record.report,text:prettyJson(record.report),failed:record.report?.status==="failed"});continue;}
-    if(record.type==="vertex_topic_routing"){if(current){if(record.report?.topic)current.topic=record.report.topic;current.details.push({type:record.report?.kind==="skill_search"||record.report?.status==="skill"?"Skill search":"Topic routing (Jev)",routing:record.report&&typeof record.report==="object"?record.report:null,text:prettyJson(record.report)});}continue;}
+    if(record.type==="vertex_topic_routing"){if(current){if(record.report?.topic)current.topic=record.report.topic;current.details.push({type:record.report?.kind==="context_selection"?"Context selection":record.report?.kind==="skill_search"||record.report?.status==="skill"?"Skill search":"Topic routing (Jev)",routing:record.report&&typeof record.report==="object"?record.report:null,text:prettyJson(record.report)});}continue;}
     if (record.type === "vertex_context_optimization") {
       if(current) current.details.push({type:"Context optimization (Jev)",text:prettyJson(record.report)});
       continue;
@@ -253,6 +292,7 @@ function parseSession(text, file) {
         const fresh=current.details.slice(same?detailStart:0);
         const actor=record.type==='vertex_task_recovery' || record.type==='vertex_task_verification' && record.report?.recovery ? 'VERTEX orchestrator'
           : record.type==='vertex_orchestration' || record.type==='vertex_tool_selection' ? 'MCP orchestrator'
+          : record.type==='vertex_topic_routing' && record.report?.kind==='context_selection' ? 'VERTEX'
           : /vertex_task_verification|vertex_topic_routing|vertex_context_optimization/.test(record.type) ? 'Jev' : 'LLM';
         for(const item of current.timeline.slice(same?timelineStart:0))if(item.kind==='model'||item.kind==='note')events.push({kind:item.kind,actor:'LLM',time:Number.isFinite(time)?time:null,model:item});
         if(record.type==='vertex_request' && fresh.length) events.push({kind:'request',actor:'LLM',time:Number.isFinite(time)?time:null,details:fresh.map((_,i)=>current.details.length-fresh.length+i)});
@@ -307,17 +347,40 @@ function parseSession(text, file) {
   return session.start !== null ? session : null;
 }
 
-function readSessions(root) {
+function readSessions(root, filter = {}) {
   root=require("./session-log").resolveRoot(root);
   if (!root) return { configured: false, folder: "", sessions: [] };
   const folder = path.join(root, "claude_compatible");
   if (!fs.existsSync(folder)) return { configured: true, folder, sessions: [] };
-  const sessions = fs.readdirSync(folder, { withFileTypes: true })
-    .filter(entry => entry.isFile() && entry.name.endsWith(".jsonl"))
-    .map(entry => {
-      const file = path.join(folder, entry.name);
-      return parseSession(fs.readFileSync(file, "utf8"), entry.name);
-    }).filter(Boolean).sort((a, b) => b.start - a.start);
+  const cacheKey = path.resolve(folder), cached = sessionFileCache.get(cacheKey) || new Map(), liveFiles = new Set(), sessions = [], placeCounts=new Map();
+  const currentNames=new Set(require("./session-log").currentFiles(root).map(file=>path.basename(file)));
+  for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    liveFiles.add(entry.name);
+    if(fileNameDate(entry.name)&&!fileInDateRange(entry.name,null,filter,currentNames))continue;
+    const file = path.join(folder, entry.name);
+    let stat;
+    try { stat = fs.statSync(file); } catch (error) { if (error.code === "ENOENT") continue; throw error; }
+    if (!fileInDateRange(entry.name, stat, filter, currentNames)) continue;
+    const signature = stat.size + ":" + stat.mtimeMs + ":" + stat.ctimeMs;
+    let item = cached.get(entry.name);
+    if (!item || item.signature !== signature) {
+      item = { signature, header: require("./session-log").readHeader(file), session: null };
+    }
+    const context=item.header?.vertex_context||null,key=placeKey(context),conversation=item.header?.vertex_related_conversation||item.header?.vertex_conversation||entry.name;
+    if(!placeCounts.has(key))placeCounts.set(key,{key,context,conversations:new Set()});
+    placeCounts.get(key).conversations.add(conversation);
+    const requestedPlace=typeof filter.placeKey==="string"?filter.placeKey:"";
+    if(requestedPlace&&(requestedPlace==="none"?!!key:key!==requestedPlace)){cached.set(entry.name,item);continue;}
+    if(!item.session){
+      item.session=parseSession(fs.readFileSync(file,"utf8"),entry.name);
+      cached.set(entry.name,item);
+    }
+    if (item.session) sessions.push({ ...item.session, prompts: item.session.prompts.map(prompt => ({ ...prompt })) });
+  }
+  for (const name of cached.keys()) if (!liveFiles.has(name)) cached.delete(name);
+  sessionFileCache.set(cacheKey, cached);
+  sessions.sort((a, b) => b.start - a.start);
   // Topics tagged afterwards by Tag topics (Jev), kept beside the logs; a topic the log itself records wins.
   const tagged = new Map();
   for (const session of sessions) {
@@ -327,7 +390,8 @@ function readSessions(root) {
     for (const prompt of session.prompts) if (!prompt.topic && tags[prompt.key]) prompt.topic = tags[prompt.key];
   }
   restoreContextSelections(sessions);
-  return { configured: true, folder, sessions };
+  const places=[...placeCounts.values()].map(({conversations,...place})=>({...place,count:conversations.size}));
+  return { configured: true, folder, sessions, places };
 }
 
 // Older routing records kept the exact message indices but not block sizes. Rebuild a
@@ -369,6 +433,8 @@ function restoreContextSelections(sessions) {
 /** Where a conversation was held, as one comparable key; the page builds the same key for its filter. */
 function placeKey(context) {
   if (!context) return "";
+  if (context.mode === "zero") return "zero";
+  if (context.mode === "both") return "both:" + context.folder + "|" + context.system + (context.client ? "/" + context.client : "");
   return context.mode === "folder" ? "folder:" + context.folder
     : "sap:" + context.system + (context.client ? "/" + context.client : "");
 }
@@ -388,7 +454,16 @@ function conversationList(report, place) {
     group.providers.add(session.provider);
     group.prompts.push(...prompts.map(prompt => ({ ...prompt, sessionId: session.id })));
   }
-  return [...groups.values()].filter(group => !place || placeKey(group.context) === place).map(group => {
+  const matchesPlace = context => {
+    if (!place) return true;
+    if (typeof place === "string") return placeKey(context) === place;
+    if (!place || !context) return false;
+    if (place.mode !== "both") return placeKey(context) === placeKey(place);
+    return context.mode === "both" && context.folder === place.folder && context.system === place.system && (context.client || "") === (place.client || "")
+      || context.mode === "folder" && context.folder === place.folder
+      || context.mode === "sap" && context.system === place.system && (context.client || "") === (place.client || "");
+  };
+  return [...groups.values()].filter(group => matchesPlace(group.context)).map(group => {
     group.prompts.sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key));
     const first = group.prompts[0], last = group.prompts[group.prompts.length - 1];
     const preview = text => String(text || "").replace(/\s+/g, " ").slice(0, 180);
@@ -446,7 +521,7 @@ function conversationTurns(report, sessionId, point) {
         images.push({ media_type: shot.media_type, data: fs.readFileSync(file).toString("base64"), file, ...(typeof shot.description === "string" ? { description: shot.description } : {}) });
       } catch (_) { missing.push(shot); }
     }
-    return { ...(prompt.topic?{topic:prompt.topic}:{}), question: prompt.text, answer: notLogged(answer) ? "" : answer, provider: prompt.provider, model: prompt.model, time: prompt.time,
+    return { ...(prompt.topic?{topic:prompt.topic}:{}), question: prompt.text, answer: notLogged(answer) ? "" : answer, provider: prompt.provider, model: prompt.model, time: prompt.time, logId: prompt.logId, conversation:session.conversation, key: prompt.key,
       ...(prompt.failed ? { failed: true } : {}), ...(images.length ? { images } : {}), ...(missing.length ? { missingScreenshots: missing.length } : {}) };
   });
   if (turns.every(turn => !turn.answer) && !prompts.some(prompt => prompt.failed)) {
@@ -495,8 +570,8 @@ async function tagTopics(vscode, sessionId) {
   if (!untagged) { vscode.window.showInformationMessage("VERTEX: every question of this conversation already has a topic."); return; }
   const config = vscode.workspace.getConfiguration("vertex.ai"), chat = require("./chat");
   const folder = chat.currentWorkingFolder(vscode) || (vscode.workspace.workspaceFolders?.length === 1 ? vscode.workspace.workspaceFolders[0].uri.fsPath : "");
-  const mode = ["sap", "folder"].includes(config.get("contextMode", "auto")) ? config.get("contextMode") : chat.currentWorkingFolder(vscode) ? "folder" : "sap";
-  const scope = require("./topic-routing").scopeOf(vscode, mode, mode === "folder" ? folder : "");
+  const mode = ["sap", "folder", "both"].includes(config.get("contextMode", "auto")) ? config.get("contextMode") : chat.currentWorkingFolder(vscode) ? "folder" : "sap";
+  const scope = require("./topic-routing").scopeOf(vscode, mode, mode === "folder" || mode === "both" ? folder : "");
   const backfill = require("./topic-backfill");
   const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "VERTEX: tagging topics with Jev", cancellable: true },
     (progress, token) => {
@@ -524,9 +599,14 @@ function listReport(report) {
 function currentPlace(vscode) {
   try {
     const mode = vscode.workspace.getConfiguration("vertex.ai").get("contextMode", "auto");
+    if (mode === "zero") return { mode: "zero" };
     const folders = vscode.workspace.workspaceFolders || [];
     const folder = mode === "sap" ? "" : require("./chat").workingFolder(vscode, "")
-      || (mode === "folder" && folders.length === 1 ? folders[0].uri.fsPath : "");
+      || ((mode === "folder" || mode === "both") && folders.length === 1 ? folders[0].uri.fsPath : "");
+    if (mode === "both" && folder) {
+      const [, , system, client] = JSON.parse(require("./topic-routing").scopeOf(vscode, "sap", ""));
+      return system ? { mode: "both", folder, system, ...(client ? { client } : {}) } : { mode: "folder", folder };
+    }
     if (folder) return { mode: "folder", folder };
     const [, , system, client] = JSON.parse(require("./topic-routing").scopeOf(vscode, "sap", ""));
     return system ? { mode: "sap", system, ...(client ? { client } : {}) } : null;
@@ -534,9 +614,21 @@ function currentPlace(vscode) {
 }
 
 let panel;
-function open(vscode, options = {}) {
-  if (panel) { panel.reveal(vscode.ViewColumn.Beside, false); return panel; }
-  panel = vscode.window.createWebviewPanel("vertex.logReport", "VERTEX: Logs & Cost", vscode.ViewColumn.Beside,
+function sessionContext(root,id){
+  if(typeof id!=="string"||!/^[\w.-]{1,240}$/.test(id))return null;
+  const resolved=require("./session-log").resolveRoot(root);if(!resolved)return null;
+  const header=require("./session-log").readHeader(path.join(resolved,"claude_compatible",id+".jsonl"));
+  return header?.vertex_context&&typeof header.vertex_context==="object"?header.vertex_context:null;
+}
+function open(vscode, options = {}, context) {
+  const root=vscode.workspace.getConfiguration("vertex.ai").get("logPath","");
+  if(options.openSessionId&&!options.openSessionContext){const place=sessionContext(root,options.openSessionId);options={...options,openSessionContext:place,openSessionPlace:options.openSessionPlace||placeKey(place)||"none"};}
+  if (panel) {
+    panel.reveal(options.fullScreen ? vscode.ViewColumn.One : vscode.ViewColumn.Beside, false);
+    if(options.openSessionId)void panel.webview.postMessage({action:"openConversation",id:options.openSessionId,conversationId:options.openConversationId||"",mode:options.openSessionMode||"logs",live:options.openSessionLive===true,placeKey:options.openSessionPlace||"",place:options.openSessionContext||null,date:options.openSessionDate||""});
+    return panel;
+  }
+  panel = vscode.window.createWebviewPanel("vertex.logReport", "VERTEX: Logs & Cost", options.fullScreen ? vscode.ViewColumn.One : vscode.ViewColumn.Beside,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
   const nonce = crypto.randomBytes(16).toString("hex");
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
@@ -549,22 +641,27 @@ function open(vscode, options = {}) {
   // The page gets the list only - each prompt without its details, steps and Jev input - and asks for one prompt's
   // full record when it is opened: the whole log folder can be tens of megabytes, too much to hold in a webview.
   const view = panel;
+  let pendingOpenSessionId=options.openSessionId||"", pendingOpenConversationId=options.openConversationId||"", pendingOpenSessionMode=options.openSessionMode||"logs", pendingOpenSessionLive=options.openSessionLive===true, pendingOpenSessionDate=options.openSessionDate||"";
+  const initialDate=/^\d{4}-\d\d-\d\d$/.test(pendingOpenSessionDate)?pendingOpenSessionDate:dateKey(Date.now());
+  let activeRange={from:initialDate,to:initialDate,placeKey:options.openSessionPlace||placeKey(currentPlace(vscode))};
   let full = null, promptIndex = new Map(), lastState = null, refreshing = false, refreshPending = false, ready = false, disposed = false;
   // Check metadata only while visible. Do not reparse an unchanged log folder every second.
-  const logState = async root => {
+  const logState = async (root, filter) => {
     const resolved = require("./session-log").resolveRoot(root);
     const folder = resolved ? path.join(resolved, "claude_compatible") : "";
     const files = [];
+    const currentNames=new Set(require("./session-log").currentFiles(root).map(file=>path.basename(file)));
     if (folder) {
       try {
         const entries = await fs.promises.readdir(folder, { withFileTypes: true });
-        for (const entry of entries) {
-          if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+        const results = await Promise.all(entries.filter(entry => entry.isFile() && entry.name.endsWith(".jsonl")
+          && (!fileNameDate(entry.name) || fileInDateRange(entry.name,null,filter,currentNames))).map(async entry => {
           try {
             const stat = await fs.promises.stat(path.join(folder, entry.name));
-            files.push([entry.name, stat.size, stat.mtimeMs, stat.ctimeMs]);
-          } catch (error) { if (error.code !== "ENOENT") throw error; }
-        }
+            return fileInDateRange(entry.name, stat, filter, currentNames) ? [entry.name, stat.size, stat.mtimeMs, stat.ctimeMs] : null;
+          } catch (error) { if (error.code !== "ENOENT") throw error; return null; }
+        }));
+        files.push(...results.filter(Boolean));
       } catch (error) { if (error.code !== "ENOENT") throw error; }
     }
     return JSON.stringify([folder, files.sort((a,b) => a[0].localeCompare(b[0]))]);
@@ -575,12 +672,13 @@ function open(vscode, options = {}) {
     refreshing = true;
     try {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
-      const state = await logState(root);
+      const state = await logState(root, activeRange);
       if (disposed || automatic && (!view.visible || state === lastState)) return;
-      full = readSessions(root);
+      full = readSessions(root, activeRange);
       promptIndex = new Map(full.sessions.flatMap(session => session.prompts).map(prompt => [prompt.key,prompt]));
       const delivered = await view.webview.postMessage({ action: "data", automatic,
-        usageRows: require("./usage-report").readUsage(root).rows, report: { ...listReport(full), current: currentPlace(vscode) } });
+        usageRows: require("./usage-report").readUsage(root, activeRange).rows, report: { ...listReport(full), current: currentPlace(vscode) } });
+      if(pendingOpenSessionId){const id=pendingOpenSessionId,conversationId=pendingOpenConversationId,mode=pendingOpenSessionMode,live=pendingOpenSessionLive,placeKey=options.openSessionPlace||"",place=options.openSessionContext||null,date=pendingOpenSessionDate;pendingOpenSessionId="";await view.webview.postMessage({action:"openConversation",id,conversationId,mode,live,placeKey,place,date});}
       if (delivered !== false) lastState = state;
     } catch (error) {
       if (!disposed && !automatic) await view.webview.postMessage({ action: "error", error: error.message });
@@ -598,6 +696,14 @@ function open(vscode, options = {}) {
   const visibility = view.onDidChangeViewState?.(() => { if (view.visible) return refresh(true); });
   panel.webview.onDidReceiveMessage(async message => {
     if (message?.action === "ready" || message?.action === "refresh") { ready = true; await refresh(); }
+    if (message?.action === "dateRange") {
+      const next=dateRange({from:message.from,to:message.to});
+      if(next.from&&next.to&&next.from>next.to)return;
+      activeRange={...next,placeKey:activeRange.placeKey};lastState=null;await refresh();
+    }
+    if(message?.action==="placeFilter"){
+      activeRange={...activeRange,placeKey:typeof message.key==="string"?message.key:""};lastState=null;await refresh();
+    }
     if (message?.action === "promptDetail") {
       const key = String(message.key || "");
       const prompt = promptIndex.get(key);
@@ -623,11 +729,42 @@ function open(vscode, options = {}) {
     }
     if (message?.action === "continueDecision") {
       try {
-        const report=readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
-        const step=report.sessions.flatMap(session=>session.prompts).find(prompt=>prompt.key===message.key);
-        if(!step?.decision)throw new Error("This step has no saved Jev input. Enable question logging for future runs.");
-        await vscode.commands.executeCommand("vertex.continueDecision",step.decision);
+        let decision=message.decision;
+        if(!decision){
+          const report=readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
+          decision=report.sessions.flatMap(session=>session.prompts).find(prompt=>prompt.key===message.key)?.decision;
+        }
+        if(!decision)throw new Error("This step has no saved Jev input. Enable question logging for future runs.");
+        await vscode.commands.executeCommand("vertex.continueDecision",decision);
       } catch(error){vscode.window.showErrorMessage("VERTEX: "+error.message);}
+    }
+    if (message?.action === "rerunDecision") {
+      const id=String(message.id||"");
+      const send=payload=>panel?.webview.postMessage({action:"decisionRerun",id,...payload});
+      let audit;
+      try {
+        const decision=message.decision,provider=String(decision?.provider||""),model=String(decision?.model||"");
+        if(!/^jev-run-[a-z0-9-]{1,100}$/i.test(id))throw new Error("Invalid Jev rerun request.");
+        if(!["typesafe-api","gemini-api","opencode-api"].includes(provider)||!model)throw new Error("The saved input has no supported Jev provider and model.");
+        require("./jev").validate(decision.state,decision.questions);
+        const validModel=provider==="typesafe-api"?/^jev[-\w.]*$/.test(model)
+          :provider==="gemini-api"?model.replace(/^models\//,"")==="gemini-decision-1"
+          :require("./opencode-models").isDecision(model);
+        if(!validModel)throw new Error("The saved model is not a Jev decision model.");
+        const modelConfig=require("./model-config"),config=modelConfig.read(vscode,provider);
+        if(!modelConfig.isOn(vscode,provider)||config.enabled&&!config.enabled.includes(model))throw new Error("Enable this provider and model in LLM Providers before rerunning the saved Jev request.");
+        if(!context?.secrets)throw new Error("The active extension secret store is unavailable.");
+        const {key}=await require("./key-profiles").getActiveKey(context.secrets,provider);
+        if(!key)throw new Error("Add or select an API key for "+provider+" in LLM Providers.");
+        audit=require("./ai-accounting").begin(vscode,provider,model,"Rerun saved Jev decision",require("./session-log").independentScope());
+        audit.decision(decision);
+        const result=await require("./jev").evaluate(provider,key,model,decision.state,decision.questions,audit.callbacks);
+        audit.finish(result);
+        await send({result:{text:require("./jev").formatAnswers(decision.questions,result.answers),usage:result.usage,model:result.model,elapsedMs:result.elapsedMs}});
+      } catch(error) {
+        audit?.fail(error);
+        await send({error:String(error.message||error).slice(0,1200)});
+      }
     }
     if (message?.action === "openSnapshot") {
       try { require("./log-snapshot").open(vscode, message.snapshot); }
@@ -657,7 +794,7 @@ function open(vscode, options = {}) {
       try {
         const session = full.sessions.find(session => session.prompts.some(prompt => prompt.key === message.key));
         if (!session) throw new Error("That prompt is no longer in the log folder.");
-        await vscode.commands.executeCommand("vertex.runSelect", { sql: message.sql, system: session.context?.mode === "sap" ? session.context.system : undefined });
+        await vscode.commands.executeCommand("vertex.runSelect", { sql: message.sql, system: ["sap","both"].includes(session.context?.mode) ? session.context.system : undefined });
       } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }
     if (message?.action === "openVersion") {
@@ -670,7 +807,7 @@ function open(vscode, options = {}) {
         const version = revisions?.find(version => version.uri === message.uri);
         if (!version || !options.readVersion) throw new Error("That historical version is unavailable in this log.");
         await options.readVersion({ uri: version.uri, name: data.object?.name || "", version: version.id, toolset: prompt.toolset,
-          system: session.context?.mode === "sap" ? session.context.system : "", client: session.context?.client });
+          system: ["sap","both"].includes(session.context?.mode) ? session.context.system : "", client: session.context?.client });
       } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }
     if (message?.action === "openRecording") {
@@ -690,7 +827,10 @@ function open(vscode, options = {}) {
 }
 
 function register(vscode, context, options) {
-  context.subscriptions.push(vscode.commands.registerCommand("vertex.showLogs", () => open(vscode, options)));
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.showLogs", target => open(vscode, target?.sessionId ? {...options,
+    openSessionId:String(target.sessionId),fullScreen:target.fullScreen===true,openSessionMode:target.mode==="flow"?"flow":"logs",openSessionLive:target.live===true,
+    openConversationId:typeof target.conversationId==="string"?target.conversationId:"",openSessionPlace:typeof target.placeKey==="string"?target.placeKey:"",
+    openSessionDate:/^\d{4}-\d\d-\d\d$/.test(target.date||"")?target.date:""} : options, context)));
 }
 
 module.exports = { listReport, tagTopics, parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns, conversationList, currentPlace, placeKey };

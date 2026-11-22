@@ -75,6 +75,8 @@ async function ask(options) {
   }
   let usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
+    const userAddition = await options.onBeforeModelRequest?.();
+    if (userAddition) messages.push({ role: "user", content: userAddition });
     apiTools = toolsNow();
     // The budget entered for this model in LLM Providers: wait rather than earn a rate limit.
     if (options.budget > 0 || options.callBudget > 0) {
@@ -132,8 +134,16 @@ async function ask(options) {
     if (options.onModelCall) options.onModelCall({ model: answer.model || options.model, usage: roundUsage, text: responseText });
     messages.push({ role: "assistant", content: answer.content });
     const results = [];
+    let skipRemainingTools = false;
     for (const call of calls) {
       options.signal?.throwIfAborted();
+      if (skipRemainingTools || options.shouldYieldTools?.()) {
+        skipRemainingTools = true;
+        results.push({ type: "tool_result", tool_use_id: call.id, is_error: false, content: JSON.stringify({
+          skipped: "The user added new instructions before this tool started. It was not run. Reconsider it under the latest instructions and repeat it only if still needed."
+        }) });
+        continue;
+      }
       let content, isError = false;
       try {
         if (!(options.tools || []).some(tool => tool.name === call.name)) {

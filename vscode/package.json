@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.109",
+  "version": "0.9.112",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -936,7 +936,6 @@
             "opencode-api",
             "typesafe-api",
             "nvidia-api",
-            "mf0-api",
             "vercel-api",
             "lmstudio-local",
             "ollama-local"
@@ -1108,6 +1107,11 @@
           },
           "markdownDescription": "Required project checks after Code Agent edits, before review. Matching commands run once in the working copy with existing command permissions and a two-minute timeout. Failed checks go back to the model for one repair attempt. Declined/unavailable checks are reported as unverified. Built-in JavaScript/JSON/webview checks run without shell commands."
         },
+        "vertex.ai.automaticRecovery": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Allow one extra model attempt to continue a task when Jev reports recoverable incomplete work. Off by default; recovery may make additional edits or run tools."
+        },
         "vertex.ai.shellWithoutAsking": {
           "type": "boolean",
           "default": false,
@@ -1169,10 +1173,12 @@
           "enum": [
             "auto",
             "sap",
-            "folder"
+            "folder",
+            "both",
+            "zero"
           ],
-          "default": "auto",
-          "description": "Context source for the VERTEX chat. SAP uses SAP editors and VERTEX analysis/debugger views; Folder uses local project files and Git reviews. Auto initially selects from the active editor; the panel offers SAP / Folder."
+          "default": "folder",
+          "description": "Context sources for VERTEX chat. Folder uses project files and Git reviews. SAP uses SAP editors, analysis views and SAP tools. Both enables both sources together. Zero context sends the chat history and message without project context or tools."
         },
         "vertex.ai.decisionModel": {
           "type": "object",

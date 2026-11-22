@@ -88,6 +88,8 @@
   .detail { margin: 0; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--vscode-editor-foreground); }
   .technical .detail { background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background)); font-family: var(--vscode-editor-font-family); font-size: 0.9em; }
   .entry-body { padding: 0 8px 4px; }
+  .jev-log-actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 8px; }
+  .jev-rerun-output { margin: 6px 8px; }
   .kind { padding: 4px 8px; color: var(--entry-color); font-size: 0.9em; }
   .table-scroll { overflow-x: auto; }
   #conversation-screen .table-scroll { flex: 1; min-height: 0; overflow: auto; }
@@ -131,6 +133,7 @@
   .conversation-place { display: block; color: var(--vscode-descriptionForeground); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .log-context { font: inherit; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }
   .log-search { flex: 1; max-width: 420px; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }
+  .log-topic-filter, .conversation-topic-filter { box-sizing: border-box; max-width: 280px; min-width: 140px; }
   table.session-table th { position: relative; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   th.sortable { cursor: pointer; }
   tr.technical > td { opacity: 0.6; }
@@ -140,11 +143,13 @@
   .col-grip:hover { background: var(--vscode-focusBorder); }
   body.dragging, body.dragging * { cursor: col-resize!important; user-select:none!important; }
   .column-guide { position:fixed;top:0;bottom:0;width:2px;background:var(--vscode-focusBorder);pointer-events:none;z-index:1000; }
-  /* Claude Code's steps: an edit as removed and added lines, in the theme's diff colours; each model call a line. */
+  /* Claude Code's steps: paired edits share a row; removed and inserted text keeps its diff colours. */
   .step-diff { margin: 0; padding: 4px 0; font-family: var(--vscode-editor-font-family); font-size: 0.9em; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background)); }
-  .step-diff .del, .step-diff .add { display: block; padding: 0 8px; }
-  .step-diff .del { background: var(--vscode-diffEditor-removedLineBackground, var(--vscode-diffEditor-removedTextBackground)); }
-  .step-diff .add { background: var(--vscode-diffEditor-insertedLineBackground, var(--vscode-diffEditor-insertedTextBackground)); }
+  .step-diff .change { display: block; padding: 0 8px; }
+  .step-diff .del { color: var(--vscode-editorError-foreground, var(--vscode-charts-red)); background: var(--vscode-diffEditor-removedTextBackground, transparent); text-decoration: line-through; }
+  .step-diff .add { color: var(--vscode-gitDecoration-addedResourceForeground, #2e6f3e); background: var(--vscode-diffEditor-insertedTextBackground, transparent); text-decoration: none; }
+  body.vscode-high-contrast .step-diff .del { background: color-mix(in srgb, var(--vscode-diffEditor-removedTextBackground, transparent) 28%, var(--vscode-editor-background, #000)); }
+  body.vscode-high-contrast .step-diff .add { background: color-mix(in srgb, var(--vscode-diffEditor-insertedTextBackground, transparent) 28%, var(--vscode-editor-background, #000)); }
   .step-line { padding: 2px 8px; }
   .step-line .label { color: var(--vscode-descriptionForeground); margin-right: 6px; }
   .model-step { margin: 0; padding: 6px 8px 4px; color: var(--vscode-descriptionForeground); font-size: 0.9em; border-top: 1px solid var(--vscode-panel-border); }
@@ -220,17 +225,40 @@
   .flow-thinking-heading:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   button.flow-node.flow-thinking-note { left: 9px; width: 220px; padding: 7px 9px; border: 0; background: transparent; text-align: left; }
   button.flow-node.flow-thinking-note strong { color: var(--vscode-charts-purple, var(--vscode-focusBorder)); font-size: .85em; }
-  button.flow-node.flow-operation { left: 9px; width: 220px; padding: 7px 9px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background); gap: 0; justify-content: center; }
+  button.flow-node.flow-operation { left: 9px; width: 220px; padding: 7px 9px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); gap: 0; justify-content: center; }
+  button.flow-node.flow-operation-preview { justify-content: flex-start; gap: 5px; }
   button.flow-node.flow-operation:hover { background: var(--vscode-list-hoverBackground); }
   button.flow-node.flow-operation strong { font-size: .85em; }
   .flow-node span { font-size: .85em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   button.flow-node:hover { background: var(--vscode-list-hoverBackground); }
   button.flow-node:focus-visible, button.flow-node.selected { border-color: var(--vscode-focusBorder); outline: 1px solid var(--vscode-focusBorder); }
-  .flow-node.unknown { border: 1px dashed var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
+  .flow-step-lane .flow-lane-heading { top: 24px; }
+   .flow-step-lane .flow-node.flow-step-node { width: 260px; box-sizing: border-box; padding: 10px; }
+   .flow-step-lane .flow-node.flow-step-node span { overflow-wrap: anywhere; }
+   .flow-node .flow-step-preview { display: -webkit-box; min-width: 0; color: var(--vscode-descriptionForeground); font-size: .72em; line-height: 1.25; white-space: pre-line; overflow-wrap: anywhere; -webkit-line-clamp: 5; -webkit-box-orient: vertical; }
+    .flow-step-screenshot-tiles { display: flex !important; flex-direction: row; gap: 4px; min-width: 0; max-height: 42px; }
+    .flow-step-screenshot-tile { display: flex !important; flex: 1 1 0; flex-direction: column; min-width: 0; padding: 3px 4px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editorWidget-background); }
+    .flow-step-screenshot-tile strong { color: var(--vscode-descriptionForeground); font-size: .68em; }
+    .flow-step-screenshot-tile small { display: -webkit-box; color: var(--vscode-descriptionForeground); font-size: .62em; line-height: 1.1; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+   .flow-node .flow-step-answer { color: var(--vscode-testing-iconPassed, var(--vscode-charts-green)); }
+   .flow-node .flow-step-diff { display: flex; flex-direction: column; gap: 2px; white-space: normal; -webkit-line-clamp: initial; }
+   .flow-node .flow-step-diff > .flow-diff-change { display: block; overflow: hidden; padding: 2px 4px; border-left: 2px solid var(--vscode-panel-border); white-space: pre-wrap; }
+   .flow-node .flow-step-diff .flow-diff-removed { color: var(--vscode-editorError-foreground, var(--vscode-charts-red)); background: var(--vscode-diffEditor-removedTextBackground, transparent); text-decoration: line-through; }
+   .flow-node .flow-step-diff .flow-diff-added { color: var(--vscode-gitDecoration-addedResourceForeground, #2e6f3e); background: var(--vscode-diffEditor-insertedTextBackground, transparent); text-decoration: none; margin-left: 4px; }
+   body.vscode-high-contrast .flow-node .flow-step-diff .flow-diff-removed { background: color-mix(in srgb, var(--vscode-diffEditor-removedTextBackground, transparent) 28%, var(--vscode-editor-background, #000)); }
+   body.vscode-high-contrast .flow-node .flow-step-diff .flow-diff-added { background: color-mix(in srgb, var(--vscode-diffEditor-insertedTextBackground, transparent) 28%, var(--vscode-editor-background, #000)); }
+   .flow-node .flow-step-diff > .flow-diff-empty { color: var(--vscode-descriptionForeground); border-color: var(--vscode-panel-border); }
+   .flow-step-lane .flow-lane-heading { top: 24px; }
+   .flow-step-lane .flow-node.flow-step-node { width: 260px; box-sizing: border-box; padding: 10px; }
+   .flow-step-lane .flow-node.flow-step-node span { overflow-wrap: anywhere; }
+   .flow-node.unknown { border: 1px dashed var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
   .flow-node.excluded { border-style: dashed; border-color: var(--flow-accent); }
   .flow-fallback .flow-lane { background: var(--vscode-editorWidget-background); }
-  .flow-fallback button.flow-node { border-left: 3px solid var(--flow-accent); background: var(--vscode-editor-background); }
+  .flow-fallback button.flow-node { border-left: 3px solid var(--flow-accent); background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); }
   .flow-hint { font-size: .9em; margin: 6px 0 10px; }
+  .flow-topic-select, .flow-step-select { box-sizing: border-box; flex: 0 1 280px; width: min(280px, 100%); max-width: 100%; min-width: 130px; padding: 3px 6px; color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground, var(--vscode-editor-foreground))); background: var(--vscode-dropdown-background, var(--vscode-input-background, var(--vscode-editor-background))); border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, var(--vscode-panel-border))); border-radius: 3px; font: inherit; }
+  .conversation-open .flow-topic-select { display: none; }
+  .flow-topic-select option, .flow-step-select option { color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground, var(--vscode-editor-foreground))); background: var(--vscode-dropdown-background, var(--vscode-input-background, var(--vscode-editor-background))); }
   .flow-dialog { box-sizing: border-box; width: min(900px, 92vw); max-height: 85vh; overflow: auto; color: var(--vscode-editor-foreground); background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-panel-border); }
   .flow-dialog::backdrop { background: var(--vscode-widget-shadow, rgba(0,0,0,.5)); }
   .flow-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; top: 0; z-index: 1; padding: 8px; background: var(--vscode-editorWidget-background); border-bottom: 1px solid var(--vscode-panel-border); }
@@ -440,6 +468,14 @@ function markdown(text, target) {
       + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
   }
   function promptTime(value) { return time(value); }
+  function questionTimestamp(value) {
+    if (value == null) return "";
+    var d = new Date(value); if (!Number.isFinite(d.getTime())) return "";
+    var now = new Date(), pad = function (n) { return String(n).padStart(2, "0"); };
+    var clock = pad(d.getHours()) + ":" + pad(d.getMinutes());
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+      ? clock : pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + pad(d.getFullYear() % 100) + " " + clock;
+  }
   function span(a, b) {
     if (!a || !b) return "";
     var s = Math.round((b - a) / 1000);
@@ -567,6 +603,31 @@ function markdown(text, target) {
     return box;
   }
 
+  var decisionRunSerial = 0, pendingDecisionRuns = Object.create(null);
+  function isJevPrompt(p) { return /Jev|decision/i.test(String(p && p.operation || "")) || !!(p && p.decision); }
+  function jevLogActions(p, target) {
+    if (!isJevPrompt(p)) return;
+    var row = el("div", "jev-log-actions"), rerun = el("button", "", "Rerun"), test = el("button", "", "Test in Jev chat");
+    var decision = p.decision;
+    rerun.type = test.type = "button";
+    rerun.title = "Run this saved Jev request again; provider charges may apply.";
+    test.title = "Open this saved Jev request in the Jev chat for editing.";
+    if (!decision) {
+      rerun.disabled = test.disabled = true;
+      rerun.title = test.title = "This log has no saved Jev input. Enable question logging for future runs.";
+    } else {
+      test.onclick = function () { vscode.postMessage({ action: "continueDecision", decision: decision }); };
+      rerun.onclick = function () {
+        var id = "jev-run-" + Date.now().toString(36) + "-" + (++decisionRunSerial).toString(36);
+        var output = el("div", "jev-rerun-output muted", "Running Jev…");
+        rerun.disabled = true; target.appendChild(output);
+        pendingDecisionRuns[id] = { decision: decision, button: rerun, output: output };
+        vscode.postMessage({ action: "rerunDecision", id: id, decision: decision });
+      };
+    }
+    row.appendChild(rerun); row.appendChild(test); target.appendChild(row);
+  }
+
   function verificationTable(report) {
     var answers = {}, labels = {};
     (report.checks || []).forEach(function (check, index) {
@@ -630,6 +691,7 @@ function markdown(text, target) {
     var pending=el("div","muted","Loading result…");target.appendChild(pending);
     loadPromptDetails(p,function(error){
       pending.remove();if(error){target.appendChild(el("p","error",error));return;}
+      jevLogActions(p,target);
       var answers=(p.details||[]).filter(function(d){return d.type==="answer"&&d.text;});
       if(answers.length){answers.forEach(function(d){
         var table=p.decision?jevTable(d.text,p.decision):null;
@@ -762,8 +824,27 @@ function markdown(text, target) {
   }
   function diffBlock(target, removed, added) {
     var box = el("pre", "step-diff");
-    String(removed).split("\n").forEach(function (s) { box.appendChild(el("span", "del", "− " + s)); });
-    String(added).split("\n").forEach(function (s) { box.appendChild(el("span", "add", "+ " + s)); });
+    var before = String(removed).split("\n"), after = String(added).split("\n");
+    var count = Math.max(before.length, after.length);
+    for (var i = 0; i < count; i++) {
+      var row = el("span", "change");
+      var oldLine = i < before.length ? before[i] : null, newLine = i < after.length ? after[i] : null;
+      if (oldLine === null) row.appendChild(el("ins", "add", newLine));
+      else if (newLine === null) row.appendChild(el("del", "del", oldLine));
+      else if (oldLine === newLine) row.appendChild(document.createTextNode(oldLine));
+      else {
+        var start = 0, end = 0;
+        while (start < oldLine.length && start < newLine.length && oldLine[start] === newLine[start]) start++;
+        while (end < oldLine.length - start && end < newLine.length - start
+          && oldLine[oldLine.length - end - 1] === newLine[newLine.length - end - 1]) end++;
+        if (start) row.appendChild(document.createTextNode(oldLine.slice(0, start)));
+        var deleted = oldLine.slice(start, oldLine.length - end), inserted = newLine.slice(start, newLine.length - end);
+        if (deleted) row.appendChild(el("del", "del", deleted));
+        if (inserted) row.appendChild(el("ins", "add", inserted));
+        if (end) row.appendChild(document.createTextNode(oldLine.slice(oldLine.length - end)));
+      }
+      box.appendChild(row);
+    }
     target.appendChild(box);
   }
   /* An object's fields as "name: value" lines: a long text cut, a nested value compact, a JSON list kept in a string
@@ -934,13 +1015,16 @@ function markdown(text, target) {
       (p.technicalChildren||[]).forEach(function(step,index){items.push({time:step.time||0,order:-1000+index,service:step});});
       items.sort(function(a,b){return a.time-b.time||a.order-b.order;});
       items.forEach(function(item,index){
-        var event=item.event,detail=item.detail,step=item.service,clock=new Date(item.time).toLocaleTimeString();
+        var event=item.event,detail=item.detail,step=item.service,clock=item.user?questionTimestamp(item.time):new Date(item.time).toLocaleTimeString();
         var prefix=(index+1)+". "+clock+" · ",entry;
         if(item.user){
           entry=item.user;var heading=entry.querySelector("summary");if(heading)heading.textContent=prefix+heading.textContent;
         } else if(step){
           entry=section(prefix+(step.operation==="Skill match with Jev"?"Skill search":step.operation),/Jev/i.test(step.operation)?"technical jev":/Recovery|Orchestrator/i.test(step.operation)?"technical vertex":"technical tool");
           var serviceLoaded=false;entry.addEventListener("toggle",function(){if(entry.open&&!serviceLoaded){serviceLoaded=true;serviceResult(step,entry);}});
+        } else if(event.kind==="user_interjection"){
+          entry=section(prefix+"User addition", "user", event.text==="[not logged]"?"User text was not logged.":event.text);
+          if(event.state!=="sent")entry.appendChild(el("div","kind","Queued; not sent before the request stopped."));
         } else if(event.kind==="note"){
           var note=event.model;
           if(!note||!note.text)return;
@@ -958,12 +1042,13 @@ function markdown(text, target) {
         } else if(detail?.type==="answer"){
           answerShown=true;
           entry=section(prefix+"Response","model",detail.text);markdown(detail.text,entry);objectLinks(entry,detail.objects);
+          if(p.decision)jevLogActions(p,entry);
         } else if(detail) entry=detailSection(detail,p,prefix);
         if(entry)box.appendChild(entry);
       });
       if(answerDetail&&!answerShown){
         var answer=section((items.length+1)+". "+new Date(answerDetail.time||p.time||0).toLocaleTimeString()+" · Response","model",answerDetail.text);
-        markdown(answerDetail.text,answer);objectLinks(answer,answerDetail.objects);
+        markdown(answerDetail.text,answer);objectLinks(answer,answerDetail.objects);if(p.decision)jevLogActions(p,answer);
         box.appendChild(answer);
       }
     });
@@ -972,7 +1057,8 @@ function markdown(text, target) {
 
   function conversation(p) {
     var body = el("div", "conversation");
-    var user = section("User" + (p.topic && p.topic.label ? " · topic: " + p.topic.label : "") + ((p.screenshots || []).length ? " · " + p.screenshots.length + " screenshot" + (p.screenshots.length === 1 ? "" : "s") : ""), "user", p.text);
+    var questionTime=questionTimestamp(p.time);
+    var user = section("User" + (questionTime ? " · " + questionTime : "") + (p.topic && p.topic.label ? " · topic: " + p.topic.label : "") + ((p.screenshots || []).length ? " · " + p.screenshots.length + " screenshot" + (p.screenshots.length === 1 ? "" : "s") : ""), "user", p.text);
     promptSourceLinks(user,p);
     objectLinks(user, p.objects);
     (p.screenshots || []).forEach(function (shot, i) {
@@ -988,6 +1074,7 @@ function markdown(text, target) {
     var answers = p.details.filter(function (d) { return d.type === "answer"; });
     if (answers.length) {
       var answer = section("Model answer", "model");
+      if (p.decision) jevLogActions(p, answer);
       var answersLoaded = false;
       answer.addEventListener("toggle", function () {
         if (!answer.open || answersLoaded) return;
@@ -1112,6 +1199,7 @@ function markdown(text, target) {
           detail.appendChild(el("div", "detail", d.text));
         });
       } else detail = section(label, "technical"+tone+(d.failed?" failed":""), d.text || "No details were recorded for this operation.");
+      if (/Jev/i.test(d.type) || d.routing || d.verification) jevLogActions({operation:d.type,decision:d.decision},detail);
       objectLinks(detail, d.objects);
       if (d.snapshot) {
         var open = el("button", "recording-link", "Open recorded " + (d.snapshot.kind === "uml" ? "UML" : "metrics"));
@@ -1188,13 +1276,16 @@ function markdown(text, target) {
      SAP system with its client. A conversation logged before this was recorded has no context at all. */
   function contextKey(c) {
     if (!c) return "";
+    if (c.mode === "zero") return "zero";
+    if (c.mode === "both") return "both:" + c.folder + "|" + c.system + (c.client ? "/" + c.client : "");
     return c.mode === "folder" ? "folder:" + c.folder : "sap:" + c.system + (c.client ? "/" + c.client : "");
   }
   function contextLabel(c) {
     if (!c) return "";
-    if (c.mode !== "folder") return c.system + (c.client ? " " + c.client : "");
+    if (c.mode === "zero") return "Zero context";
     var parts = String(c.folder).replace(/[\\/]+$/, "").split(/[\\/]/);
-    return parts[parts.length - 1] || c.folder;
+    var folder = parts[parts.length - 1] || c.folder;
+    return c.mode === "folder" ? folder : c.mode === "both" ? folder + " + " + c.system + (c.client ? " " + c.client : "") : c.system + (c.client ? " " + c.client : "");
   }
 
   // Session Logs shows every conversation by default; the place is a filter the reader chooses. The chat's
@@ -1207,6 +1298,11 @@ function markdown(text, target) {
       if(node.kind==="note" && node.noteEventIndex!=null){
         var note=(prompt.events||[])[node.noteEventIndex]?.model;
         if(note?.text){inspector.appendChild(richText(note.text));return;}
+      }
+      if(node.kind==="user_interjection"){
+        inspector.appendChild(el("p","",node.preview||"User text was not logged."));
+        inspector.appendChild(el("p","muted",node.label||"Added to the active conversation."));
+        return;
       }
       if(node.kind==="request" && node.detailIndices){node.detailIndices.forEach(function(index){var part=detailSection((prompt.details||[])[index],prompt,"");if(part)inspector.appendChild(part);});return;}
       if(node.detailIndex!=null){
@@ -1248,7 +1344,7 @@ function markdown(text, target) {
       loading.remove(); show();
     });
   }
-  function flowView(root, sessions) {
+  function flowView(root, sessions, topicSync) {
     if (flowDispose) { flowDispose(); flowDispose = null; }
     flowDetailVersion++;
     root.textContent = "";
@@ -1270,9 +1366,30 @@ function markdown(text, target) {
     if (!window.vertexLogFlow) { root.appendChild(el("p", "error", "The flow renderer is unavailable. Switch to Logs to read this conversation.")); return; }
     var states = flowView.states || (flowView.states = Object.create(null));
     var state = states[sessions[index].id] || (states[sessions[index].id] = {});
-    flowDispose = window.vertexLogFlow.mount(root, sessions[index], { details: showFlowDetail, state: state });
+    if (topicSync && typeof topicSync.value === "string") state.topicFilter = topicSync.value;
+    flowDispose = window.vertexLogFlow.mount(root, sessions[index], { details: showFlowDetail, state: state, followRight: topicSync?.followRight === true,
+      onTopicChange: function (topic) { if (topicSync && topicSync.onChange) topicSync.onChange(topic); } });
   }
-  var lastReport = null, listState = { query: "", hiddenKinds: {}, context: "" };
+  var lastReport = null, lastRenderedRecords = [], pendingConversationOpen = null, listState = { query: "", hiddenKinds: {}, context: null, contextObject: null, placeInitialized: false, topic: "all" };
+  function openRequestedConversation() {
+    if (!pendingConversationOpen) return;
+    var request = pendingConversationOpen;
+    var rawSession = lastReport && lastReport.sessions.find(function (item) { return request.conversationId && item.conversation === request.conversationId || item.id === request.id; });
+    var catalogPlace=lastReport?.places?.find(function(item){return item.key===request.placeKey;});
+    var wantedContext = rawSession?.context || request.place || catalogPlace?.context;
+    var wantedKey=request.placeKey||contextKey(wantedContext),contextChanged=!!wantedKey&&listState.context!==wantedKey;
+    if (contextChanged) { listState.context = wantedKey; listState.contextObject = wantedContext||listState.contextObject; vscode.postMessage({action:"placeFilter",key:wantedKey}); }
+    var dateChanged = /^\d{4}-\d\d-\d\d$/.test(request.date || "") && document.getElementById("from").value !== request.date;
+    if (dateChanged) {
+      document.getElementById("from").value = request.date;
+      document.getElementById("to").value = request.date;
+      document.getElementById("from").dispatchEvent(new Event("input"));
+      document.getElementById("to").dispatchEvent(new Event("change"));
+    } else if (contextChanged && rawSession && lastReport) lastRenderedRecords = render(lastReport) || [];
+    if(contextChanged&&!rawSession)return;
+    var record = lastRenderedRecords.find(function (item) { return item.item.id === request.id || request.conversationId && item.item.conversation === request.conversationId; });
+    if (record) { pendingConversationOpen = null; record.toggle(request.mode, request.live); }
+  }
   var conversationScreen = document.getElementById("conversation-screen"), listScroll = 0, conversationState = null;
   function closeConversation(clearState) {
     if (clearState !== false) conversationState = null;
@@ -1283,10 +1400,14 @@ function markdown(text, target) {
     document.body.classList.remove("conversation-open");
     window.scrollTo(0, listScroll);
   }
-  function openConversation(session, actions) {
+  function openConversation(session, actions, requestedMode, requestedLive) {
     var reopening = conversationState && conversationState.id === session.id;
     if (!conversationState) listScroll = window.scrollY;
-    conversationState = { id: session.id, mode: conversationState && conversationState.id === session.id ? conversationState.mode : "logs" };
+    var previous=conversationState&&conversationState.id===session.id?conversationState:null;
+    var topicIds=new Map();session.prompts.forEach(function(prompt){var topic=prompt.topic;if(topic&&topic.id&&!topicIds.has(topic.id))topicIds.set(topic.id,topic.label||"");});
+    var chosenTopic=previous?.topic||listState.topic||"all";
+    if(chosenTopic!=="all"&&!topicIds.has(chosenTopic))chosenTopic="all";
+    conversationState = { id: session.id, mode: requestedMode || (previous ? previous.mode : "logs"), topic:chosenTopic, live:requestedLive === true || Boolean(previous?.live) };
     conversationScreen.textContent = "";
     var head = el("div", "conversation-screen-head");
     var back = el("button", "continue-session", "← Back");
@@ -1294,6 +1415,14 @@ function markdown(text, target) {
     back.onclick = function () { closeConversation(); };
     head.appendChild(back);
     head.appendChild(el("span", "preview", promptPreview(session.prompts) || "Conversation"));
+    var conversationTopic=el("select","log-context conversation-topic-filter");
+    conversationTopic.setAttribute("aria-label","Filter this conversation by topic");
+    var allConversationTopics=el("option","","All topics");allConversationTopics.value="all";conversationTopic.appendChild(allConversationTopics);
+    [...topicIds.entries()].sort(function(a,b){return a[0].localeCompare(b[0]);}).forEach(function(entry){
+      var id=entry[0],number=Number(id.slice(6))||id,option=el("option","","T"+number+(entry[1]?" · "+entry[1]:""));option.value=id;conversationTopic.appendChild(option);
+    });
+    conversationTopic.value=chosenTopic;conversationTopic.hidden=!topicIds.size;
+    head.appendChild(conversationTopic);
     var modes = el("div", "vertex-segment-toggle");
     modes.setAttribute("role", "group");
     modes.setAttribute("aria-label", "Conversation view");
@@ -1309,7 +1438,7 @@ function markdown(text, target) {
     if (actions.children.length) head.appendChild(actions);
     conversationScreen.appendChild(head);
     var logs = el("div", "table-scroll"), graph = el("div", "flow-root");
-    logs.appendChild(promptTable(session));
+    logs.appendChild(promptTable(session,conversationState.topic));
     graph.hidden = true;
     conversationScreen.appendChild(logs); conversationScreen.appendChild(graph);
     conversationScreen.hidden = false;
@@ -1320,15 +1449,19 @@ function markdown(text, target) {
       logs.hidden = flowing; graph.hidden = !flowing;
       logsButton.classList.toggle("active", !flowing); logsButton.setAttribute("aria-pressed", String(!flowing));
       flowButton.classList.toggle("active", flowing); flowButton.setAttribute("aria-pressed", String(flowing));
-      if (flowing) flowView(graph, [session]);
+      if (flowing) flowView(graph, [session], {value:conversationState.topic,followRight:conversationState.live,onChange:function(topic){conversationState.topic=topic;conversationTopic.value=topic;}});
       else if (flowDispose) { flowDispose(); flowDispose = null; }
     }
+    conversationTopic.onchange=function(){conversationState.topic=conversationTopic.value||"all";logs.replaceChildren(promptTable(session,conversationState.topic));show(conversationState.mode);};
     logsButton.onclick = function () { show("logs"); };
     flowButton.onclick = function () { show("flow"); };
     show(conversationState.mode);
     if (!reopening) { window.scrollTo(0, 0); back.focus(); }
   }
-  vertexDateRange(document.getElementById("date-range"), function () { if (lastReport) render(lastReport); if (reportMode === "costs") renderCosts(); });
+  vertexDateRange(document.getElementById("date-range"), function () {
+    if (lastReport) render(lastReport); if (reportMode === "costs") renderCosts();
+    vscode.postMessage({action:"dateRange",from:document.getElementById("from").value,to:document.getElementById("to").value});
+  });
   function render(report) {
     var preserveSelection = arguments[1];
     closeConversation(false);
@@ -1338,10 +1471,14 @@ function markdown(text, target) {
     if (from && to && from > to) return;
     var localDay = function (time) { var d = new Date(time); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
     report = Object.assign({}, report, { sessions: report.sessions.filter(function (s) { return (!from || localDay(s.end) >= from) && (!to || localDay(s.start) <= to); }) });
+    if (!listState.placeInitialized) {
+      listState.contextObject = report.current || null;
+      listState.context = report.current ? contextKey(report.current) : "";
+      listState.placeInitialized = true;
+    }
     if (!preserveSelection) selected.clear(); selectionChanged();
     content.textContent = "";
     if (!report.configured) { status.className = "muted"; status.textContent = "No log folder is set. Choose a folder to read session logs from."; return; }
-    if (!report.sessions.length) { status.className = "muted"; status.textContent = "No sessions in " + report.folder + "."; return; }
     // Group at presentation time; keep original file ids for host actions.
     var groups = new Map();
     var internal = function (s) { return s.prompts.length && s.prompts.every(function (p) {
@@ -1361,7 +1498,7 @@ function markdown(text, target) {
       var key = conversationId ? "conversation:" + conversationId : "file:" + source.id;
       var group = groups.get(key);
       if (!group) {
-        group = { id: source.id, start: source.start, end: source.end, fileIds: [], providers: [], models: [], prompts: [], usage: {}, usageByKind:{model:{},jev:{}}, costs: { model: {}, jev: {} }, context: null, toolCalls: 0 };
+        group = { id: source.id, conversation: conversationId, start: source.start, end: source.end, fileIds: [], providers: [], models: [], prompts: [], usage: {}, usageByKind:{model:{},jev:{}}, costs: { model: {}, jev: {} }, context: null, toolCalls: 0 };
         groups.set(key, group);
       }
       // One conversation is held in one place, whichever of its files records it first.
@@ -1425,6 +1562,22 @@ function markdown(text, target) {
     search.type = "search"; search.placeholder = "Search questions, providers, models"; search.value = listState.query;
     search.setAttribute("aria-label", "Search conversations");
     tools.appendChild(search);
+    var topicSelect=el("select","log-context log-topic-filter");
+    topicSelect.setAttribute("aria-label","Filter conversations by topic");
+    topicSelect.title="Show conversations that contain prompts from one topic";
+    var topicCounts=new Map();
+    report.sessions.forEach(function(session){
+      var seenTopics=new Set();
+      session.prompts.forEach(function(prompt){var topic=prompt.topic;if(!topic||!topic.id||seenTopics.has(topic.id))return;seenTopics.add(topic.id);
+        var item=topicCounts.get(topic.id)||{label:topic.label||"",count:0};item.count++;if(!item.label)item.label=topic.label||"";topicCounts.set(topic.id,item);});
+    });
+    var allTopics=el("option","","All topics");allTopics.value="all";topicSelect.appendChild(allTopics);
+    [...topicCounts.entries()].sort(function(a,b){return a[0].localeCompare(b[0]);}).forEach(function(entry){
+      var id=entry[0],item=entry[1],number=Number(id.slice(6))||id;
+      var option=el("option","","T"+number+(item.label?" · "+item.label:"")+" ("+item.count+")");option.value=id;topicSelect.appendChild(option);
+    });
+    if(!topicCounts.has(listState.topic))listState.topic="all";
+    topicSelect.value=listState.topic;topicSelect.hidden=!topicCounts.size;tools.appendChild(topicSelect);
     content.appendChild(tools);
     var actionPanel=el("div","list-tools conversation-actions");actionPanel.hidden=true;
     actionPanel.setAttribute("aria-label","Actions for the selected conversation");content.appendChild(actionPanel);
@@ -1444,33 +1597,35 @@ function markdown(text, target) {
       tools.appendChild(label);
       kindBoxes[kind] = box;
     });
-    // Folders and systems the conversations were held in, each with its count. Offered only when there is
-    // something to choose between; one folder alone is not a filter.
+    // Places are rebuilt from the selected date range; current and previously selected places remain selectable when empty.
     var held = {};
+    (report.places||[]).forEach(function(place){held[place.key||""]={key:place.key||"",context:place.context||null,count:place.count||0};});
+    var totalPlaceCount=(report.places||[]).reduce(function(sum,place){return sum+(Number(place.count)||0);},0);
     report.sessions.forEach(function (s) {
       var key = contextKey(s.context);
       if (!held[key]) held[key] = { key: key, context: s.context, count: 0 };
-      held[key].count++;
+      if(!(report.places||[]).some(function(place){return (place.key||"")===key;}))held[key].count++;
+    });
+    [report.current, listState.contextObject].forEach(function (context) {
+      var key = contextKey(context);
+      if (context && !held[key]) held[key] = { key: key, context: context, count: 0 };
     });
     var heldKeys = Object.keys(held).filter(function (key) { return key; }).sort();
-    var contextSelect = null;
-    if (Object.keys(held).length > 1) {
-      contextSelect = el("select", "log-context");
-      contextSelect.setAttribute("aria-label", "Show conversations held in one folder or SAP system");
-      contextSelect.title = "Where the conversation was held: the local folder, or the SAP system";
-      var option = function (value, text, hover) {
-        var item = el("option", "", text); item.value = value; if (hover) item.title = hover;
-        contextSelect.appendChild(item);
-      };
-      option("", "All folders and systems");
-      heldKeys.forEach(function (key) {
-        option(key, contextLabel(held[key].context) + " (" + held[key].count + ")", key.slice(key.indexOf(":") + 1));
-      });
-      if (held[""]) option("none", "Without context (" + held[""].count + ")", "Logged before VERTEX recorded where a conversation was held");
-      contextSelect.value = listState.context || "";
-      if (contextSelect.value !== (listState.context || "")) { listState.context = ""; contextSelect.value = ""; }
-      tools.appendChild(contextSelect);
-    } else listState.context = "";
+    var contextSelect = el("select", "log-context");
+    contextSelect.setAttribute("aria-label", "Show conversations held in one folder or SAP system");
+    contextSelect.title = "Choose the current folder or SAP system, another project for this date range, or all logs";
+    var option = function (value, text, hover) {
+      var item = el("option", "", text); item.value = value; if (hover) item.title = hover;
+      contextSelect.appendChild(item);
+    };
+    option("", "All folders and systems");
+    heldKeys.forEach(function (key) {
+      option(key, contextLabel(held[key].context) + " (" + held[key].count + ")", key.slice(key.indexOf(":") + 1));
+    });
+    if (held[""]) option("none", "Without context (" + held[""].count + ")", "Logged before VERTEX recorded where a conversation was held");
+    contextSelect.value = listState.context || "";
+    if (contextSelect.value !== (listState.context || "")) { listState.context = ""; contextSelect.value = ""; }
+    tools.appendChild(contextSelect);
     var anyCost = report.sessions.some(function (s) { return s.usage.cost != null; });
     var columns = [
       { name: "", cls: "select-cell", width: 34, nosort: true },
@@ -1509,6 +1664,7 @@ function markdown(text, target) {
       // has to say which one it belongs to. A conversation without a recorded place shows no line.
       var place = el("span", "conversation-place", s.context ? contextLabel(s.context) : "");
       if (s.context) place.title = s.context.mode === "folder" ? s.context.folder
+        : s.context.mode === "both" ? s.context.folder + " · SAP " + s.context.system + (s.context.client ? " · client " + s.context.client : "")
         : "SAP system " + s.context.system + (s.context.client ? ", client " + s.context.client : "");
       if (s.context) place.appendChild(document.createTextNode(" · "));
       place.appendChild(el("span", "provider", s.provider));
@@ -1557,9 +1713,9 @@ function markdown(text, target) {
       var record = { item: s, rows: [main, detail], technical: technical, kind: technical ? kindOf(s) : "", context: contextKey(s.context), open: false, loaded: false,
         text: (s.prompts.map(function (p) { return p.text || ""; }).join(" ") + " " + s.provider + " " + models.join(" ")).toLowerCase() };
       // The questions' table is built the first time the conversation opens, and kept.
-      record.toggle = function () {
+      record.toggle = function (mode, live) {
         if (typeof flowSelectedId !== "undefined") flowSelectedId = s.id;
-        openConversation(s, actions);
+        openConversation(s, actions, mode, live);
       };
       main.addEventListener("click", function (event) { if (event.target.closest("input, button, a")) return; record.toggle(); });
       title.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); record.toggle(); } });
@@ -1569,11 +1725,14 @@ function markdown(text, target) {
     var filter = function () {
       listState.query = search.value;
       Object.keys(kindBoxes).forEach(function (kind) { listState.hiddenKinds[kind] = !kindBoxes[kind].checked; });
-      if (contextSelect) listState.context = contextSelect.value;
+      listState.context = contextSelect.value;
+      listState.contextObject = held[listState.context]?.context || (listState.context === contextKey(report.current) ? report.current : listState.contextObject);
       var q = String(search.value || "").trim().toLowerCase(), shown = 0, want = listState.context || "";
+      listState.topic=topicSelect.value||"all";
       records.forEach(function (r) {
         var here = !want || (want === "none" ? !r.context : r.context === want);
-        var show = here && (!q || r.text.indexOf(q) >= 0) && !(r.technical && (Object.prototype.hasOwnProperty.call(listState.hiddenKinds, r.kind) ? listState.hiddenKinds[r.kind] : r.kind !== "Jev evaluation" && r.kind !== "Orchestrator tool selection"));
+        var hasTopic=listState.topic==="all"||r.item.prompts.some(function(prompt){return prompt.topic?.id===listState.topic;});
+        var show = here && hasTopic && (!q || r.text.indexOf(q) >= 0) && !(r.technical && (Object.prototype.hasOwnProperty.call(listState.hiddenKinds, r.kind) ? listState.hiddenKinds[r.kind] : r.kind !== "Jev evaluation" && r.kind !== "Orchestrator tool selection"));
         if (show) shown++;
         r.rows[0].hidden = !show; r.rows[1].hidden = !show || !r.open;
       });
@@ -1586,12 +1745,15 @@ function markdown(text, target) {
       });
       // Naming the place keeps an empty list readable: nothing here yet, rather than something broken.
       var where = want === "none" ? "without a recorded place" : want && held[want] ? contextLabel(held[want].context) : "";
-      status.textContent = (shown === records.length ? records.length : shown + " of " + records.length)
+      var countBase=want&&totalPlaceCount?totalPlaceCount:records.length;
+      status.textContent = (shown === countBase ? countBase : shown + " of " + countBase)
         + " conversations in " + report.folder + (where ? " · showing " + where : "");
-      if (typeof reportMode !== "undefined" && reportMode === "flow") flowView(flowRoot, records.filter(function (r) { return !r.rows[0].hidden; }).map(function (r) { return r.item; }));
+      if (typeof reportMode !== "undefined" && reportMode === "flow") flowView(flowRoot, records.filter(function (r) { return !r.rows[0].hidden; }).map(function (r) { return r.item; }),
+        { value:listState.topic, onChange:function(topic){listState.topic=topic;topicSelect.value=topic;} });
     };
     search.addEventListener("input", filter);
-    if (contextSelect) contextSelect.addEventListener("change", filter);
+    topicSelect.addEventListener("change", filter);
+    contextSelect.addEventListener("change", function(){filter();vscode.postMessage({action:"placeFilter",key:contextSelect.value==="none"?"none":contextSelect.value});});
     Object.keys(kindBoxes).forEach(function (kind) { kindBoxes[kind].addEventListener("change", filter); });
     var scroll = el("div", "table-scroll");
     scroll.appendChild(list);
@@ -1615,7 +1777,7 @@ function markdown(text, target) {
   }
 
   /* A conversation's questions: one row each, its answer opening under it. */
-  function promptTable(s) {
+  function promptTable(s, topicId) {
     var table = el("table", "session-table");
     // Columns: a click on a heading sorts by it (as in Metrics), the grip on its right edge drags its width.
     var columns = [
@@ -1640,7 +1802,7 @@ function markdown(text, target) {
     var steps=promptSteps(s.prompts),technicalByChat=steps.technicalByChat;
     var states = promptTable.states || (promptTable.states = Object.create(null));
     var tableState = states[s.id] || (states[s.id] = { page: 0 });
-    var source=steps.rows,pageNumber=tableState.page,pageSize=30;
+    var source=steps.rows.filter(function(prompt){return !topicId||topicId==="all"||prompt.topic?.id===topicId;}),pageNumber=tableState.page,pageSize=30;
     function childrenOf(p){return technicalByChat.get(p)||[];}
     function runsOf(p){return [p].concat(childrenOf(p)).reduce(function(sum,item){return sum+(item.toolCalls||0);},0);}
     function usageOf(p,kind){
@@ -1822,6 +1984,7 @@ function markdown(text, target) {
   window.addEventListener("message", function (event) {
     var m = event.data || {};
     if (m.action === "data" && m.automatic && document.querySelector("dialog[open]")) { deferredReport = m; return; }
+    if (m.action === "openConversation") { pendingConversationOpen = { id:String(m.id || ""), conversationId:String(m.conversationId||""), mode:m.mode === "flow" ? "flow" : "logs", live:m.live===true, placeKey:String(m.placeKey||""), place:m.place&&typeof m.place==="object"?m.place:null, date:String(m.date||"") }; openRequestedConversation(); }
     if (m.action === "data") {
       deferredReport = null;
       var scrollX = window.scrollX, scrollY = window.scrollY;
@@ -1829,7 +1992,8 @@ function markdown(text, target) {
       var inside = conversationScroll();
       rememberReading();
       lastReport = m.report; usageRows = m.usageRows || [];
-      render(m.report, m.automatic); if (reportMode === "costs") renderCosts();
+      lastRenderedRecords = render(m.report, m.automatic) || []; if (reportMode === "costs") renderCosts();
+      openRequestedConversation();
       restoreReadingAnchor(anchor, scrollX, scrollY);
       restoreConversationScroll(inside);
       pendingReadingScroll = Object.keys(waitingDetail).length ? { x: scrollX, y: scrollY, anchor: anchor, inside: inside } : null;
@@ -1840,6 +2004,17 @@ function markdown(text, target) {
       if (pendingReadingScroll && !Object.keys(waitingDetail).length) {
         restoreReadingAnchor(pendingReadingScroll.anchor, pendingReadingScroll.x, pendingReadingScroll.y);
         restoreConversationScroll(pendingReadingScroll.inside); pendingReadingScroll = null;
+      }
+    }
+    if (m.action === "decisionRerun") {
+      var run = pendingDecisionRuns[m.id]; if (!run) return; delete pendingDecisionRuns[m.id];
+      run.button.disabled = false; run.output.className = "jev-rerun-output"; run.output.textContent = "";
+      if (m.error) run.output.appendChild(el("p", "error", m.error));
+      else {
+        var result = m.result || {}, table = jevTable(result.text || "", run.decision);
+        run.output.appendChild(table || el("pre", "detail", result.text || "Jev returned no answer text."));
+        var meta = [result.model, result.elapsedMs != null ? result.elapsedMs + " ms" : "", result.usage ? usageText({input:result.usage.input_tokens,output:result.usage.output_tokens,cost:result.usage.cost_usd ?? result.usage.estimated_cost_usd}) : ""].filter(Boolean).join(" · ");
+        if (meta) run.output.appendChild(el("div", "muted", meta));
       }
     }
     if (m.action === "error") { status.className = "error"; status.textContent = m.error; }

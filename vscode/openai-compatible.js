@@ -11,7 +11,8 @@ const PROVIDERS = Object.freeze({
   "openai-api": { label: "OpenAI", base: "https://api.openai.com/v1" },
   "mistral-api": { label: "Mistral", base: "https://api.mistral.ai/v1" },
   "gemini-api": { label: "Gemini", base: "https://generativelanguage.googleapis.com/v1beta/openai" },
-  "mf0-api": { label: "MF0.AI", base: "https://www.mf0.ai/api/v1" },
+  // Temporarily disabled: MF0 generations API has no tool-calling round trip.
+  // "mf0-api": { label: "MF0.AI", base: "https://www.mf0.ai/api/v1" },
   "groq-api": { label: "Groq", base: "https://api.groq.com/openai/v1" },
   "cerebras-api": { label: "Cerebras", base: "https://api.cerebras.ai/v1" },
   "openrouter-api": { label: "OpenRouter", base: "https://openrouter.ai/api/v1" },
@@ -109,9 +110,7 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs, signa
 }
 
 async function models(id, apiKey, request = requestJson) {
-  if (id === "mf0-api") return require("./mf0-models").catalog.map(({ id, kind }) => ({
-    id, label: id, modelKind: kind === "text" ? "language" : kind, capabilities: { tools: false, vision: false, web: false }
-  }));
+  // MF0 is temporarily disabled as an LLM provider (no tool calling).
   const response = await request(id, apiKey, "/models");
   if (id === "typesafe-api") {
     if (!Array.isArray(response.models) || !response.models.length) throw new Error("TypeSafe returned no decision models.");
@@ -229,14 +228,7 @@ async function rateLimitedRequest(send, options = {}) {
 
 // One minimal paid generation request: no tool schemas, history or agent rounds.
 async function probe(id, apiKey, model, request = requestJson, options = {}) {
-  if (id === "mf0-api") {
-    const mf0 = require("./mf0-models");
-    const entry = mf0.catalog.find(item => item.id === model);
-    if (!entry) throw new Error("Unknown MF0.AI model.");
-    const result = await mf0.probe(apiKey, entry);
-    if (!result.available) throw new Error(result.status);
-    return { model, usage: {}, reason: result.status };
-  }
+  // MF0 probing is disabled with its LLM provider.
   if (id === "gemini-api" && String(model).replace(/^models\//, "") === "gemini-decision-1") return require("./jev").evaluate(id,apiKey,model,"Synthetic connectivity check: the test passed.",{passed:{type:"noul",instructions:"Did the test pass?"}},{...options,request});
   if (id === "typesafe-api" || id === "opencode-api" && require("./opencode-models").isDecision(model)) {
     const response = await request(id, apiKey, id === "typesafe-api" ? "/systemone" : "/systemone/v1/systemone", {
@@ -308,7 +300,7 @@ function searchCallCount(response) {
 }
 async function ask(options) {
   const id = options.assistant;
-  if (id === "mf0-api") return require("./mf0-models").ask(options);
+  // MF0 is temporarily disabled: its API cannot receive/execute VERTEX tools.
   if (id === "gemini-api" && String(options.model).replace(/^models\//, "") === "gemini-decision-1" || PROVIDERS[id]?.decisionOnly || id === "opencode-api" && require("./opencode-models").isDecision(options.model)) throw new Error("Jev is a decision model. Use Check models in LLM Providers to test its Decision API; choose a language model for chat.");
   const request = (id,key,route,body,maxBytes,timeout) => (options.request || requestJson)(id,key,route,body,maxBytes,timeout,options.signal);
   if (options.images?.length && options.capabilities?.vision === false) throw new Error("This model does not accept screenshots. Choose a Vision model or remove the images.");
@@ -334,6 +326,8 @@ async function ask(options) {
   let usage = null;
   // One extra round is allowed once the user has paused: the wrap-up reply is not a work round.
   for (let round = 0; round < (options.maxRounds || 12) + (wrapped ? 1 : 0); round += 1) {
+    const userAddition = await options.onBeforeModelRequest?.();
+    if (userAddition) messages.push({ role: "user", content: userAddition });
     // A stage may replace tools without changing their count, or narrow an existing schema.
     if (tools.length && !options.structuredResult && !options.webSearch) {
       tools = (options.tools || []).map(tool => ({type:"function",function:{
@@ -456,10 +450,18 @@ async function ask(options) {
     if (onModelCall) onModelCall({ model: response.model || options.model, usage: roundUsage,
       text: typeof message.content === "string" ? message.content : "" });
     messages.push({ role: "assistant", content: message.content || null, tool_calls: calls });
+    let skipRemainingTools = false;
     for (const call of calls) {
       const name = call.function && call.function.name;
       let content;
       try {
+        if (skipRemainingTools || options.shouldYieldTools?.()) {
+          skipRemainingTools = true;
+          messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({
+            skipped: "The user added new instructions before this tool started. It was not run. Reconsider it under the latest instructions and repeat it only if still needed."
+          }) });
+          continue;
+        }
         if (options.wrapUp?.()) { messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ skipped: "The user paused the request; this tool was not run." }) }); continue; }
         if (!(options.tools || []).some(tool => tool.name === name)) {
           const error=new Error(PROVIDERS[id].label + " requested an unavailable tool: " + name + ". Only supplied function schemas are available; use them or report the missing capability.");

@@ -47,7 +47,9 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     }
     require("./session-log").reset(found.conversation || undefined, found.branch);
     await vscode.commands.executeCommand("vertex.resetTranspilerRunNumbers");
-    const selectedTopic=found.turns.find(turn=>turn.topic?.id===found.topicId)?.topic;
+    const selectedTopic=found.topicId
+         ? found.turns.find(turn=>turn.topic?.id===found.topicId)?.topic
+         : found.turns.at(-1)?.topic;
     const count = ask.restoreConversation(found.turns,{topic:selectedTopic});
     if(selectedTopic)await vscode.workspace.getConfiguration("vertex.ai").update("context.routeTopics",true,vscode.ConfigurationTarget.Global);
     const restoredTopics=ask.topics?.()||[],restoredLabels=new Map(restoredTopics.map(topic=>[topic.id,topic.label]));
@@ -58,12 +60,14 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     const first = found.turns.find(turn => turn.time), when = first ? new Date(first.time).toLocaleString() : "";
     await view.webview.postMessage({ chat: "VERTEX: Continued from the session log" + (when ? " of " + when : "") + ": " + count + " question" + (count === 1 ? "" : "s")
       + (found.files > 1 ? " from " + found.files + " providers' logs" : "") + ". The next question carries them as history; the tools' results of that session are not repeated." });
+    const localDateKey=time=>{const date=new Date(time);return Number.isFinite(date.getTime())?date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0")+"-"+String(date.getDate()).padStart(2,"0"):"";};
+    const questionTime=time=>{const date=new Date(time);if(!Number.isFinite(date.getTime()))return "";const hhmm=String(date.getHours()).padStart(2,"0")+":"+String(date.getMinutes()).padStart(2,"0");if(localDateKey(time)===localDateKey(Date.now()))return hhmm;return String(date.getDate()).padStart(2,"0")+"."+String(date.getMonth()+1).padStart(2,"0")+"."+String(date.getFullYear()).slice(-2)+" "+hhmm;};
     for (const turn of found.turns) {
       await view.webview.postMessage({ ...(turn.topic?{topic:{...turn.topic,label:restoredLabels.get(turn.topic.id)||turn.topic.label}}:{}), chat: "You: " + turn.question
         + (turn.images?.length ? "  [" + turn.images.length + " screenshot(s) restored]" : "")
-        + (turn.missingScreenshots ? "  [" + turn.missingScreenshots + " screenshot(s) unavailable]" : "") });
+        + (turn.missingScreenshots ? "  [" + turn.missingScreenshots + " screenshot(s) unavailable]" : ""),questionTime:questionTime(turn.time) });
       await view.webview.postMessage({ ...(turn.topic?{topic:{...turn.topic,label:restoredLabels.get(turn.topic.id)||turn.topic.label}}:{}), chat: "VERTEX: " + (turn.answer || (turn.failed
-        ? "(request did not complete; your question and available screenshots were restored for the next request)" : "(no answer was logged)")) });
+        ? "(request did not complete; your question and available screenshots were restored for the next request)" : "(no answer was logged)")),logSessionId:turn.logId,logConversationId:turn.conversation,questionDate:localDateKey(turn.time) });
     }
     // Continue on a topic's last question: the whole conversation comes back, and the next question continues that topic.
     await view.webview.postMessage({ historyContinued: true, viewTopic: selectedTopic?.id || "all",...(selectedTopic?{routeTopics:true}:{}),topicList:restoredTopics });
@@ -197,10 +201,11 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
       const nonce = require("crypto").randomBytes(24).toString("hex");
       view.webview.options = { enableScripts: true, localResourceRoots: [] };
       view.webview.html = html(nonce);
+      let refreshSerial = 0;
       const refresh = async (fresh = false) => {
         const chosen = active();
-        const decisions = ask.decisionModels ? await ask.decisionModels() : {models:[],selected:require("./review-jev").selection(vscode)};
-        return view.webview.postMessage({
+        const serial = ++refreshSerial;
+        await view.webview.postMessage({
           system: chosen.error ? "" : chosen.system.name,
           // The active system's clients, when it lists more than one, and the one in use.
           client: chosen.error ? "" : chosen.system.client, clients: chosen.error ? [] : chosen.system.clients || [],
@@ -208,19 +213,34 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           // What the list shows: a system reached through SAP's extension says so beside its name.
           labels: systems().map(item => item.name),
           ai: ask.state(),
-          // Auto (Jev) is offered when there is a decision model to run it with, whichever
-          // provider holds it. Naming the providers here left OpenCode Jev without the switch.
-          jevOn: decisions.models.length > 0, decisionModels: decisions,
           // Where the chat's SAP tools come from: VERTEX itself or an MCP server of vertex.chat.mcpServers.
           mcp: chatMcp ? { servers: chatMcp.choices(), selected: chatMcp.selected(),
             updates: chatMcp.overview().filter(s => Array.isArray(s.update) && s.update.length).map(s => s.name) } : null,
           planner: ask.plannerState(),
           effort: String(vscode.workspace.getConfiguration("vertex.ai").get("effort", "") || "")
-        }).then(async () => {
-          // The model list comes after: it may have to ask the provider.
-          try { const models = await ask.listModels(fresh); require("./ai-availability").set(!models?.error && Array.isArray(models?.models) && models.models.length > 0); await view.webview.postMessage({ models }); }
-          catch (error) { require("./ai-availability").set(false); await view.webview.postMessage({ models: { error: error.message } }); }
         });
+        // Provider/model controls must not wait for Jev's separate decision-model catalogs.
+        // In particular, a slow or unavailable Jev endpoint must never leave the provider list blank.
+        const loadModels = (async () => {
+          try {
+            const models = await ask.listModels(fresh);
+            require("./ai-availability").set(!models?.error && Array.isArray(models?.models) && models.models.length > 0);
+            if (serial === refreshSerial && currentView === view) await view.webview.postMessage({ models });
+          } catch (error) {
+            require("./ai-availability").set(false);
+            if (serial === refreshSerial && currentView === view) await view.webview.postMessage({ models: { error: error.message } });
+          }
+        })();
+        const loadDecisions = (async () => {
+          try {
+            const decisions = ask.decisionModels ? await ask.decisionModels() : {models:[],selected:require("./review-jev").selection(vscode)};
+            if (serial === refreshSerial && currentView === view) await view.webview.postMessage({jevOn:decisions.models.length>0,decisionModels:decisions});
+          } catch (_) {
+            if (serial === refreshSerial && currentView === view) await view.webview.postMessage({jevOn:false,decisionModels:{models:[],selected:require("./review-jev").selection(vscode)}});
+          }
+        })();
+        // Keep the ready/configuration handler free even if either catalog endpoint stalls.
+        void Promise.allSettled([loadModels, loadDecisions]);
       };
       // The folder Claude works in, under the SAP system, so the panel does not read as SAP-only.
       let fileLinksUpdated=0;
@@ -247,17 +267,17 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if (message.action === "ready") {
           ready = true;
-          const decisions=ask.decisionModels?await ask.decisionModels():{models:[],selected:require("./review-jev").selection(vscode)};
-          await view.webview.postMessage({jevOn:decisions.models.length>0,decisionModels:decisions,topicList:ask.topics?.()||[],routeTopics:vscode.workspace.getConfiguration("vertex.ai").get("context.routeTopics",false)});
-          await showFolder();
+          await view.webview.postMessage({topicList:ask.topics?.()||[],routeTopics:vscode.workspace.getConfiguration("vertex.ai").get("context.routeTopics",false)});
+          const folderUpdate = showFolder();
           await refresh();
+          await folderUpdate;
           await showReview();
           await view.webview.postMessage({chatRunning:!!pendingChat});
           /* A server picked earlier starts with the window, without anyone pressing Start. Show that start the
              same way the manual one is shown, so the wait is visible rather than silent - but only while it is
              actually coming up: a server already serving gets no scene. In folder context the chat may never ask
              SAP anything, so neither the start nor its scene is wanted here; the first SAP question starts it. */
-          if (chatMcp && ask.state?.().contextMode !== "folder") {
+          if (chatMcp && ["sap","both"].includes(ask.state?.().contextMode)) {
             const name = chatMcp.selected();
             if (name && name !== chatMcp.VERTEX && name !== chatMcp.ORCHESTRATOR && !chatMcp.isRunning(name)
                 && chatMcp.servers().some(server => server.name === name)) {
@@ -281,17 +301,18 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if(message.action==="setRouteTopics"){await vscode.workspace.getConfiguration("vertex.ai").update("context.routeTopics",!!message.value,vscode.ConfigurationTarget.Global);return;}
         if (message.action === "conversationHistory") {
+          const requestId = Number(message.requestId) || 0;
           try {
             const logs = require("./log-report");
             const report = logs.readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
             // The chat continues its own work: only the conversations held where it is working now. Session
             // Logs is the place to see every folder and system.
-            const place = logs.placeKey(logs.currentPlace(vscode));
+            const place = logs.currentPlace(vscode);
             const items = logs.conversationList(report, place);
-            await view.webview.postMessage({ conversationHistory: { items,
+            await view.webview.postMessage({ conversationHistory: { requestId, items,
               message: report.configured ? (items.length || !report.sessions.length ? "" : "No conversation of this folder or system yet. Session Logs shows every one.")
                 : "Choose a log folder in Session Logs to save and continue conversations." } });
-          } catch (error) { await view.webview.postMessage({ conversationHistory: { items: [], message: error.message } }); }
+          } catch (error) { await view.webview.postMessage({ conversationHistory: { requestId, items: [], message: error.message } }); }
           return;
         }
         if (message.action === "continueHistory") {
@@ -303,7 +324,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           } catch (error) { await view.webview.postMessage({ historyError: error.message }); }
           return;
         }
-        if(message.action==="setContextMode"){try{await view.webview.postMessage({ai:await ask.setContextMode(message.mode)});await showFolder();}catch(error){vscode.window.showWarningMessage("VERTEX: "+error.message);}return;}
+        if(message.action==="setContextMode"){try{await view.webview.postMessage({ai:await ask.setContextMode(message.mode)});await showFolder();}catch(error){vscode.window.showWarningMessage("VERTEX: "+error.message);await view.webview.postMessage({ai:ask.state()});}return;}
         if(message.action==="chooseContextFolder"){
           if(pendingChat||continuing||reviewSurface?.running)return;
           try{
@@ -327,7 +348,13 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if (message.action === "setProvider") {
-          try { await view.webview.postMessage({ ai: await ask.setProvider(message.provider) }); await showFolder(); }
+          try {
+            await view.webview.postMessage({ ai: await ask.setProvider(message.provider) });
+            await showFolder();
+            // Load the newly selected provider's catalog immediately; do not depend on
+            // the configuration-change event racing the picker update.
+            await refresh();
+          }
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
           return;
         }
@@ -355,6 +382,22 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           await clearConversation();
           return;
         }
+        if (message.action === "showCurrentLog") {
+          if (!pendingChat || !message.sessionId) return;
+          const now=new Date(),date=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");
+          await vscode.commands.executeCommand("vertex.showLogs",{sessionId:String(message.sessionId),conversationId:String(message.conversationId||""),fullScreen:true,mode:"flow",live:true,date});
+          return;
+        }
+        if (message.action === "openLogConversation") {
+          const date=String(message.date||"");
+          await vscode.commands.executeCommand("vertex.showLogs",{sessionId:String(message.sessionId||""),conversationId:String(message.conversationId||""),fullScreen:false,mode:"logs",date:/^\d{4}-\d\d-\d\d$/.test(date)?date:""});
+          return;
+        }
+        if (message.action === "showHistoricalLog") {
+          const date=String(message.date||"");
+          await vscode.commands.executeCommand("vertex.showLogs",{sessionId:String(message.sessionId||""),conversationId:String(message.conversationId||""),fullScreen:true,mode:"flow",date:/^\d{4}-\d\d-\d\d$/.test(date)?date:""});
+          return;
+        }
         if(message.action==="openProjectFile"){try{await require("./file-links").open(vscode,message.reference);}catch(error){vscode.window.showWarningMessage("VERTEX: "+error.message);}return;}
         if (message.action === "openWebLink") {
           try { const url=new URL(String(message.url||""));if(["https:","http:"].includes(url.protocol)&&!url.username&&!url.password)await vscode.env.openExternal(vscode.Uri.parse(url.href)); }catch(_){}
@@ -377,6 +420,18 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         if (message.action === "openObject") {
           try { await ask.openObject({ object_type: String(message.object_type||""), object_name: String(message.object_name) }); }
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
+          return;
+        }
+        if (message.action === "interjectChat") {
+          const pending = pendingChat, text = String(message.text || "").trim();
+          if (!pending || pending.cancelled || pending.kind === "decision" || !text) return;
+          const timestamp = typeof message.timestamp === "string" && Number.isFinite(Date.parse(message.timestamp)) ? message.timestamp : new Date().toISOString();
+          if (!ask.interject?.(text, timestamp)) {
+            if(pending.started){await view.webview.postMessage({progress:{id:pending.id,userAdditionRejected:text}});return;}
+            pending.interjections ||= [];
+            pending.interjections.push({ text, time: timestamp });
+          }
+          await view.webview.postMessage({ progress: { id: pending.id, userAddition: text } });
           return;
         }
         if (message.action === "stopChat") {
@@ -405,32 +460,36 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           const requestId = Number.isInteger(message.requestId) ? message.requestId : ++nextRequest;
           if (requestId > nextRequest) nextRequest = requestId;
           // The window shows the question as written; the review's blocks go to the model with it, unseen.
-          const web=message.web===true||require("./web-intent").requested(message.text);
-          const asked = web ? null : reviewAsk;
+          const zero = ask.state().contextMode === "zero";
+          const web=!zero&&(message.web===true||require("./web-intent").requested(message.text));
+          const asked = web || zero ? null : reviewAsk;
           if (asked) { reviewAsk = null; await showReview(); }
           const images = (Array.isArray(message.images) ? message.images : []).filter(image => image
             && /^image\/(png|jpeg|gif|webp)$/.test(image.media_type) && typeof image.data === "string" && image.data);
           const shown = String(message.text || "").trim() || (asked ? (asked.review_result ? "Check the attached review findings against the code and explain which are valid." : asked.prompt_label ? asked.prompt_label + " (VERTEX prompt)" : "What does this change do, and is there a real problem with it?")
             : images.length ? "Inspect the screenshot and identify the likely problem or task from visible evidence. If unclear, ask a specific clarifying question." : "");
           if (!shown) { return; }
-          const pending = pendingChat = { id: requestId, cancelled: false };
+          const pending = pendingChat = { id: requestId, cancelled: false, kind: "chat", started:false, interjections: [] };
           try {
           const userMessage = "You: " + shown + (asked ? "  [" + review.askLabel(asked) + "]" : "")
             + (images.length ? "  [" + images.length + " screenshot" + (images.length > 1 ? "s" : "") + "]" : "");
           let taskKind=asked?"review":"thinking";
-          await view.webview.postMessage({ progress: { id: requestId, kind:taskKind, user: userMessage, status: taskKind==="review"?"Reviewing changes…":taskKind==="commit"?"Preparing commit message…":"Working…" } });
+          const initialProgress={progress:{id:requestId,kind:taskKind,user:userMessage,status:taskKind==="review"?"Reviewing changes…":taskKind==="commit"?"Preparing commit message…":"Working…"}};
+          await view.webview.postMessage(initialProgress);
           // Let the webview paint the question and the initial task animation before
           // tool-context collection starts doing synchronous work.
           await new Promise(resolve => setTimeout(resolve, 0));
             const scope = asked ? { review_ask: { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) } } : undefined;
-            const state = web ? {} : (await toolContext(scope)) || {};
+            const state = web || zero ? {} : (await toolContext(scope)) || {};
             if (pending.cancelled) { await view.webview.postMessage({progress:{id:requestId,stopped:true,done:true}}); return; }
             if (asked) {
               state.review_ask = { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) };
               delete state.review_source;
               delete state.selected_fragment;
             }
+            pending.started=true;
             const reply = await ask(asked ? review.askRequest(asked.review_result ? shown : message.text, asked) : shown, {model: message.model, state, web,routeTopics:!!message.routeTopics,contextMode:asked?.system==="local"?"folder":asked?"sap":ask.state().contextMode,
+              interjections: pending.interjections,
               ...(images.length ? { images } : {}),
               onProgress: update => { if(pending.cancelled)return; Promise.resolve(view.webview.postMessage({ progress: { id: requestId, kind:taskKind,...update } })).catch(() => {}); } });
             if (pending.cancelled || reply.stopped) { await view.webview.postMessage({progress:{id:requestId,stopped:true,done:true}}); return; }
@@ -627,6 +686,8 @@ ${require(require("path").join(__dirname,"task-visual")).css}
 #messages .vertex.task[data-task-kind]::before{display:none}
 #messages .vertex.task .task-scene{display:block;width:100%;margin-top:6px}
 #messages .vertex.task:is([data-task-kind="thinking"],[data-task-kind="search"],[data-task-kind="tooling"]) .task-scene{position:absolute;left:0;top:0;width:36px;height:36px;margin:0}
+#messages .vertex.task[data-task-kind="thinking"] .stream-part.thinking{position:relative;padding-left:42px}
+#messages .vertex.task[data-task-kind="thinking"] .stream-part.thinking .task-scene{left:0;right:auto;top:auto;bottom:0}
 #messages .vertex.task:is([data-task-kind="thinking"],[data-task-kind="search"],[data-task-kind="tooling"]) .task-timed{width:36px;height:36px}
 #messages .vertex.task:is([data-task-kind="thinking"],[data-task-kind="search"],[data-task-kind="tooling"]) .task-timed>.vertex-task-visual{flex:none}
 #messages .vertex.task:is([data-task-kind="thinking"],[data-task-kind="search"],[data-task-kind="tooling"]) .task-timer{display:none}
@@ -635,7 +696,8 @@ body[data-provider="vercel-api"] #vercel-row-break, body[data-provider="opencode
 #subprovider-select[hidden] { display:none; }
 /* No provider offered (none ticked in LLM Providers): there is nothing to choose, so the choice is not shown. */
 body.no-providers #provider-select, body.no-providers #vercel-row-break, body.no-providers #subprovider-select, body.no-providers .model-picker, body.no-providers #effort-select, body.no-providers #model-status { display:none !important; }
-body.no-choice #provider-select, body.no-choice #vercel-row-break, body.no-choice #subprovider-select, body.no-choice .model-picker, body.no-choice #effort-select { display:none !important; }
+/* Keep the provider picker available when its selected provider has no usable model catalog, so the user can switch away. */
+body.no-choice #vercel-row-break, body.no-choice #subprovider-select, body.no-choice .model-picker, body.no-choice #effort-select { display:none !important; }
 body[data-provider="vercel-api"] #subprovider-select, body[data-provider="opencode-api"] #subprovider-select, body[data-provider="openrouter-api"] #subprovider-select { flex:0 1 150px; max-width:45%; }
 body[data-provider="vercel-api"] .model-picker, body[data-provider="opencode-api"] .model-picker, body[data-provider="openrouter-api"] .model-picker { flex:1 1 170px; }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
@@ -688,6 +750,8 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 /* The AI and SAP logs are the view's title actions, beside the settings (the user's choice, for the space); the
    working folder stands in the SAP system line. */
 #folder-line { margin-left: 6px; overflow-wrap: anywhere; }
+.context-check { display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }
+.context-check input { margin:0; accent-color:var(--vscode-focusBorder); }
 .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .line button { margin: 4px 0; padding: 4px 10px; }
 .line select { padding: 3px 4px; }
@@ -741,7 +805,7 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 </style></head><body class="${require(require("path").join(__dirname,"motion")).mode()==="auto"?"":"vertex-motion-"+require(require("path").join(__dirname,"motion")).mode()}">
 <dialog id="mcp-start-dialog" aria-labelledby="mcp-start-title"><strong id="mcp-start-title">MCP server</strong><span class="mcp-start-scene" id="mcp-start-scene"></span><div id="mcp-start-status" role="status" aria-live="polite"></div><div id="mcp-start-options"></div><form method="dialog"><button type="button" class="secondary" id="mcp-start-go" hidden>Start</button><button type="button" class="secondary" id="mcp-start-node" hidden>Get Node.js</button><button class="secondary" id="mcp-start-close">Close</button></form></dialog>
 <dialog id="model-details-dialog" aria-labelledby="model-details-title"><strong id="model-details-title">Model details</strong><div id="model-capabilities"></div><form method="dialog"><button class="secondary">Close</button></form></dialog>
-<div id="chat-header"><div class="line" id="context-controls"><span class="vertex-segment-toggle" id="context-mode" role="group" aria-label="Context source"><button type="button" data-context="sap" class="active">SAP</button><button type="button" data-context="folder">Folder</button></span><span id="sap-context-controls"><span>SAP system</span>
+<div id="chat-header"><div class="line" id="context-controls"><label class="context-check"><input type="checkbox" data-context="sap"><span>SAP</span></label><label class="context-check"><input type="checkbox" data-context="folder" checked><span>Folder</span></label><label class="context-check"><input type="checkbox" data-context="zero"><span>Zero context</span></label><span id="sap-context-controls"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button><button type="button" class="secondary" id="mcp-servers" title="MCP servers: descriptions, versions, toolsets and tools" aria-label="MCP servers: descriptions, versions, toolsets and tools" hidden>ⓘ</button><button type="button" class="secondary" id="mcp-update" hidden>Update</button>
@@ -846,11 +910,18 @@ window.addEventListener('message',event=>{const data=event.data||{};
   field.value=reviewMainDraft||'';reviewMainDraft=null;fitPrompt();
   field.placeholder='Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)';}
 });
-let contextMode="sap";
-let historyItems=[],historyLoading=false,historyOpening=false;
+let contextMode="folder";
+function applyContextMode(mode){
+ contextMode=mode;
+ document.querySelectorAll('[data-context]').forEach(input=>{const selected=mode==="both"?(input.dataset.context==="sap"||input.dataset.context==="folder"):input.dataset.context===mode;input.checked=selected;});
+ const sap=mode==="sap"||mode==="both",folder=mode==="folder"||mode==="both";
+ document.getElementById('sap-context-controls').hidden=!sap;
+ document.getElementById('folder-line').hidden=!folder;
+}
+let historyItems=[],historyLoading=false,historyOpening=false,historyRequest=0;
 const historyBox=document.getElementById('conversation-history'),historyStatus=document.getElementById('history-status');
 function renderHistory(){
- document.getElementById('new-conversation').disabled=chatRunning||historyOpening;
+ document.getElementById('new-conversation').disabled=historyOpening||chatRunning&&!activeLogSessionId;
  const list=document.getElementById('history-list');list.replaceChildren();
  const query=document.getElementById('history-search').value.trim().toLocaleLowerCase();
  const matches=historyItems.filter(item=>(item.title+' '+item.lastQuestion+' '+item.providers).toLocaleLowerCase().includes(query));
@@ -860,17 +931,24 @@ function renderHistory(){
  button.append(title,meta);button.onclick=()=>{if(chatRunning||historyOpening)return;historyOpening=true;historyStatus.textContent='Restoring conversation…';renderHistory();api.postMessage({action:'continueHistory',id:item.id});};list.appendChild(button);}
  if(!historyLoading&&!historyOpening)historyStatus.textContent=matches.length?'Select a conversation to continue.':query?'No matching conversations.':'No saved conversations.';
 }
-function loadHistory(){if(historyLoading||historyOpening)return;historyLoading=true;historyStatus.textContent='Loading conversations…';api.postMessage({action:'conversationHistory'});}
+function loadHistory(){if(historyLoading||historyOpening)return;historyLoading=true;historyStatus.textContent='Loading conversations…';api.postMessage({action:'conversationHistory',requestId:++historyRequest});}
 historyBox.ontoggle=()=>{if(historyBox.open)loadHistory();};
 document.getElementById('history-refresh').onclick=loadHistory;
 document.getElementById('history-search').oninput=renderHistory;
 window.addEventListener('message',event=>{const data=event.data||{};
- if(data.conversationHistory){historyLoading=false;historyItems=data.conversationHistory.items||[];renderHistory();if(data.conversationHistory.message)historyStatus.textContent=data.conversationHistory.message;}
+ if(data.conversationHistory){if(data.conversationHistory.requestId!==historyRequest)return;historyLoading=false;historyItems=data.conversationHistory.items||[];renderHistory();if(data.conversationHistory.message)historyStatus.textContent=data.conversationHistory.message;}
  if(data.historyContinued){historyOpening=false;historyBox.open=false;renderHistory();}
  if(data.historyError){historyOpening=false;renderHistory();historyStatus.textContent=data.historyError;}
 });
 let projectFileAliases=new Set();
-document.querySelectorAll('[data-context]').forEach(button=>button.addEventListener('click',()=>api.postMessage({action:'setContextMode',mode:button.dataset.context})));
+document.querySelectorAll('[data-context]').forEach(input=>input.addEventListener('change',()=>{
+ const sap=document.querySelector('[data-context="sap"]'),folder=document.querySelector('[data-context="folder"]'),zero=document.querySelector('[data-context="zero"]');
+ if(input.dataset.context==="zero"&&zero.checked){sap.checked=false;folder.checked=false;}
+ else if(input.dataset.context!=="zero"&&input.checked)zero.checked=false;
+ if(!sap.checked&&!folder.checked&&!zero.checked){zero.checked=true;}
+ const mode=zero.checked?"zero":sap.checked&&folder.checked?"both":sap.checked?"sap":"folder";
+ applyContextMode(mode);api.postMessage({action:'setContextMode',mode});
+}));
 document.getElementById('folder-name').onclick=event=>{event.preventDefault();api.postMessage({action:'chooseContextFolder'});};
 const findFileReferences=${require(require("path").join(__dirname,"file-links")).references.toString()};
 // The effort levels of the chosen assistant; hidden for one that takes none (API providers, Copilot).
@@ -890,6 +968,7 @@ function vercelGroups(models){
 }
 function drawModelPickers(selected) {
   const model=document.getElementById('model-select'),sub=document.getElementById('subprovider-select');
+  // MF0 is disabled as a chat provider until its API supports tool calls.
   const vercel=['vercel-api','openrouter-api','opencode-api'].includes(document.getElementById('provider-select').value);sub.hidden=!vercel;
   const offered=modelCatalog.slice();
   if(selected&&!offered.some(m=>m.id===selected))offered.push({id:selected,label:selected+' (off)'});
@@ -951,7 +1030,12 @@ document.getElementById('model-select').addEventListener('change', event => {
   api.postMessage({ action: 'setModel', model: event.target.value });
 });
 document.querySelectorAll('button[data-action]').forEach(button => {
-  button.addEventListener('click', () => api.postMessage({ action: button.dataset.action }));
+  button.addEventListener('click', () => {
+    if(button.dataset.action==='showCurrentLog'){
+      const date=new Date(),key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+      api.postMessage({action:'showCurrentLog',sessionId:activeLogSessionId,conversationId:activeLogConversationId,date:key});
+    }else api.postMessage({ action: button.dataset.action });
+  });
 });
 document.getElementById('client-select').addEventListener('change', event => {
   api.postMessage({ action: 'client', name: document.getElementById('system-select').value, client: event.target.value });
@@ -974,14 +1058,22 @@ document.getElementById('system-select').addEventListener('change', event => {
 let nextRequest = 0;
 document.getElementById('chat').addEventListener('submit', event => {
   event.preventDefault();
-  if(chatRunning||historyOpening)return;
+  if(historyOpening)return;
   const field = document.getElementById('prompt');
   const text = field.value.trim();
+  if(chatRunning){
+    if(!text)return;
+    api.postMessage({action:'interjectChat',text,timestamp:new Date().toISOString()});
+    field.value='';fitPrompt();
+    return;
+  }
   // With a review's blocks on the chip an empty question asks the default one.
   if (!text && document.getElementById('review-chip').hidden && !images.length) return;
   if(document.getElementById('model-select').disabled){document.getElementById('model-status').textContent='Wait for the model list to load.';return;}
   const selected = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
   if (images.length && selected?.capabilities?.vision === false) { document.getElementById('model-status').textContent = 'This model does not accept screenshots. Choose a Vision model or remove the images.'; return; }
+  topicViewMode='current';
+  refreshTopicView();
   setChatRunning(true);
   const requestId = ++nextRequest;
   const optimisticUser = document.createElement('p');
@@ -1034,9 +1126,9 @@ document.getElementById('prompt').addEventListener('paste', event => {
   });
 });
 // The message field grows with what is typed or pasted, up to a few lines; ⤢ lets it take most of the panel.
-let chatRunning = false, chatStopping = false;
+let chatRunning = false, chatStopping = false, activeLogSessionId = '', activeLogConversationId = '';
 const stopChat = document.getElementById('chat-stop');
-function setChatRunning(value) { chatRunning=value;if(!value)chatStopping=false;stopChat.hidden=!value;stopChat.disabled=chatStopping;renderHistory(); }
+function setChatRunning(value) { chatRunning=value;if(!value){chatStopping=false;activeLogSessionId='';activeLogConversationId='';}stopChat.hidden=!value;stopChat.disabled=chatStopping;const button=document.getElementById('new-conversation');button.textContent=value?'⛶':'New conversation';button.title=value?'Open the current run’s recorded steps full screen':'Start a new conversation';button.setAttribute('aria-label',button.title);button.dataset.action=value?'showCurrentLog':'newConversation';document.getElementById('prompt').title=value?'Send this as an addition to the active conversation; it will be included at the next model step.':'Enter sends a new message.';renderHistory(); }
 stopChat.addEventListener('click',()=>{chatStopping=true;stopChat.disabled=true;api.postMessage({action:'stopChat'});});
 const promptField = document.getElementById('prompt'), expandPrompt = document.getElementById('expand-prompt');
 function fitPrompt() { promptField.style.height = 'auto'; promptField.style.height = promptField.scrollHeight + 2 + 'px'; }
@@ -1074,19 +1166,19 @@ document.addEventListener('keydown', event => {
 });
 const progressItems = new Map();
 const requestScreenshots = new Map();
-const taskVisuals=${JSON.stringify(["review", "commit", "search", "thinking", "tooling", "mcp", "edit", "recognize"].reduce((all, kind) =>
+const taskVisuals=${JSON.stringify(["review", "commit", "search", "thinking", "tooling", "mcp", "start", "install", "edit", "recognize"].reduce((all, kind) =>
   Object.assign(all, { [kind]: require(require("path").join(__dirname, "task-visual")).html(kind, true) }), {}))};
 function paintTaskScene(item,update){
       const reasoning=typeof update.thinking==='string'&&update.thinking&&!update.kind;
       if(update.kind===null||reasoning){item.dataset.taskKind='thinking';delete item.dataset.taskSubject;}
-      if(['review','commit','search','thinking','tooling','mcp','edit','recognize'].includes(update.kind))item.dataset.taskKind=update.kind;
+      if(['review','commit','search','thinking','tooling','mcp','start','install','edit','recognize'].includes(update.kind))item.dataset.taskKind=update.kind;
       // What a search is looking for travels with the step, so its band can spell the pattern out.
       if(typeof update.subject==='string')item.dataset.taskSubject=update.subject;
       let scene=item.querySelector('.task-scene');
       if(update.done){if(scene)scene.remove();}
       else if(taskVisuals[item.dataset.taskKind]){if(!scene){scene=document.createElement('span');scene.className='task-scene';scene.setAttribute('aria-hidden','true');item.appendChild(scene);}const want=item.dataset.taskKind,said=item.dataset.taskSubject||'';
         if(scene.dataset.kind!==want||scene.dataset.said!==said||(want==='recognize'&&scene.dataset.imageIndex!==String(update.imageIndex||0))){scene.dataset.kind=want;scene.dataset.said=said;scene.dataset.imageIndex=String(update.imageIndex||0);
-        scene.innerHTML=taskVisuals[want];
+        scene.innerHTML=want==='start'&&window.vertexTaskVisual?window.vertexTaskVisual.html('start',true,said):taskVisuals[want];
         if(want==='recognize'){
           const pictures=requestScreenshots.get(update.id),index=Math.max(0,Math.min((pictures?.length||1)-1,Number(update.imageIndex)||0));
           const picture=pictures?.[index],svg=scene.querySelector('svg'),image=scene.querySelector('.kw-screen-image');
@@ -1109,7 +1201,7 @@ window.addEventListener('message', event => {
   if(event.data.decisionResult)showDecisionResult(event.data.decisionResult);
   if(event.data.planner){plannerSettings=event.data.planner;showPlanner();}
   if(typeof event.data.chatRunning==='boolean')setChatRunning(event.data.chatRunning);
-  const selectedContext=event.data.contextMode||event.data.ai?.contextMode;if(selectedContext){contextMode=selectedContext;document.querySelectorAll('[data-context]').forEach(button=>{const selected=button.dataset.context===contextMode;button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));});document.getElementById('sap-context-controls').hidden=contextMode!=='sap';if(contextMode==='sap')document.getElementById('folder-line').hidden=true;}
+  const selectedContext=event.data.contextMode||event.data.ai?.contextMode;if(selectedContext)applyContextMode(selectedContext);
   if(event.data.localFiles){projectFileAliases=new Set(event.data.localFiles);document.querySelectorAll('.vertex').forEach(linkProjectFiles);}
   if (event.data && typeof event.data.send === 'string') {
     // VERTEX's own message - a review's reasons - goes as a question the user can read in the chat.
@@ -1133,6 +1225,7 @@ window.addEventListener('message', event => {
     if (event.data.review) field.focus();
   }
   if (event.data && event.data.cleared) {
+    historyRequest++;historyItems=[];historyLoading=false;historyOpening=false;historyStatus.textContent='';historyBox.open=false;renderHistory();
     topicCatalog=[];topicViewMode='current';drawTopicPicker(routeMode);document.getElementById('context-optimization-status').textContent='';
     resetJevDraft();
     const box = document.getElementById('messages');
@@ -1146,12 +1239,24 @@ window.addEventListener('message', event => {
   }
   if (event.data && event.data.progress) {
     const update = event.data.progress;
+    if(typeof update.logSessionId==='string')activeLogSessionId=update.logSessionId;
+    if(typeof update.logConversationId==='string')activeLogConversationId=update.logConversationId;
     setChatRunning(!update.done&&!update.remove);
     if (update.toolSupport && document.getElementById('provider-select').value === update.toolSupport.provider) {
       const model = modelCatalog.find(m => m.id === update.toolSupport.model);
       if (model) { model.capabilities = { ...model.capabilities, tools:false }; model.toolSupportEvidence = update.toolSupport.evidence; drawModelCapabilities(); }
     }
+    if(typeof update.userAdditionRejected==='string'){
+      const field=document.getElementById('prompt');
+      field.value=[update.userAdditionRejected,field.value].filter(Boolean).join('\\n');fitPrompt();field.focus();
+      document.getElementById('model-status').textContent='The active request is finishing. This message is ready to send as the next prompt.';
+    }
     let item = progressItems.get(update.id);
+    if(typeof update.userAddition==='string'){
+      document.querySelector('#messages .chat-empty')?.remove();
+      const userItem=document.createElement('p');userItem.className='you';userItem.textContent='You · added to this conversation: '+update.userAddition;
+      document.getElementById('messages').insertBefore(userItem,item||null);
+    }
     if (typeof update.user === 'string' && !item) {
       document.querySelector('#messages .chat-empty')?.remove();
       const userItem = document.createElement('p');
@@ -1180,7 +1285,11 @@ window.addEventListener('message', event => {
           part.textContent = kind === 'thinking' ? (item.dataset.thinkingLabel || 'Thinking') + ':\\n' : 'VERTEX:\\n';
           body.appendChild(part);
         }
-        part.textContent += text;
+        part.insertBefore(document.createTextNode(text), part.querySelector('.task-scene'));
+         if(kind==='thinking'){
+           const scene=item.querySelector('.task-scene');
+           if(scene)part.appendChild(scene);
+         }
       }
       if (typeof update.thinking === 'string' && update.thinking) {
         if (update.thinkingLabel) item.dataset.thinkingLabel = update.thinkingLabel;
@@ -1252,7 +1361,7 @@ window.addEventListener('message', event => {
   }
   if (event.data && typeof event.data.folder === 'string') {
     const folder = event.data.folder, name = document.getElementById('folder-name');
-    document.getElementById('folder-line').hidden = contextMode==='sap';document.getElementById('git-history').hidden=!folder;
+    document.getElementById('folder-line').hidden = contextMode!=='folder'&&contextMode!=='both';document.getElementById('git-history').hidden=!folder;
     name.textContent = folder.split(/[\\\\/]/).filter(Boolean).pop() || 'Choose a folder';
     name.title = folder;
   }
@@ -1376,16 +1485,23 @@ window.addEventListener('message', event => {
     const mine = event.data.chat.startsWith('You: ');
     const item = document.createElement(mine ? 'p' : 'div');
     item.className = mine ? 'you' : 'vertex';
-    if (mine) { item.textContent = event.data.chat; } else { markdown(event.data.chat, item); }
+    if (mine) { const question=event.data.chat.replace(/^You:\\s*/,"");item.textContent=event.data.questionTime?'You · '+event.data.questionTime+': '+question:event.data.chat; } else { markdown(event.data.chat, item); }
     if(event.data.topic)setTopic(item,event.data.topic);
     // Each found object is a link: a click opens it, as a single match is opened.
     if (!mine) { links(item, event.data.choices || []);linkProjectFiles(item);linkSapNames(item); }
-    let copy = null;
+    let copy = null, logButtons=[];
     if (!mine) {
       copy = document.createElement('button');
       copy.className = 'secondary copy-answer'; copy.textContent = 'Copy'; copy.title = 'Copy this answer to the clipboard';
       const text = event.data.chat.replace(/^VERTEX:\\s*/, '');
       copy.addEventListener('click', () => { lastCopy = copy; api.postMessage({ action: 'copyAnswer', text }); });
+      if(event.data.logSessionId){
+        const log=document.createElement('button');log.className='secondary copy-answer';log.textContent='Log';log.title='Open this historical conversation in Logs & Cost';
+        log.addEventListener('click',()=>api.postMessage({action:'openLogConversation',sessionId:event.data.logSessionId,conversationId:event.data.logConversationId,date:event.data.questionDate}));
+        const flow=document.createElement('button');flow.className='secondary copy-answer';flow.textContent='⛶';flow.title='Open this historical run full screen in Flow';flow.setAttribute('aria-label',flow.title);
+        flow.addEventListener('click',()=>api.postMessage({action:'showHistoricalLog',sessionId:event.data.logSessionId,conversationId:event.data.logConversationId,date:event.data.questionDate}));
+        logButtons.push(log,flow);
+      }
     }
     document.getElementById('messages').appendChild(item);
     if (event.data.usage) {
@@ -1395,6 +1511,7 @@ window.addEventListener('message', event => {
       item.appendChild(line);
     }
     if (copy) item.appendChild(copy);
+    logButtons.forEach(button=>item.appendChild(button));
     const box = document.getElementById('messages');
     box.scrollTop = box.scrollHeight;
   }
@@ -1419,7 +1536,7 @@ function links(item, choices) {
   });
 }
 function linkSapNames(item){
- if(contextMode!=='sap')return;
+ if(contextMode!=='sap'&&contextMode!=='both')return;
  const nodes=[];const walk=node=>{if(node.nodeType===3){nodes.push(node);return;}if(node.nodeType!==1||['A','PRE','SCRIPT','STYLE','BUTTON'].includes(node.tagName))return;[...node.childNodes].forEach(walk);};walk(item);
  for(const node of nodes){const text=node.textContent;const pattern=/[/][A-Z0-9_]+[/][A-Z][A-Z0-9_/$]+|[ZY][A-Z0-9_]{2,39}/g;const candidates=node.parentElement?.tagName==='CODE'&&/^[A-Z][A-Z0-9_/$]{2,39}$/.test(text)?[{0:text,index:0}]:[...text.matchAll(pattern)];const matches=candidates.filter(m=>!(m.index&&/[A-Z0-9_/$]/.test(text[m.index-1]))&&!/[A-Z0-9_/$*]/.test(text[m.index+m[0].length]||''));if(!matches.length)continue;
  const fragment=document.createDocumentFragment();let start=0;for(const match of matches){fragment.appendChild(document.createTextNode(text.slice(start,match.index)));const link=document.createElement('a');link.href='#';link.className='link';link.textContent=match[0];link.title='Find and open SAP object '+match[0];link.onclick=e=>{e.preventDefault();api.postMessage({action:'openObject',object_type:'',object_name:match[0]});};fragment.appendChild(link);start=match.index+match[0].length;}fragment.appendChild(document.createTextNode(text.slice(start)));node.replaceWith(fragment);}

@@ -46,18 +46,29 @@ function load(skill, root) {
 function decision(question, skills, topic) {
   return {
     state: {
-      policy: "Match the current user request to a project skill only if the user asks to execute its workflow now. Discussion, inspection, quoted requests, explicit do-not-execute instructions, and different artifacts do not match. A standalone 'пересобери' or 'vsix' in the VERTEX repository refers to its VSIX build skill. A short repeat request such as 'еще раз' may refer to the active topic's workflow; use the routed topic to resolve what to repeat, but do not execute a skill merely because the topic matches. No earlier chat is available.",
+      policy: "Match the current user request to a project skill only when it clearly directs VERTEX to execute that workflow now. Questions asking whether execution is possible or permitted are not instructions to execute: examples include 'можно собирать?', 'я сделал апрув — можно собирать?', 'can we build it?' and 'is it ready to build?'. Answer those questions normally without running the skill. Discussion, inspection, quoted requests, explicit do-not-execute instructions, and different artifacts do not match. A standalone imperative such as 'пересобери' or 'собери VSIX' in the VERTEX repository is an execution request. A short repeat request such as 'еще раз' may refer to the active topic's workflow; use the routed topic to resolve what to repeat, but do not execute a skill merely because the topic matches. No earlier chat is available.",
       currentRequest: String(question || "").slice(0, 4000),
       ...(topic?.label ? { activeTopic: String(topic.label).slice(0, 200) } : {}),
       skills: skills.map(({ name, description }) => ({ name, description }))
     },
     questions: {
       ...Object.fromEntries(skills.map((skill, index) => ["match_" + index, { type: "noul",
-        instructions: "Does the current user request ask to execute skill '" + skill.name + "' now? Say No for discussion, inspection, explicit do-not-execute, or a different artifact." }])),
-      ...(skills.some(skill => skill.name === "build-vertex-vsix") ? { vsix_version: { type: "choice",
-        instructions: "If this is a VSIX build request, should VERTEX increment the current patch version before building? Choose increment only when the request calls for a new release/version, +1, or raising the version. An explicit version number is parsed by code separately. For a plain build/rebuild choose current.",
-        criteria: { current: "Build the current version", increment: "Increment the patch version then build" } } } : {})
+        instructions: "Does the current user request clearly instruct VERTEX to execute skill '" + skill.name + "' now? This is an execution gate, not a relevance or capability check. Say No for questions about whether or when it can be run, such as 'можно собирать?', even if prior approval is mentioned; say Yes only for a clear instruction to run it now." }]))
     }
+  };
+}
+
+function versionDecision(question, skill, topic) {
+  return {
+    state: {
+      policy: "The user has explicitly asked to execute this VSIX build workflow. Choose whether to keep the current version or increment the patch. Do not reinterpret the request or cancel the build.",
+      currentRequest: String(question || "").slice(0, 4000),
+      matchedSkill: skill.name,
+      ...(topic?.label ? { activeTopic: String(topic.label).slice(0, 200) } : {})
+    },
+    questions: { vsix_version: { type: "choice",
+      instructions: "Should the explicitly requested VSIX build increment the current patch version? Choose increment only when the request calls for a new release/version, +1, or raising the version. An explicit version number is parsed by code separately. For a plain build/rebuild choose current.",
+      criteria: { current: "Build the current version", increment: "Increment the patch version then build" } } }
   };
 }
 
@@ -69,20 +80,47 @@ async function match(vscode, question, root, options = {}) {
   try {
     const connection = options.connection || await require("./review-jev").connection(vscode);
     if (!connection) return { matched: false, status: "unavailable" };
-    const input = decision(require("./context-protection").protect(question), skills, options.topic);
+    const currentRequest = require("./context-protection").protect(question);
+    // Permission/feasibility questions must never start a build, even if Jev
+    // overweights the active review topic or prior approval.
+    const directExecution = /(?:^|[.!?]\s*)(?:please\s+)?(?:собери|пересобери|запусти\s+сборку|build|rebuild|package)\b/i.test(currentRequest);
+    const permissionQuestion = !directExecution
+      && /\b(?:можно(?:\s+ли)?|разрешено\s+ли|можем\s+ли|can\s+(?:we|i)|is\s+it\s+(?:okay|ok|allowed))\b/i.test(currentRequest)
+      && /\b(?:собрать|собирать|пересобрать|пересобирать|сборк\w*|build|rebuild|package|packaging|vsix)\b/i.test(currentRequest);
+    if (permissionQuestion) return { matched: false, status: "not_matched", candidate: null, versionChoice: null };
+    const input = decision(currentRequest, skills, options.topic);
     audit = (options.begin || require("./ai-accounting").begin)(vscode, connection.provider || "typesafe-api", connection.model, "Skill match with Jev",
       { ...require("./session-log").independentScope(), relatedTurnId: options.turnId });
     audit.decision({ provider: connection.provider || "typesafe-api", model: connection.model, ...input });
-    const result = await (options.evaluate || require("./jev").evaluate)(connection.provider || "typesafe-api", connection.key, connection.model,
+    const evaluate = options.evaluate || require("./jev").evaluate;
+    const result = await evaluate(connection.provider || "typesafe-api", connection.key, connection.model,
       input.state, input.questions, { ...audit.callbacks, signal: options.signal });
-    audit.finish(result);
-    if (options.signal?.aborted) return { matched: false, status: "aborted" };
+    if (options.signal?.aborted) { audit.finish(result); return { matched: false, status: "aborted" }; }
     const ranked = skills.map((skill, index) => ({ skill, probability: result.answers?.["match_" + index]?.noul || 0 }))
       .sort((a, b) => b.probability - a.probability);
     const winner = ranked[0], matched = winner.probability >= 0.8 && (!ranked[1] || winner.probability - ranked[1].probability >= 0.1);
-    return { matched, status: matched ? "matched" : "not_matched", probability: winner.probability,candidate:winner.skill.name,
-      versionChoice: winner.skill.name === "build-vertex-vsix" ? result.answers?.vsix_version?.choice || "current" : null,
-      skill: matched ? load(winner.skill, root) : null, usage: result.usage };
+    if (!matched) {
+      audit.finish(result);
+      return { matched: false, status: "not_matched", probability: winner.probability, candidate: winner.skill.name,
+        versionChoice: null, skill: null, usage: result.usage };
+    }
+    let versionChoice = null, usage = result.usage;
+    if (winner.skill.name === "build-vertex-vsix") {
+      const versionInput = versionDecision(currentRequest, winner.skill, options.topic);
+      audit.decision(versionInput);
+      const versionResult = await evaluate(connection.provider || "typesafe-api", connection.key, connection.model,
+        versionInput.state, versionInput.questions, { ...audit.callbacks, signal: options.signal });
+      if (options.signal?.aborted) { audit.finish(versionResult); return { matched: false, status: "aborted" }; }
+      versionChoice = versionResult.answers?.vsix_version?.choice || "current";
+      usage = { ...(result.usage || {}), ...(versionResult.usage || {}) };
+      for (const key of new Set([...Object.keys(result.usage || {}), ...Object.keys(versionResult.usage || {})])) {
+        const before = result.usage?.[key], after = versionResult.usage?.[key];
+        if (typeof before === "number" && typeof after === "number") usage[key] = before + after;
+      }
+      audit.finish({ ...versionResult, usage });
+    } else audit.finish(result);
+    return { matched: true, status: "matched", probability: winner.probability, candidate: winner.skill.name,
+      versionChoice, skill: load(winner.skill, root), usage };
   } catch (error) {
     audit?.fail(error);
     return { matched: false, status: "fallback", reason: error.message };

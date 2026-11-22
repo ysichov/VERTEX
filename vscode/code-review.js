@@ -31,7 +31,7 @@ const OPERATION_STATUS_FUNCTION = `function operationStatus(node,text,state='inf
 const OPERATION_STATUS_SCRIPT = `${OPERATION_STATUS_FUNCTION}
 document.querySelectorAll('#status').forEach(node=>{node.dataset.operationStatus='info';node.dataset.statusIcon='ⓘ';});`;
 function reviewJevUi(api) {
-  let available=false,serial=0;const prefix='jev-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);const pending=new Map();
+  let available=false,serial=0,explicitRerun=false;const prefix='jev-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);const pending=new Map();
   const sync=()=>document.querySelectorAll('.ask-jev').forEach(button=>{button.hidden=!available;});
   new MutationObserver(sync).observe(document.body,{childList:true,subtree:true});
   document.addEventListener('click',event=>{
@@ -40,7 +40,10 @@ function reviewJevUi(api) {
     const file=button.closest('.file'),hunk=button.closest('.hunk'),scope=button.dataset.jevScope||'block';
     const index=hunk?Number(hunk.dataset.hunk):Number(button.dataset.jevHunk);
     const root=scope==='review'?document.querySelector('.toolbar'):scope==='file'?file:hunk;if(!root)return;
-    let output=scope==='review'?document.querySelector('.jev-review-all'):root.querySelector(':scope > .jev-review-result');if(!output){output=document.createElement('div');output.className='jev-review-result'+(scope==='review'?' jev-review-all':'');output.setAttribute('role','status');const tools=root.querySelector(':scope > .hunk-tools');if(tools)tools.after(output);else root.after(output);}
+    let output=scope==='review'?document.querySelector('.jev-review-all'):root.querySelector(':scope > .jev-review-result');
+    if(output&&!explicitRerun){output.hidden=false;return;}
+    explicitRerun=false;
+    if(!output){output=document.createElement('div');output.className='jev-review-result'+(scope==='review'?' jev-review-all':'');output.setAttribute('role','status');const tools=root.querySelector(':scope > .hunk-tools');if(tools)tools.after(output);else root.after(output);}
     const id=prefix+'-'+(++serial);pending.set(id,{button,output});button.disabled=true;output.textContent='Assessing '+(scope==='review'?'the review':scope==='file'?'this file':'this block')+'…';
     api.postMessage({action:'askJev',id,scope,file:file?.dataset.file||'',...(scope==='block'?{hunk:index}:{})});
   },true);
@@ -55,31 +58,69 @@ function reviewJevUi(api) {
     rerun.type='button';
     rerun.className='neutral';
     rerun.textContent='Rerun';
-    rerun.onclick=()=>entry.button.click();
-    entry.output.appendChild(rerun);
+    rerun.onclick=()=>{explicitRerun=true;entry.button.click();};
+    const close=document.createElement('button');
+    close.type='button';
+    close.className='neutral jev-review-close';
+    close.textContent='×';
+    close.title='Close Jev result';
+    close.setAttribute('aria-label','Close Jev result');
+    close.onclick=()=>{entry.output.hidden=true;};
+    const toolbar=document.createElement('div');toolbar.className='jev-review-toolbar';
+    toolbar.append(rerun,close);entry.output.appendChild(toolbar);
     if(update.error){const error=document.createElement('p');error.textContent='ASK Jev: '+update.error;entry.output.appendChild(error);return;}
+    if(update.result?.rows?.length){
+      const heading=document.createElement('strong');heading.textContent='Jev result';heading.style.display='block';heading.style.margin='4px 0';entry.output.appendChild(heading);
+      const table=document.createElement('table');table.style.width='100%';table.style.borderCollapse='collapse';table.style.margin='4px 0 10px';
+      for(const row of update.result.rows){const tr=document.createElement('tr'),label=document.createElement('td'),answer=document.createElement('td');
+        label.textContent=row.label+':';label.style.width='30%';label.style.color='var(--vscode-descriptionForeground)';
+        answer.textContent=row.answer;answer.style.fontWeight='600';
+        if(typeof row.likelihood==='number'){const likelihood=Math.max(0,Math.min(1,row.likelihood));answer.style.color='hsl('+Math.round(likelihood*120)+' 75% 42%)';answer.title=Math.round(likelihood*100)+'% estimated probability';}
+        else if(typeof row.probability==='number')answer.title=Math.round(row.probability*100)+'% confidence';
+        [label,answer].forEach(cell=>{cell.style.padding='5px 8px';cell.style.borderTop='1px solid var(--vscode-panel-border)';cell.style.textAlign='left';});
+        tr.append(label,answer);table.appendChild(tr);
+      }
+      entry.output.appendChild(table);
+    }
     for(const [index,prompt] of (update.prompts||[]).entries()){
       const details=document.createElement('details');
+      details.className='jev-prompt';
       const summary=document.createElement('summary');
       summary.textContent=update.prompts.length===1?'Jev Prompt':'Jev Prompt '+(index+1)+' · '+prompt.state.object;
-      const content=document.createElement('pre');
-      content.style.whiteSpace='pre-wrap';
-      content.textContent=JSON.stringify(prompt,null,2);
+      const content=document.createElement('div');content.className='jev-prompt-body';
+      const meta=[prompt.provider,prompt.model].filter(Boolean).join(' · ');
+      if(meta)content.appendChild(document.createElement('small')).textContent=meta;
+      const state=prompt.state||{};
+      [['Scope',state.scope],['Object type',state.object_type],['Object',state.object],['Primary file',state.primary_file],['Review target',state.review_target]]
+        .filter(([,value])=>value!==undefined&&value!==null&&String(value).trim())
+        .forEach(([label,value])=>{const line=document.createElement('p');line.className='jev-prompt-meta';const strong=document.createElement('strong');strong.textContent=label+': ';line.append(strong,document.createTextNode(String(value)));content.appendChild(line);});
+      if(state.task){const task=document.createElement('div');task.className='jev-prompt-task';task.textContent=String(state.task);content.appendChild(task);}
+      if(Array.isArray(state.blocks)&&state.blocks.length){const blocks=document.createElement('p');blocks.className='jev-prompt-meta';blocks.textContent='Diff context · '+state.blocks.length+' block'+(state.blocks.length===1?'':'s');content.appendChild(blocks);}
+      const questions=Object.entries(prompt.questions||{});
+      if(questions.length){const heading=document.createElement('strong');heading.textContent='Questions sent to Jev';content.appendChild(heading);
+        questions.forEach(([key,question])=>{const card=document.createElement('div');card.className='jev-prompt-question';
+          const title=document.createElement('strong');title.textContent=question.label||question.question||key;card.appendChild(title);
+          if(question.instructions){const instructions=document.createElement('small');instructions.textContent=question.instructions;card.appendChild(instructions);}
+          const criteria=question.criteria&&Object.entries(question.criteria);
+          if(criteria&&criteria.length){const choices=document.createElement('small');choices.textContent='Choices: '+criteria.map(([choice,description])=>choice+' — '+description).join(' · ');card.appendChild(choices);}
+          content.appendChild(card);
+        });
+      }
       const test=document.createElement('button');
       test.type='button';
       test.className='neutral';
+      test.classList.add('jev-prompt-test');
       test.textContent='Test in Jev chat';
       test.onclick=()=>api.postMessage({action:'testJevPrompt',id:update.id,index});
-      entry.output.appendChild(test);
+      content.appendChild(test);
       details.append(summary,content);
       entry.output.appendChild(details);
     }
-    for(const row of update.result?.rows||[]){const line=document.createElement('p');const label=document.createElement('strong');label.textContent=row.label+': ';line.appendChild(label);const value=document.createElement('span');value.textContent=row.answer+(typeof row.probability==='number'?' ('+Math.round(row.probability*100)+'%)':'');if(typeof row.likelihood==='number'){const likelihood=Math.max(0,Math.min(1,row.likelihood));value.style.color='hsl('+Math.round(likelihood*120)+' 85% 50%)';value.style.fontWeight='700';value.title='Estimated probability of auto-approval based on the supplied diff and user requests';}line.appendChild(value);entry.output.appendChild(line);}
     const note=document.createElement('p');note.className='muted';note.textContent='Advisory assessment of '+(update.result.scope||'this change')+(update.result.parts?' · '+update.result.files+' files, '+update.result.parts+' decisions; probability is the lowest decision'+(update.result.expanded?'; '+update.result.expanded+' rechecked with more changed files':''):'')+(update.result.taskProvided?'':' · no linked user request')+' · '+update.result.model+' · '+update.result.elapsedMs+' ms. Approve / Decline remains your decision.';entry.output.appendChild(note);
   });
   api.postMessage({action:'jevReady'});
 }
-const JEV_REVIEW_CSS='.jev-review-result{margin:8px;padding:10px 12px;border:1px solid var(--vscode-panel-border,var(--border));border-radius:4px;background:var(--vscode-editorWidget-background,var(--header));color:var(--vscode-editor-foreground,var(--fg));overflow-wrap:anywhere}.jev-review-result p{margin:3px 0;line-height:1.5}.ask-jev[hidden]{display:none!important}.file .hunk .hunk-tools [data-action="ask"],.file .hunk .hunk-tools [data-action="ask-jev"]:not([hidden]){display:inline-block!important}';
+const JEV_REVIEW_CSS='.jev-review-result{position:relative;margin:8px;padding:10px 12px;border:1px solid var(--vscode-panel-border,var(--border));border-radius:4px;background:var(--vscode-editorWidget-background,var(--header));color:var(--vscode-editor-foreground,var(--fg));overflow-wrap:anywhere}.jev-review-result p{margin:3px 0;line-height:1.5}.jev-review-toolbar{display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-right:30px}.jev-review-close{position:absolute;top:8px;right:8px;min-width:26px;padding:2px 7px!important}.jev-prompt{margin:5px 0;border-top:1px solid var(--vscode-panel-border,var(--border));padding-top:5px}.jev-prompt summary{cursor:pointer;color:var(--vscode-textLink-foreground,var(--fg))}.jev-prompt-body{padding:6px 8px}.jev-prompt-meta{color:var(--vscode-descriptionForeground,var(--muted));font-size:12px}.jev-prompt-task{margin:6px 0;padding:6px 8px;border-left:2px solid var(--vscode-focusBorder,var(--blue));white-space:pre-wrap;max-height:240px;overflow:auto}.jev-prompt-question{margin:6px 0;padding:6px 8px;border-left:2px solid var(--vscode-panel-border,var(--border));background:var(--vscode-editor-background,var(--bg))}.jev-prompt-question strong{display:block;margin-bottom:3px}.jev-prompt-question small{display:block;color:var(--vscode-descriptionForeground,var(--muted));white-space:pre-wrap}.jev-prompt-test{margin:2px 0 6px}.ask-jev[hidden]{display:none!important}.file .hunk .hunk-tools [data-action="ask"],.file .hunk .hunk-tools [data-action="ask-jev"]:not([hidden]){display:inline-block!important}';
 function hunks(before, after) {
   const a = before.replace(/\r\n/g, "\n").split("\n"), b = after.replace(/\r\n/g, "\n").split("\n");
   let prefix=0,suffix=0;
@@ -166,6 +207,14 @@ function marked(line, other, hl = highlight) {
   return hl(line.slice(0, start)) + '<mark>' + escape(line.slice(start, line.length - end))
     + '</mark>' + hl(end ? line.slice(-end) : '');
 }
+function inlineChange(before, after, hl = highlight) {
+  if (before === undefined) { return '<ins>' + hl(after) + '</ins>'; }
+  if (after === undefined) { return '<del>' + hl(before) + '</del>'; }
+  const { start, end } = affix(before, after);
+  const suffix = end ? before.slice(-end) : '';
+  return hl(before.slice(0, start)) + '<del>' + escape(before.slice(start, before.length - end)) + '</del>'
+    + '<ins>' + escape(after.slice(start, after.length - end)) + '</ins>' + hl(suffix);
+}
 const STYLE = ":root{color-scheme:light dark;--bg:var(--vscode-editor-background,#fff);--fg:var(--vscode-editor-foreground,#202b3c);--border:var(--vscode-panel-border,#cbd6e7);--muted:var(--vscode-descriptionForeground,#68758a);--green:#307345;--red:#963e33;--blue:#376caa;--purple:#7940a0;--add:var(--vscode-diffEditor-insertedLineBackground,#effbe8);--del:var(--vscode-diffEditor-removedLineBackground,#faeded);--header:var(--vscode-editorWidget-background,#f2f5f9)}\n*{box-sizing:border-box}body{margin:0;padding:16px;color:var(--fg);background:var(--bg);font:13px var(--vscode-font-family,Segoe UI,sans-serif)}button{font:600 12px var(--vscode-font-family,Segoe UI,sans-serif);padding:5px 10px;border:1px solid transparent;border-radius:3px;color:white;cursor:pointer;white-space:nowrap}button:hover{filter:brightness(1.12)}button:focus-visible{outline:2px solid var(--vscode-focusBorder,#3478c7);outline-offset:2px}button:disabled{opacity:.5;cursor:default}button[hidden],[hidden]{display:none!important}.toolbar{position:sticky;top:0;z-index:2;background:var(--bg);padding:0 0 6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}.identity{flex:1;min-width:180px}.identity strong{display:block;font-size:15px}.muted,.system{color:var(--muted);font-size:12px}.system{display:block;margin-top:4px;overflow-wrap:anywhere}.progress{font:12px var(--vscode-editor-font-family,Consolas,monospace);white-space:nowrap}.summary-scroll{overflow-x:auto}.summary{width:100%;border-collapse:collapse;min-width:570px;font-size:12px}.summary th,.summary td{border:1px solid var(--border);padding:9px 12px;text-align:right}.summary th:first-child,.summary td:first-child{text-align:left}.summary th{background:var(--header)}.summary tfoot{font-weight:600}.positive{color:var(--vscode-testing-iconPassed,#27733c)}.negative{color:var(--vscode-testing-iconFailed,#a73535)}.changed{color:var(--vscode-editorWarning-foreground,#9b6718)}.review-heading{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;padding:6px 0 5px}.review-heading strong{color:var(--vscode-textLink-foreground,#2964a6)}#status{margin:0 0 12px;padding:4px 8px;border-left:3px solid var(--blue);background:var(--header);line-height:1.5}.hunk{border:1px solid var(--border);margin:0 0 14px;border-radius:3px;overflow:hidden}button[data-action=open-code]{background:var(--vscode-button-secondaryBackground,transparent);color:var(--vscode-button-secondaryForeground,var(--vscode-foreground));border-color:var(--vscode-button-border,var(--vscode-focusBorder))}.hunk-tools{display:flex;gap:4px;align-items:center;flex-wrap:wrap;background:var(--header);padding:3px 6px}.hunk.approved{border-color:var(--green)}.hunk.declined{border-color:var(--red)}.hunk.approved .decision{color:var(--green)}.hunk.declined .decision{color:var(--red)}.decision{font-weight:600}.range{margin-left:0;color:var(--muted);font-size:11px}.kind{font:italic 12px var(--vscode-editor-font-family,Consolas,monospace);color:var(--muted)}.fold{padding:1px 6px}.code-scroll{overflow:auto}.diff{border-collapse:collapse;width:100%;font:13px/1.7 var(--vscode-editor-font-family,Consolas,monospace)}.number{color:var(--muted);text-align:right;min-width:42px;padding:0 9px;user-select:none;border-right:1px solid var(--border);background:var(--bg)}.sign{width:24px;min-width:24px;text-align:center;user-select:none}.code{white-space:pre;padding:0 12px 0 4px;width:100%;tab-size:4}.added{background:var(--add)}.removed{background:var(--del)}.added .sign{color:var(--green)}.removed .sign{color:var(--red)}mark{color:inherit;border-radius:1px;background:var(--vscode-diffEditor-insertedTextBackground,#c7f5ad)}.removed mark{background:var(--vscode-diffEditor-removedTextBackground,#f3c5c5)}.keyword{color:var(--vscode-symbolIcon-keywordForeground,#164fac)}.comment{color:var(--muted)}.string{color:var(--vscode-symbolIcon-stringForeground,#986126)}@media(max-width:650px){body{padding:10px}.range{width:100%;margin-left:29px}.identity{width:100%;flex-basis:100%}.hunk-tools{gap:4px}.number{min-width:30px;padding:0 5px}}";
 /* The review's blocks of one change, as sections; KEY gives each block's data-hunk. */
 /* OPENABLE (a Git review): a block's Open button and each new-side line number open the file at that line. */
@@ -177,12 +226,26 @@ function hunkSections(parts, newLines, hl, key = i => i, maxLine = Infinity, com
     if(neutral)kind='context';
     return `<tr class="${kind}"><td class="number">${old || ''}</td>${openable && next ? `<td class="number jump" data-line="${next}" title="Open the file at line ${next}">${next}</td>` : `<td class="number">${next || ''}</td>`}<td class="sign">${kind === 'removed' ? '−' : kind === 'added' ? '+' : ''}</td><td class="code">${content() || '&nbsp;'}</td></tr>`;
   };
+  const changeRow = (old, next, before, after) => {
+    if(window){const index=window.total++;if(index<window.start||index>=window.end)return '';}
+    return `<tr class="changed-line"><td class="number">${old || ''}</td>${openable && next ? `<td class="number jump" data-line="${next}" title="Open the file at line ${next}">${next}</td>` : `<td class="number">${next || ''}</td>`}<td class="sign">↔</td><td class="code">${inlineChange(before, after, hl)}</td></tr>`;
+  };
   return parts.map((p, i) => {
     const contextStart = full ? (i ? p.afterFrom : 0) : Math.max(i ? parts[i - 1].afterTo : 0, p.afterFrom - 3);
     let lines = newLines.slice(contextStart, p.afterFrom).map((s, j) => row(p.beforeFrom - (p.afterFrom - contextStart) + j + 1, contextStart + j + 1, 'context', ()=>hl(clip(s)))).join('');
     const hiding = !(neutral || window?.neutral);
-    p.before.forEach((s, j) => { if (hiding && absorbed(s, p.after[j])) { return; } lines += row(p.beforeFrom + j + 1, '', 'removed', ()=>marked(clip(s), p.after[j] === undefined ? undefined : clip(p.after[j]), hl)); });
-    p.after.forEach((s, j) => { if (hiding && absorbed(s, p.before[j])) { return; } lines += row('', p.afterFrom + j + 1, 'added', ()=>(neutral||window?.neutral)?hl(clip(s)):marked(clip(s), p.before[j] === undefined ? undefined : clip(p.before[j]), hl)); });
+    const paired = Math.min(p.before.length, p.after.length);
+    for (let j = 0; j < paired; j++) {
+      const oldLine = p.before[j], newLine = p.after[j];
+      if (hiding && (absorbed(oldLine, newLine) || absorbed(newLine, oldLine))) {
+        if (!absorbed(oldLine, newLine)) lines += row(p.beforeFrom + j + 1, '', 'removed', ()=>marked(clip(oldLine), clip(newLine), hl));
+        else if (!absorbed(newLine, oldLine)) lines += row('', p.afterFrom + j + 1, 'added', ()=>marked(clip(newLine), clip(oldLine), hl));
+        continue;
+      }
+      lines += changeRow(p.beforeFrom + j + 1, p.afterFrom + j + 1, clip(oldLine), clip(newLine));
+    }
+    for (let j = paired; j < p.before.length; j++) lines += changeRow(p.beforeFrom + j + 1, '', clip(p.before[j]), undefined);
+    for (let j = paired; j < p.after.length; j++) lines += changeRow('', p.afterFrom + j + 1, undefined, clip(p.after[j]));
     const tail = Math.min(newLines.length, full ? newLines.length : p.afterTo + 3, i + 1 < parts.length ? parts[i + 1].afterFrom : newLines.length);
     lines += newLines.slice(p.afterTo, tail).map((s, j) => row(p.beforeTo + j + 1, p.afterTo + j + 1, 'context', ()=>hl(clip(s)))).join('');
     if(window&&!lines)return '';
@@ -190,7 +253,8 @@ function hunkSections(parts, newLines, hl, key = i => i, maxLine = Infinity, com
     return `<section class="hunk" data-hunk="${key(i)}">${header}<div class="hunk-body"><div class="code-scroll"><table class="diff" aria-label="Changes in block ${i + 1}"><tbody>${lines}</tbody></table></div></div></section>`;
   }).join('');
 }
-function waitingHtml(title,message,failed=false){const nonce=randomBytes(24).toString('hex');return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}';"><title>${escape(title)}</title><style nonce="${nonce}">${STYLE}
+const INLINE_DIFF_STYLE = ".changed-line .code del{color:var(--vscode-editorError-foreground,var(--red));background:var(--vscode-diffEditor-removedTextBackground,#f3c5c5);text-decoration:line-through}.changed-line .code ins{color:var(--vscode-gitDecoration-addedResourceForeground,var(--green));background:var(--vscode-diffEditor-insertedTextBackground,#c7f5ad);text-decoration:none}.changed-line .sign{color:var(--blue)}body.vscode-high-contrast .changed-line .code del{background:color-mix(in srgb,var(--vscode-diffEditor-removedTextBackground,#f3c5c5) 28%,var(--vscode-editor-background,#000))}body.vscode-high-contrast .changed-line .code ins{background:color-mix(in srgb,var(--vscode-diffEditor-insertedTextBackground,#c7f5ad) 28%,var(--vscode-editor-background,#000))}";
+function waitingHtml(title,message,failed=false){const nonce=randomBytes(24).toString('hex');return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}';"><title>${escape(title)}</title><style nonce="${nonce}">${STYLE}${INLINE_DIFF_STYLE}
 ${taskVisual.css}
 .waiting{display:flex;flex-direction:column;align-items:stretch;gap:8px}.waiting h1{font-size:15px;margin:0 0 4px}.waiting p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body><div class="waiting" role="status" aria-busy="${!failed}"><div><h1>${escape(title)}</h1><p>${escape(message)}</p></div>${failed?'':taskVisual.html('review',true)}</div></body></html>`;}
 function fileDiffHtml(file, full=false, readonly=false,page=0){
@@ -222,7 +286,7 @@ function reviewHtml(parts, { before, after, objectName, objectType, system, ai =
   }, { added: 0, changed: 0, deleted: 0 });
   const blocks = hunkSections(parts, newLines, hl, i => i, Infinity, false, false, null, false, !before);
   return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';"><title>Review ${escape(objectName)}</title><style nonce="${nonce}">
-${STYLE}
+${STYLE}${INLINE_DIFF_STYLE}
 ${taskVisual.css}
 .commit-progress{display:flex;align-items:center;gap:8px}#commit-dialog{max-width:none;width:calc(100% - 32px)}#commit-form .commit-progress{flex-direction:column;align-items:stretch;gap:0}#commit-working{display:block;width:100%}#commit-status{margin:4px 0 8px}.commit-progress p{flex:1;min-width:0}.commit-progress[aria-busy="true"]{min-height:48px}
 ${CONTROLS}
@@ -309,7 +373,7 @@ function filesReviewHtml(files, { worktree = false, build = "", readonly = null,
     return `<section class="file" data-file="${escape(f.id)}"${f.openInEditor?' data-editor="true"':''}${f.conflict ? ' data-conflict="1"' : ''}><header class="hunk-tools file-tools"><strong class="file-name">${escape(f.label)}</strong><span class="range">${escape(f.path)}</span>${fileStats(i)}<div class="hunk-actions">${!f.binary&&!f.openInEditor ? '<span class="vertex-segment-toggle file-view" role="group" aria-label="File diff view"><button type="button" data-view="compact" class="active" aria-pressed="true">Compact</button><button type="button" data-view="full" aria-pressed="false">Full</button></span><span class="file-view-status muted" role="status"></span>' : ''}<button class="fold neutral" data-action="fold" aria-expanded="true" aria-label="Collapse ${escape(f.label)}">▾</button><button class="approve" data-action="approve">✓ Approve</button><button class="decline" data-action="decline">✕ Decline</button><button class="ask" data-action="ask"${f.binary ? ' disabled title="Binary files are excluded from AI context"' : ''}>ASK AI</button>${(worktree||readonly)&&!f.binary?'<button type="button" class="ask ask-jev" data-action="ask-jev" data-jev-scope="file" hidden>ASK Jev</button>':''}<button class="neutral" data-action="undo" hidden>Undo</button><span class="decision" aria-live="polite">Open</span></div></header>${f.conflict ? '<p class="conflict">This file changed in your folder while the assistant worked, and the two changes overlap: approving it would overwrite yours, so it can only be declined. Declining it removes the assistant\'s change from the working copy.</p>' : ''}${f.merged ? '<p class="conflict merged">This file changed in your folder while the assistant worked; the two changes do not overlap, so this is your file with the assistant\'s change merged in.</p>' : ''}<div class="file-body"><div class="compact-view"${lazyFile(f)?' data-lazy="true"':' data-loaded="true"'}>${f.openInEditor?'<p class="muted">Large new file: opens in the standard editor.</p><button type="button" class="neutral" data-open-editor>Open in editor</button>':lazyFile(f)?'<p class="muted">Select the file to load its first page.</p>':fileDiffHtml(f, false, Boolean(readonly))}</div><div class="full-view" hidden></div></div></section>`;
   }).join('');
   return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';"><title>${readonly ? escape(readonly.title) : 'Review assistant changes'}</title><style nonce="${nonce}">
-${STYLE}
+${STYLE}${INLINE_DIFF_STYLE}
 ${gitDialogs.css}
 .readonly .file,.readonly .hunk{content-visibility:auto;contain-intrinsic-size:auto 120px}.wrap-code .diff{table-layout:fixed}.wrap-code .diff .number{width:60px}.diff td.jump{cursor:pointer}.diff td.jump:hover{color:var(--vscode-textLink-foreground);text-decoration:underline}.wrap-code .diff .sign{width:24px}.wrap-code .diff .code{white-space:pre-wrap;overflow-wrap:anywhere}
 .review{--hover:var(--vscode-list-hoverBackground,rgba(128,128,128,.12))}

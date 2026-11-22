@@ -32,6 +32,8 @@ async function ask(vscode, options) {
   if(options.signal?.aborted) abort();
   try {
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
+    const userAddition = await options.onBeforeModelRequest?.();
+    if (userAddition) messages.push(vscode.LanguageModelChatMessage.User(userAddition));
     const tools = toolsNow();
     const response = await model.sendRequest(messages, tools.length ? { tools } : {}, cancellation.token);
     const parts = [];
@@ -59,8 +61,16 @@ async function ask(vscode, options) {
     if (options.onModelCall) options.onModelCall({ model: model.id, usage: null, text: responseText });
     messages.push(vscode.LanguageModelChatMessage.Assistant(parts));
     const results = [];
+    let skipRemainingTools = false;
     for (const call of calls) {
       options.signal?.throwIfAborted();
+      if (skipRemainingTools || options.shouldYieldTools?.()) {
+        skipRemainingTools = true;
+        results.push(new vscode.LanguageModelToolResultPart(call.callId, [new vscode.LanguageModelTextPart(JSON.stringify({
+          skipped: "The user added new instructions before this tool started. It was not run. Reconsider it under the latest instructions and repeat it only if still needed."
+        }))]));
+        continue;
+      }
       let content;
       try {
         if (!(options.tools || []).some(tool => tool.name === call.name)) {

@@ -25,6 +25,23 @@ const schema = {
 const allow = input => ({ behavior: "allow", updatedInput: input });
 const deny = message => ({ behavior: "deny", message });
 const lf = text => String(text).replace(/\r\n/g, "\n");
+const trimBoundarySpaces = text => text.replace(/^[\t ]+|[\t ]+$/g, "");
+
+function whitespaceOnlyMatch(source, oldText) {
+  const sourceLines = source.split("\n");
+  const oldLines = oldText.split("\n");
+  const expected = oldLines.map(line => line.trim());
+  const matches = [];
+  for (let start = 0; start <= sourceLines.length - oldLines.length; start++) {
+    if (oldLines.every((_, offset) => sourceLines[start + offset].trim() === expected[offset])) {
+      matches.push(start);
+      if (matches.length > 1) return null;
+    }
+  }
+  if (matches.length !== 1) return null;
+  const start = matches[0];
+  return { start, lines: sourceLines.slice(start, start + oldLines.length) };
+}
 
 function describe(name, input) {
   const args = input || {};
@@ -45,13 +62,31 @@ function change(name, input, read) {
   }
   const before = lf(current || "");
   if (name === "Write") return { file, before, after: lf(input.content || ""), created: current === null };
-  const oldText = lf(input.old_string || ""), newText = lf(input.new_string || "");
+  let oldText = lf(input.old_string || ""), newText = lf(input.new_string || "");
   if (!oldText) return { error: "The edit of " + file + " has no old_string." };
-  const at = before.indexOf(oldText);
-  if (at < 0) return { error: "The edit's old_string is not in " + file + "." };
+  let at = before.indexOf(oldText), normalizedWhitespace = false;
+  if (at < 0) {
+    const trimmedOld = trimBoundarySpaces(oldText), trimmedNew = trimBoundarySpaces(newText);
+    const trimmedAt = trimmedOld ? before.indexOf(trimmedOld) : -1;
+    if (trimmedAt >= 0 && (input.replace_all || before.indexOf(trimmedOld, trimmedAt + 1) < 0)) {
+      oldText = trimmedOld;
+      newText = trimmedNew;
+      at = trimmedAt;
+      normalizedWhitespace = true;
+    }
+  }
+  if (at < 0) {
+    const near = whitespaceOnlyMatch(before, oldText);
+    const hint = near
+      ? " A unique match exists at lines " + (near.start + 1) + "-" + (near.start + near.lines.length)
+        + "; only leading or trailing whitespace differs. Copy this exact source into old_string:\n"
+        + near.lines.join("\n")
+      : "";
+    return { error: "The edit's old_string is not in " + file + "." + hint };
+  }
   if (!input.replace_all && before.indexOf(oldText, at + 1) >= 0) return { error: "The edit's old_string occurs more than once in " + file + "." };
   const after = input.replace_all ? before.split(oldText).join(newText) : before.slice(0, at) + newText + before.slice(at + oldText.length);
-  return { file, before, after, created: false };
+  return { file, before, after, created: false, normalizedWhitespace };
 }
 
 /* Every file change waiting for the user, in one review page. */

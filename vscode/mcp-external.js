@@ -392,10 +392,14 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
     return !!(run && run.client && run.client.alive());
   }
 
-  async function prepare() {
+  async function prepare(options = {}) {
     const name = selected();
     if (name === VERTEX || name === ORCHESTRATOR) return null;
-    return ensure(name);
+    const starting = !isRunning(name);
+    if (starting) options.onStarting?.({ name, installing: needsInstall(name) });
+    const run = await ensure(name);
+    if (starting) options.onReady?.({ name, tools: run.tools.length });
+    return run;
   }
 
   /* One tool of one server, run as the user asked for it in the Tools window - not through the chat: the server is

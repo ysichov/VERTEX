@@ -1,5 +1,17 @@
 "use strict";
 const fs=require("fs"),path=require("path"),crypto=require("crypto");
+const fileUsageCache=new Map();
+function dateKey(time){const d=new Date(time),p=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());}
+function fileNameDate(name){const m=/_(\d{4})(\d{2})(\d{2})_\d{6}(?:_[\w.-]+)?\.jsonl$/i.exec(name);return m?m[1]+"-"+m[2]+"-"+m[3]:"";}
+function inRange(name,stat,filter={},currentNames){
+ const valid=value=>typeof value==="string"&&/^\d{4}-\d\d-\d\d$/.test(value)?value:"",from=valid(filter.from),to=valid(filter.to);
+ if(!from&&!to)return true;
+ const today=dateKey(Date.now());if(currentNames?.has(name)&&(!from||today>=from)&&(!to||today<=to))return true;
+ const named=fileNameDate(name);if(named)return(!from||named>=from)&&(!to||named<=to);
+ const dates=[stat?dateKey(stat.mtimeMs):""];
+ return dates.some(date=>date&&(!from||date>=from)&&(!to||date<=to));
+}
+function placeKey(context){if(!context)return"";if(context.mode==="zero")return"zero";if(context.mode==="both")return"both:"+context.folder+"|"+context.system+(context.client?"/"+context.client:"");return context.mode==="folder"?"folder:"+context.folder:context.mode==="sap"?"sap:"+context.system+(context.client?"/"+context.client:""):"";}
 const number=value=>value!==null&&value!==undefined&&value!==""&&Number.isFinite(Number(value))?Number(value):null;
 function costKind(operation,provider,model) {
  return provider==="typesafe-api"||/\bJev\b/i.test(operation||"")||/^(?:jev-|gemini-decision)/i.test(model||"")?"jev":"model";
@@ -18,16 +30,26 @@ function normalize(usage={}) {
  const cacheRead=number(usage.cache_read_input_tokens??usage.prompt_tokens_details?.cached_tokens??usage.cached_input_tokens)||0,cacheWrite=number(usage.cache_creation_input_tokens)||0;
  return {input:usage.prompt_tokens!=null?Math.max(0,(number(usage.prompt_tokens)||0)-cacheRead-cacheWrite):Math.max(0,(number(usage.input_tokens??usage.total_input_tokens)||0)-(usage.cached_input_tokens!=null?cacheRead:0)),output:number(usage.output_tokens??usage.completion_tokens??usage.total_output_tokens)||0,cacheRead,cacheWrite,cost:number(usage.cost_usd??usage.gateway_cost??usage.cost??usage.estimated_cost_usd),...(estimated?{estimated:true}:{})};
 }
-function readUsage(root){
+function readUsage(root,filter={}){
  root=require("./session-log").resolveRoot(root);
  const folder=root?path.join(root,"claude_compatible"):"";
  if(!folder||!fs.existsSync(folder))return {configured:!!root,folder,rows:[],errors:[]};
- const files=[],errors=[];
+ const cacheKey=path.resolve(folder),cached=fileUsageCache.get(cacheKey)||new Map(),liveFiles=new Set(),rows=new Map(),errors=[];
+ const currentNames=new Set(require("./session-log").currentFiles(root).map(file=>path.basename(file))),requestedPlace=typeof filter.placeKey==="string"?filter.placeKey:"";
  for(const entry of fs.readdirSync(folder,{withFileTypes:true})){
   if(!entry.isFile()||!entry.name.endsWith(".jsonl"))continue;
-  try{files.push({name:entry.name,text:fs.readFileSync(path.join(folder,entry.name),"utf8")});}catch(error){errors.push(entry.name+": "+error.message);}
+  liveFiles.add(entry.name);if(fileNameDate(entry.name)&&!inRange(entry.name,null,filter,currentNames))continue;const file=path.join(folder,entry.name);let stat;
+  try{stat=fs.statSync(file);}catch(error){if(error.code!=="ENOENT")errors.push(entry.name+": "+error.message);continue;}
+  if(!inRange(entry.name,stat,filter,currentNames))continue;
+  const signature=stat.size+":"+stat.mtimeMs+":"+stat.ctimeMs;let item=cached.get(entry.name);
+  if(!item||item.signature!==signature)item={signature,context:require("./session-log").readHeader(file)?.vertex_context||null,rows:null};
+  const key=placeKey(item.context);
+  if(requestedPlace&&(requestedPlace==="none"?!!key:key!==requestedPlace)){cached.set(entry.name,item);continue;}
+  if(!item.rows){try{item.rows=parseUsage([{name:entry.name,text:fs.readFileSync(file,"utf8")}]);cached.set(entry.name,item);}catch(error){errors.push(entry.name+": "+error.message);continue;}}
+  for(const row of item.rows)rows.set(row.id,row);
  }
- return {configured:true,folder,rows:parseUsage(files),errors};
+ for(const name of cached.keys())if(!liveFiles.has(name))cached.delete(name);fileUsageCache.set(cacheKey,cached);
+ return {configured:true,folder,rows:[...rows.values()],errors};
 }
 // Both hosts read their own files, then use the same accounting and deduplication.
 function parseUsage(files){

@@ -22,6 +22,17 @@ function metadata(item) {
   metadataSource: "Vercel catalog" };
 }
 function priceInfo(model) {
+  const perMillion = model?.pricingPerMillion;
+  if (perMillion) {
+    const rate = value => {
+      const parts = String(value ?? "").trim().split(/[–—-]/).map(part => part.trim());
+      if (!parts.length || parts.some(part => !/^\d+(?:\.\d+)?$/.test(part))) return "—";
+      return parts.map(part => "$" + part).join("–");
+    };
+    const input = rate(perMillion.input), output = rate(perMillion.output);
+    return { variable: false, input, output, text: "In " + input + " · Out " + output + " /1M",
+      title: "MF0.AI price in USD per 1,000,000 tokens, from the fixed catalog supplied to VERTEX. Ranges are shown as provided." };
+  }
   const price = model?.pricing;
   if (!price) return null;
   const rate = value => value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0
@@ -39,8 +50,13 @@ function sortModels(models, key, down = false) {
   const value = model => {
     if (key.startsWith("cap.")) return model.capabilities?.[key.slice(4)] ?? null;
     if (key === "inputPrice" || key === "outputPrice") {
-      const price = model.pricing?.[key === "inputPrice" ? "input" : "output"];
-      return price == null || price === "" || !Number.isFinite(Number(price)) ? null : Number(price);
+      const field = key === "inputPrice" ? "input" : "output";
+      const price = model.pricing?.[field];
+      if (price != null && price !== "" && Number.isFinite(Number(price))) return Number(price);
+      const range = model.pricingPerMillion?.[field];
+      if (range == null) return null;
+      const first = String(range).trim().split(/[–—-]/)[0].trim();
+      return Number.isFinite(Number(first)) ? Number(first) : null;
     }
     if (key === "availability") return model.available ?? null;
     return model[key] ?? null;
@@ -64,8 +80,12 @@ function groupModels(models, key, down = false, hideUnavailable = true) {
   return [...groups.values()].sort((a,b)=>a.label.localeCompare(b.label));
 }
 function detailLines(model, capabilityDefinitions, priceInfo) {
+  if (model.metadataSource === "MF0.AI fixed catalog") {
+    const price = priceInfo(model);
+    return price ? [price.text.replace(" /1M", " / 1M tokens")] : ["Price: not provided"];
+  }
   const lines=[model.id,
-    "Source: Vercel AI Gateway /models API (catalog declarations, not a capability or quality test).",
+    "Source: "+(model.metadataSource||"Vercel AI Gateway /models API (catalog declarations, not a capability or quality test)."),
     "Catalog cached for the current provider/key session. Reload Window fetches a fresh catalog.",
     model.description || "Description / specialization: not provided by the catalog API."];
   if(model.toolSupportEvidence)lines.push(model.toolSupportEvidence.reason+" Source: observed API response; text-only mode for this provider/key/model, expires after 24 hours.");

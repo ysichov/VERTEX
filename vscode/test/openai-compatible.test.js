@@ -30,6 +30,11 @@ test("MF0 uses its catalog and native text endpoint through the provider interfa
     async () => ({ status: 402, json: async () => ({ error: "insufficient_balance" }) }));
   assert.equal(availability.available, true);
   assert.match(availability.status, /insufficient balance/);
+  await assert.rejects(api.ask({ assistant: "mf0-api", model: "glm-5.3-flash", apiKey: "fixture-secret", prompt: "hello",
+    mf0Request: async () => ({ ok: false, status: 400, json: async () => ({
+      error: { code: "invalid_request", message: "Invalid maxTokens for fixture-secret" }
+    }) }) }), error => /HTTP 400.*invalid_request.*Invalid maxTokens for \[REDACTED\]/.test(error.message)
+      && !error.message.includes("fixture-secret"));
 });
 
 test("local LM Studio and Ollama servers are reached over HTTP without a key", async () => {

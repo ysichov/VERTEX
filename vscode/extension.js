@@ -912,7 +912,7 @@ function activate(context) {
   const sapContext = () => {
     const mode = vscode.workspace.getConfiguration("vertex.ai").get("contextMode", "auto");
     // "auto" is folder context whenever a working folder is open - the same reading the chat itself makes.
-    return mode === "sap" ? true : mode === "folder" ? false : !require("./chat").currentWorkingFolder(vscode);
+    return mode === "sap" || mode === "both" ? true : mode === "folder" || mode === "zero" ? false : !require("./chat").currentWorkingFolder(vscode);
   };
   if (sapContext() && chatMcp.servers().some(server => server.name === chatMcp.selected())) {
     chatMcp.prepare().catch(error => vscode.window.showErrorMessage("VERTEX: MCP server " + chatMcp.selected() + " did not start: " + error.message));

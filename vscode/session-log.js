@@ -25,6 +25,22 @@ function stamp(date) {
        + p(date.getHours()) + p(date.getMinutes()) + p(date.getSeconds());
 }
 
+function readHeader(file) {
+  let descriptor;
+  try {
+    descriptor=fs.openSync(file,"r");
+    const parts=[],buffer=Buffer.alloc(16384);let length=0;
+    while(length<4*1024*1024){
+      const count=fs.readSync(descriptor,buffer,0,buffer.length,null);
+      if(!count)break;
+      const end=buffer.subarray(0,count).indexOf(10),take=end<0?count:end;
+      parts.push(Buffer.from(buffer.subarray(0,take)));length+=take;
+      if(end>=0)break;
+    }
+    return JSON.parse(Buffer.concat(parts).toString("utf8"));
+  }catch(_){return null;}finally{if(descriptor!==undefined)try{fs.closeSync(descriptor);}catch(_){}}
+}
+
 function options(include) {
   const given = include || {};
   return { questions: given.questions === true, answers: given.answers === true,
@@ -46,7 +62,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
     // A random tail: two conversations started within one second must not share a file.
     + String(session || stamp(new Date()) + "_" + require("crypto").randomBytes(3).toString("hex")).replace(/[^\w.-]/g, "_") + ".jsonl");
   let sequence = 0, recordSequence = 0, discarded = false, screenshotCount = 0;
-  // Where the conversation was held: the local folder, or the SAP system and client. Session Logs filters by it,
+  // Where the conversation was held: the local folder, SAP system/client, or both. Session Logs filters by it,
   // and nothing else in the log records it - a conversation without it cannot be placed afterwards.
   let context = null, toolset = "", turnId = scope?.turnId || null;
   // Every file of one VS Code conversation carries its id: a conversation that changes provider writes one file per
@@ -64,7 +80,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
   };
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
   return {
-    file,
+    file, conversation,
     // Explicit Jev input is retained only when question logging is enabled.
     decision(input) {
       if (on.questions) write({ type: "vertex_decision", input: JSON.parse(JSON.stringify(input)) });
@@ -72,10 +88,12 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
     setOperation(value){operation=String(value||"Chat");},
     setTurnId(value){turnId=typeof value==="string"&&/^[a-f0-9]{16}$/.test(value)?value:null;},
     setToolset(value){toolset=typeof value === "string" ? value.slice(0,200) : "";},
-    /** Folder mode: {mode:"folder",folder}. SAP mode: {mode:"sap",system,client}. Anything else is refused. */
+    /** Record where the chat ran. Zero context has no folder or SAP system. */
     setContext(value){
       if (!value || typeof value !== "object") { context = null; return; }
+      if (value.mode === "zero") { context = { mode: "zero" }; return; }
       const text = key => typeof value[key] === "string" ? sanitizeText(value[key]).slice(0, 400) : "";
+      if (value.mode === "both" && text("folder") && text("system")) { context = { mode: "both", folder: text("folder"), system: text("system"), ...(text("client") ? { client: text("client") } : {}) }; return; }
       if (value.mode === "folder" && text("folder")) { context = { mode: "folder", folder: text("folder") }; return; }
       if (value.mode === "sap" && text("system")) { context = { mode: "sap", system: text("system"), ...(text("client") ? { client: text("client") } : {}) }; return; }
       context = null;
@@ -101,6 +119,15 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       write({ type: "user", message: { role: "user", content }, vertex_objects: objects, ...(screenshots ? { vertex_screenshots: screenshots } : {}) });
       return screenshots || [];
     },
+    interjection(text, timestamp) {
+      const objects = [];
+      const content = on.questions ? sanitizeText(protection.text(text), objects) : NOT_LOGGED;
+      const eventId = id("user_interjection");
+      write({ type: "vertex_user_interjection", id: eventId, text: content,
+        ...(timestamp ? { timestamp: new Date(timestamp).toISOString() } : {}), vertex_objects: objects });
+      return eventId;
+    },
+    interjectionApplied(eventId) { if (eventId) write({ type: "vertex_user_interjection_applied", id: eventId }); },
     request({ instructions, prompt, tools, schema }) {
       // Measure the prepared request before source bodies are omitted from the log.
       const characters = String(instructions || "").length + String(prompt || "").length
@@ -138,7 +165,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
           included:block.included,reason:block.reason,preferredPromptNumber:block.preferredPromptNumber,estimatedTokens:block.estimatedTokens,
           ...(on.questions?{topic:block.topic,preview:block.preview}:{})}))}:undefined;
       write({type:"vertex_topic_routing",report:on.questions?{...report,contextReduction}:
-        {status:report.status,basis:report.basis,skill:report.skill,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage,contextReduction}});
+        {kind:report.kind,status:report.status,basis:report.basis,skill:report.skill,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage,contextReduction}});
     },
     contextOptimization(report) { write({type:"vertex_context_optimization",report:{status:report.status,reason:report.reason,
       candidates:report.candidates,verifiedCandidates:report.verifiedCandidates,representative:report.representative,
@@ -456,6 +483,12 @@ function current(root, provider, include) {
   if (!shared.has(key)) { shared.set(key, create(root, provider, undefined, include)); }
   return shared.get(key);
 }
+function currentFiles(root) {
+  const resolved=resolveRoot(root);
+  if(!resolved)return [];
+  const directory=path.resolve(path.join(resolved,"claude_compatible"))+path.sep;
+  return [...shared.values()].map(log=>log.file).filter(file=>typeof file==="string"&&path.resolve(file).startsWith(directory));
+}
 
 /** Starts the next VS Code conversation in new files: a new conversation id, or the one given when a conversation
     continues from its log. */
@@ -482,4 +515,4 @@ function fromConfig(config) {
     localCode: config.get("log.localCode", true) };
 }
 
-module.exports = { configureAccounting, resolveRoot, create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference, independentScope };
+module.exports = { configureAccounting, resolveRoot, create, current, currentFiles, readHeader, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference, independentScope };

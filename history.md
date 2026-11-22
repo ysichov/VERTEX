@@ -1,10 +1,46 @@
+## 2026-11-22 — Label Flow steps by user and model
+
+Flow Step now starts with a **User** column, shows each screenshot as its own compact tile after the question, and labels model-side steps with the model recorded for that request. Screenshot recognition and other technical operations remain under **VERTEX**.
+
+## 2026-11-22 — Continue a topic from Session Logs
+
+Continuing a saved topic keeps its conversation visible while it is restored. After sending a follow-up, the chat returns to Current topic so the new exchange remains visible even if Jev routes it elsewhere. The thinking animation stays beside the latest thinking text as it grows.
+
+## VSIX 0.9.112
+
+The VS Code extension version is 0.9.112. The VSIX is built after the version changes are approved.
+
+## Flow Step view
+
+Flow's **Step** mode now has a prompt list, so any request in the conversation can be inspected as a left-to-right sequence of user input, VERTEX operations, model requests, tool calls and results, and the final response. The user prompt starts the flow and includes compact screenshot tiles when observations were logged. Screenshot recognition and Jev operations group with VERTEX work; the LLM request is the final handoff card in that group. Other consecutive events on the same side share a vertical level. Cards keep a readable width and scroll horizontally when a request has many steps. Tool cards show Edit previews as line-by-line diffs with removed and added lines visually distinguished, or show a short request/result excerpt when available, instead of the generic “Tool call and result” label. LLM request cards include the user prompt, and Response cards show the model answer in green. Image-recognition requests show their recorded result at the end.
+
+## VSIX 0.9.110
+
+The VS Code extension version is 0.9.110. The VSIX is built after the version changes are approved.
+
 ## VSIX 0.9.109
 
 The VS Code extension version is 0.9.109. The VSIX is built after the version changes are approved.
 
+SAP and Folder can now be enabled together in the chat. A request can use local project files and Git reviews alongside the selected SAP system, editor and MCP tools, without switching modes between requests. Zero context remains exclusive.
+
+Jev results in Session Logs now include **Rerun** and **Test in Jev chat** actions when their saved decision input is available.
+
 ## VSIX 0.9.108
 
 The VS Code extension version is 0.9.108. The VSIX is built after the version changes are approved.
+
+## 2026-11-21 — Wait for MF0.AI text results
+
+MF0.AI text requests now follow the asynchronous generation through HTTP 202 and poll its generation ID until the result or a terminal error arrives. Completed text, returned cost and generation ID are recorded; polling uses GET without an idempotency key.
+
+## 2026-11-21 — Add MF0.AI model IDs manually
+
+Removed MF0.AI's fixed model catalog and all model availability checks. In LLM Providers, enter a model ID and select Add; adding is local and does not call MF0.AI. Previously prefilled MF0 model selections are cleared once so only IDs added by the user remain. The chat continues to use the asynchronous generation endpoint.
+
+## 2026-11-21 — Show MCP startup animation on first SAP request
+
+When Folder mode delayed an MCP server start until the first SAP request, the chat showed only its generic working indicator. It now shows the same server startup animation (including the server name) while `prepare()` starts the selected MCP server, then returns to the thinking scene after connection.
 
 ## 2026-11-21 — Discard assistant changes from review
 
@@ -4205,3 +4241,7 @@ Reduced the Command Palette to five global VERTEX entries: Open Transpiler Run..
 # 2026-11-16 — Flow Context
 
 Flow now has a Context view beside Steps. It shows which earlier conversation messages Jev included or excluded for each request, with a per-request estimate of tokens saved.
+## VSIX 0.9.111
+
+The VS Code extension version is 0.9.111. The VSIX is built after the version changes are approved.
+

@@ -105,7 +105,7 @@ test("Flow numbers the complete chronology including linked Jev and paired tool 
   const child={operation:"Change verification with Jev",time:14,flow:{jevOutcome:"Passed"}};
   const steps=flow.chronologicalStages({...prompt,flow:flow.summary(prompt)},[child]);
   assert.deepEqual(steps.map(step=>step.stepNumber),[1,2,3,4,5]);
-  assert.deepEqual(steps.map(step=>step.title),["User question","LLM request and context","Read · main.js","Change verification with Jev","Response"]);
+  assert.deepEqual(steps.map(step=>step.title),["User question","LLM request with system prompt and tools","Read · main.js","Change verification with Jev","Response"]);
   assert.match(steps[1].label,/120 context tokens/);
   assert.equal(steps[2].detailIndex,0);
 });

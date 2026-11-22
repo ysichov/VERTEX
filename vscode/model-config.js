@@ -16,6 +16,7 @@
 const assistant = require("./assistant");
 const compatible = require("./openai-compatible");
 const keyProfiles = require("./key-profiles");
+const mf0 = require("./mf0-models");
 
 // id is the assistant, setting what vertex.ai.provider holds. The label names
 // what is paid for and, in brackets, what it runs through; short is for the
@@ -38,6 +39,16 @@ const PROVIDERS = [
   }))
 ];
 
+// Official product pages opened when a provider name is selected in LLM Providers.
+const PROVIDER_URLS = Object.freeze({
+  claude: "https://claude.ai/", codex: "https://chatgpt.com/", copilot: "https://github.com/features/copilot",
+  codemie: "https://www.codemie.ai/", "vercel-api": "https://vercel.com/ai-gateway", "openrouter-api": "https://openrouter.ai/",
+  "opencode-api": "https://opencode.ai/console", "typesafe-api": "https://typesafe.ai/", "anthropic-api": "https://console.anthropic.com/",
+  "openai-api": "https://platform.openai.com/", "mistral-api": "https://console.mistral.ai/", "gemini-api": "https://aistudio.google.com/",
+  "mf0-api": "https://www.mf0.ai/", "groq-api": "https://console.groq.com/", "cerebras-api": "https://cloud.cerebras.ai/",
+  "nvidia-api": "https://build.nvidia.com/", "lmstudio-local": "https://lmstudio.ai/", "ollama-local": "https://ollama.com/"
+});
+
 function shortLabel(setting) {
   const found = PROVIDERS.find(p => p.setting === setting);
   return found ? found.short : setting;
@@ -56,7 +67,44 @@ function read(vscode, id) {
            unavailable: own.unavailable && typeof own.unavailable === "object" ? own.unavailable : {},
            limits: own.limits && typeof own.limits === "object" && !Array.isArray(own.limits) ? own.limits : {},
            calls: own.calls && typeof own.calls === "object" && !Array.isArray(own.calls) ? own.calls : {},
-           availabilityMigrated: own.availabilityMigrated === true };
+           availabilityMigrated: own.availabilityMigrated === true,
+           manualEntryOnly: own.manualEntryOnly === true };
+}
+
+async function mf0Models(vscode) {
+  const settings = vscode.workspace.getConfiguration("vertex.ai");
+  const all = Object.assign({}, settings.get("modelConfig", {}) || {});
+  const own = Object.assign({}, all["mf0-api"] || {});
+  const previousKnown = Array.isArray(own.known) ? own.known.map(String) : [];
+  const previousEnabled = Array.isArray(own.enabled) ? own.enabled.map(String) : [];
+  const catalogIds = mf0.catalog.map(model => model.id);
+  const catalogSet = new Set(catalogIds);
+  const enabledCatalogIds = [...new Set(previousEnabled)].filter(id => catalogSet.has(id));
+  let changed = false;
+  if (own.manualEntryOnly === true) {
+    // Replace the former manual-only list with the fixed catalog once.
+    // The old manually-entered models do not belong in the fixed catalog.
+    own.enabled = catalogIds.slice();
+    own.known = catalogIds.slice();
+    delete own.manualEntryOnly;
+    changed = true;
+  } else if (Array.isArray(own.enabled) || Array.isArray(own.known)) {
+    const known = catalogIds.slice();
+    if (Array.isArray(own.enabled) && (enabledCatalogIds.length !== previousEnabled.length
+        || enabledCatalogIds.some((model, index) => model !== previousEnabled[index]))) {
+      own.enabled = enabledCatalogIds;
+      changed = true;
+    }
+    if (known.length !== previousKnown.length || known.some((model, index) => model !== previousKnown[index])) {
+      own.known = known;
+      changed = true;
+    }
+  }
+  if (changed) {
+    all["mf0-api"] = own;
+    await settings.update("modelConfig", all, vscode.ConfigurationTarget.Global);
+  }
+  return mf0.catalog.map(model => ({ ...model }));
 }
 
 // A provider switched off keeps its model ticks; it is only left out of every
@@ -236,6 +284,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
   }
   async function checkedRows(id, models) {
     await adopt(vscode, id, models);
+    if (id === "mf0-api") return rows(models, read(vscode, id), id);
     const { checks } = await checkScope(id);
     return rows(models, read(vscode, id), id).map(row => {
       const saved = Object.hasOwn(checks, row.id) ? checks[row.id] : null;
@@ -278,7 +327,10 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     }
     try {
       if (fresh) { forget(id); availableModels.delete(id); }
-      const models = await full(id);
+      let models;
+      if (id === "mf0-api") {
+        models = await mf0Models(vscode);
+      } else models = await full(id);
       await adopt(vscode, id, models);
       await migrateUnavailable(vscode, id, models);
       send({ provider: id, rows: await checkedRows(id, models), profiles, source, codemie });
@@ -291,6 +343,11 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
   panel.onDidDispose(() => { cancelled = true; });
   panel.webview.onDidReceiveMessage(async message => {
     if (!message || typeof message !== "object") { return; }
+    if (message.action === "open-provider-site") {
+      const url = PROVIDER_URLS[String(message.provider || "")];
+      if (url) await vscode.env.openExternal(vscode.Uri.parse(url));
+      return;
+    }
     if (message.action === "open-error-link") {
       try {
         const url = new URL(String(message.url || ""));
@@ -323,6 +380,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     if (message.action === "stop-detection") { cancelled = true; return; }
     if (message.action === "detect-model") {
       const provider = PROVIDERS.find(p => p.id === message.provider);
+      if (provider?.id === "mf0-api") return;
       if (detecting || !provider || typeof message.model !== "string") return;
       detecting = true; cancelled = false;
       try {
@@ -338,6 +396,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     }
     if (message.action === "detect") {
       const provider = PROVIDERS.find(p => p.id === message.provider);
+      if (provider?.id === "mf0-api") return;
       if (detecting || !provider) return;
       detecting = true; cancelled = false; loadGeneration.set(provider.id, (loadGeneration.get(provider.id) || 0) + 1);
       try {
@@ -461,7 +520,8 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
         if (!known) { fail("Unknown provider."); return; }
         // At least one model stays on: an empty list would leave the provider
         // with nothing to ask.
-      if (p.on && Array.isArray(p.rows) && !p.rows.some(r => r && r.on && !r.missing)) {
+        if (p.on && Array.isArray(p.rows) && !(p.id === "mf0-api" && p.id !== use.id)
+            && !p.rows.some(r => r && r.on && !r.missing)) {
           fail(known.label + ": keep at least one model switched on."); return;
         }
       }
@@ -498,7 +558,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
 
 function html(nonce, selected, providers) {
   const controls = require("./vertex-logo").fill(require("fs").readFileSync(require("path").join(__dirname, "resources", "vertex-controls.css"), "utf8"));
-  const init = JSON.stringify({ use: selected, providers }).replace(/</g, "\\u003c");
+  const init = JSON.stringify({ use: selected, providers, providerUrls: PROVIDER_URLS }).replace(/</g, "\\u003c");
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
@@ -517,6 +577,8 @@ body.vscode-dark .phead.codemie, body.vscode-light .phead.codemie { color: #fff;
   background: linear-gradient(90deg, #4f46e5, #9333ea 55%, #c026d3); }
 .phead .use { margin-left: 0; white-space: nowrap; font-weight: normal; display: flex; gap: 4px; align-items: center; }
 .phead .provider-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.phead .provider-link { color: inherit; text-decoration: underline; cursor: pointer; }
+.phead .provider-link:hover, .phead .provider-link:focus-visible { text-decoration-thickness: 2px; }
 .phead button { box-sizing: border-box; width: 100%; white-space: nowrap; }
 .phead .stop.idle { visibility: hidden; }
 .phead .check-status { grid-column: 1 / -1; min-width: 0; height: 1.4em; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -582,7 +644,7 @@ const checkStatus = {}, checkErrors = {};
 // Per provider: on, and its rows once read (null while loading or when it could not be read).
 const state = {};
 INIT.providers.forEach(p => { state[p.id] = { label: p.label, on: p.on, rows: null, profiles: null,
-  source: null, hideUnavailable: true, grouped: false, collapsedGroups: new Set(), groupSorts: new Map(), expanded: false }; });
+  source: null, hideUnavailable: true, grouped: p.id === "mf0-api", collapsedGroups: new Set(), groupSorts: new Map(), expanded: false }; });
 const $ = id => document.getElementById(id);
 function say(text, kind) { $("said").textContent = text || ""; $("said").className = kind || "note"; }
 function el(tag, props) { return Object.assign(document.createElement(tag), props || {}); }
@@ -642,32 +704,40 @@ function build() {
       title: use === p.id ? "In use - switch to another provider first" : "Offer this provider" });
     on.addEventListener("change", () => { s.on = on.checked; say(""); build(); });
     head.appendChild(on);
-    head.appendChild(el("span", { className: "provider-name", textContent: p.label, title: p.label }));
+    const providerName = INIT.providerUrls[p.id]
+      ? el("a", { className: "provider-name provider-link", href: INIT.providerUrls[p.id], target: "_blank", rel: "noopener noreferrer", textContent: p.label, title: "Open " + p.label + " website" })
+      : el("span", { className: "provider-name", textContent: p.label, title: p.label });
+    if (INIT.providerUrls[p.id]) providerName.addEventListener("click", event => { event.preventDefault(); api.postMessage({ action: "open-provider-site", provider: p.id }); });
+    head.appendChild(providerName);
     const useLabel = el("label", { className: "use" });
     const radio = el("input", { type: "radio", name: "use", checked: use === p.id, disabled: !s.on,
       title: !s.on ? "Switch the provider on first" : p.decisionOnly ? "Use the Jev decision interface" : "Use this provider" });
     radio.addEventListener("change", () => { use = p.id; say(""); build(); });
     useLabel.appendChild(radio); useLabel.appendChild(document.createTextNode("In use"));
     head.appendChild(useLabel);
-    const check = el("button", { className: "check-models", type: "button", textContent: scanningProvider === p.id ? "Checking…" : "Check models", disabled: scanning,
-      title: "Test only this provider’s models with short requests; normal provider usage applies." });
-    check.addEventListener("click", () => {
-      scanning = true; scanningProvider = p.id; checkErrors[p.id] = ""; checkStatus[p.id] = "Reading model list…";
-      api.postMessage({ action: "detect", provider: p.id });
-      build(); $("save").disabled = true; $("stop-detection").hidden = false;
-      say("Checking " + p.label + "…");
-    });
-    head.appendChild(check);
-    {
+    if (p.id !== "mf0-api") {
+      const check = el("button", { className: "check-models", type: "button", textContent: scanningProvider === p.id ? "Checking…" : "Check models", disabled: scanning,
+        title: "Test only this provider’s models with short requests; normal provider usage applies." });
+      check.addEventListener("click", () => {
+        scanning = true; scanningProvider = p.id; checkErrors[p.id] = ""; checkStatus[p.id] = "Reading model list…";
+        api.postMessage({ action: "detect", provider: p.id });
+        build(); $("save").disabled = true; $("stop-detection").hidden = false;
+        say("Checking " + p.label + "…");
+      });
+      head.appendChild(check);
+    }
+    if (p.id !== "mf0-api") {
       const stop = el("button", { className: "stop" + (scanningProvider === p.id ? "" : " idle"),
         type: "button", textContent: "Stop", disabled: scanningProvider !== p.id });
       stop.addEventListener("click", () => { api.postMessage({ action: "stop-detection" }); stop.disabled = true;
         checkStatus[p.id] = "Stopping after the current request…"; $("check-status-" + p.id).textContent = checkStatus[p.id]; });
       head.appendChild(stop);
     }
-    const status = el("span", { id: "check-status-" + p.id, className: "note check-status", textContent: checkStatus[p.id] || "", title: checkStatus[p.id] || "" });
-    status.setAttribute("role", "status");
-    head.appendChild(status);
+    if (p.id !== "mf0-api") {
+      const status = el("span", { id: "check-status-" + p.id, className: "note check-status", textContent: checkStatus[p.id] || "", title: checkStatus[p.id] || "" });
+      status.setAttribute("role", "status");
+      head.appendChild(status);
+    }
     box.appendChild(head);
     const body = el("div", { className: "pbody", id: "body-" + p.id });
     body.hidden = !s.expanded;
@@ -739,6 +809,28 @@ function fill(id) {
     key.addEventListener("click", () => api.postMessage({ action: "key", provider: id }));
     row.appendChild(key); body.appendChild(row);
   }
+  /* Manual MF0.AI model entry is disabled while using the fixed catalog.
+  if (id === "mf0-api") {
+    const row = el("div", { className: "row" });
+    const input = el("input", { placeholder: "Enter model ID", spellcheck: false });
+    input.setAttribute("aria-label", "MF0.AI model ID");
+    const add = el("button", { type: "button", textContent: "Add" });
+    const addModel = () => {
+      const model = input.value.trim();
+      if (!model) return;
+      s.rows ||= [];
+      if (s.rows.some(r => String(r.id).toLowerCase() === model.toLowerCase())) {
+        say(model + " is already in the table.", "error"); return;
+      }
+      s.rows.push({ id: model, label: model, modelKind: "language", version: "manual", on: true });
+      fill(id);
+      say("Added " + model + " · select Save to keep it.", "note");
+    };
+    add.addEventListener("click", addModel);
+    input.addEventListener("keydown", event => { if (event.key === "Enter") addModel(); });
+    row.appendChild(input); row.appendChild(add); body.appendChild(row);
+  }
+  */
   if (checkErrors[id] || s.error) {
     const row = el("div", { className: "row" });
     row.appendChild(copyErrorButton(s.label + "\\n" + (checkErrors[id] || s.error)));
@@ -746,17 +838,18 @@ function fill(id) {
   }
   if (s.error) {
     body.appendChild(el("div", { className: "error", textContent: s.error }));
-    return;
+    if (id !== "mf0-api") return;
   }
+  if (!s.rows && id === "mf0-api") s.rows = [];
   if (!s.rows) { body.appendChild(el("div", { className: "note", textContent: "Loading ..." })); return; }
   if (!s.rows.length) {
-    body.appendChild(el("div", { className: "error", textContent: s.label + ": no models were returned. Reopen Config models to retry." }));
+    body.appendChild(el("div", { className: id === "mf0-api" ? "note" : "error", textContent: id === "mf0-api" ? "No models are available in the bundled MF0.AI catalog." : s.label + ": no models were returned. Reopen Config models to retry." }));
     if (id === "claude") {
       body.appendChild(el("div", { className: "note", textContent: "Claude's model list is built into VERTEX; this is not an account sign-in check." }));
     }
     return;
   }
-  const visibleRows = s.rows.filter(row => !s.hideUnavailable || row.available !== false);
+  const visibleRows = s.rows.filter(row => id === "mf0-api" || !s.hideUnavailable || row.available !== false);
   const targets = s.rows;
   const count = el("span", { className: "note", role: "status", ariaLive: "polite" });
   const bulk = el("button", { type: "button" });
@@ -783,8 +876,9 @@ function fill(id) {
   const hide = el("input", { type: "checkbox", checked: !!s.hideUnavailable, title: "Hide unavailable models" });
   hide.addEventListener("change", () => { s.hideUnavailable = hide.checked; fill(id); });
   hideLabel.appendChild(hide); hideLabel.appendChild(document.createTextNode("Hide unavailable"));
-  toolbar.appendChild(hideLabel); toolbar.appendChild(count);
-  if(["vercel-api","openrouter-api","opencode-api"].includes(id)){
+  if (id !== "mf0-api") toolbar.appendChild(hideLabel);
+  toolbar.appendChild(count);
+  if(["vercel-api","openrouter-api","opencode-api","mf0-api"].includes(id)){
     const modes=el("span",{className:"vertex-segment-toggle"});modes.setAttribute("role","group");modes.setAttribute("aria-label",s.label+" model view");
     [[false,"All models"],[true,"By provider"]].forEach(([grouped,label])=>{
       const button=el("button",{type:"button",className:s.grouped===grouped?"active":"",textContent:label,title:grouped?"Group models by provider":"Show one sortable model list"});
@@ -805,15 +899,20 @@ function fill(id) {
   if(id==="typesafe-api")body.appendChild(el("div",{className:"note",textContent:"Direct TypeSafe API. Add your TypeSafe key, then use Check models for a small synthetic decision request. These models return probabilities and choices, not chat text. Normal TypeSafe usage charges apply."}));
   if(id==="opencode-api")body.appendChild(el("div",{className:"note",textContent:"Free models may require the OpenCode client; Check models verifies API access for this key. Jev (Decision API) is available here for checks; choose a language model for chat."}));
   const table = el("table", { className: "models-table" });
-  const hasMetadata = s.rows.some(row => row.capabilities || row.pricing || row.contextWindow);
+  const hasMetadata = id !== "mf0-api" && s.rows.some(row => row.capabilities || row.pricing || row.contextWindow);
+  const hasPrices = id === "mf0-api" && s.rows.some(row => row.pricingPerMillion);
   const columns = [{ key: "on", label: "On" }, { key: "label", label: "Model" }, { key: "id", label: "ID" }];
   if (hasMetadata) {
     capabilityDefinitions.forEach(d => columns.push({ key: "cap." + d.key, label: d.icon, title: d.label }));
     columns.push({ key: "contextWindow", label: "Context" }, { key: "inputPrice", label: "In $/1M" }, { key: "outputPrice", label: "Out $/1M" });
+  } else if (hasPrices) {
+    columns.push({ key: "inputPrice", label: "In $/1M" }, { key: "outputPrice", label: "Out $/1M" });
   }
-  columns.push({ key: "limit", label: "In tok/min", title: "Input tokens per minute this model is allowed, entered by hand from the tier's own conditions. VERTEX waits rather than exceed it. Empty means no budget." });
-  columns.push({ key: "callLimit", label: "Calls/min", title: "Requests per minute this model is allowed, entered by hand from the tier's own conditions. VERTEX waits rather than exceed it. Empty means no limit." });
-  columns.push({ key: "availability", label: "Check" });
+  if (id !== "mf0-api") {
+    columns.push({ key: "limit", label: "In tok/min", title: "Input tokens per minute this model is allowed, entered by hand from the tier's own conditions. VERTEX waits rather than exceed it. Empty means no budget." });
+    columns.push({ key: "callLimit", label: "Calls/min", title: "Requests per minute this model is allowed, entered by hand from the tier's own conditions. VERTEX waits rather than exceed it. Empty means no limit." });
+    columns.push({ key: "availability", label: "Check" });
+  } else columns.push({ key: "remove", label: "" });
   const head = el("thead"), headerRow = el("tr");
   columns.forEach(column => {
     if(id==="openrouter-api"){headerRow.appendChild(el("th",{textContent:column.label,title:column.title||column.label}));return;}
@@ -826,7 +925,7 @@ function fill(id) {
     th.appendChild(label);headerRow.appendChild(th);
   });
   head.appendChild(headerRow);if(id!=="openrouter-api")table.appendChild(head);
-  const groups=["vercel-api","openrouter-api","opencode-api"].includes(id)&&s.grouped?groupModels(visibleRows,s.sort?.key,s.sort?.down,false):[{id:"",models:sortModels(visibleRows,s.sort?.key,s.sort?.down)}];
+  const groups=["vercel-api","openrouter-api","opencode-api","mf0-api"].includes(id)&&s.grouped?groupModels(visibleRows,s.sort?.key,s.sort?.down,false):[{id:"",models:sortModels(visibleRows,s.sort?.key,s.sort?.down)}];
   groups.forEach(group=>{
   const ownSort=s.groupSorts.get(group.id);if(ownSort)group.models=sortModels(group.models,ownSort.key,ownSort.down);
   const tbody=el("tbody"),modelRows=[];let fold;
@@ -838,7 +937,8 @@ function fill(id) {
     paint();th.appendChild(fold);th.appendChild(document.createTextNode(" "+group.label+" ("+group.models.length+")"));
     const checkGroup=el("button",{type:"button",className:"check-models",textContent:"Check models",disabled:scanning,title:"Check untested models in "+group.label});
     checkGroup.setAttribute("aria-label","Check models in "+group.label);
-    checkGroup.addEventListener("click",()=>{scanning=true;scanningProvider=id;checkErrors[id]="";checkStatus[id]="Checking "+group.label+"…";build();$("save").disabled=true;api.postMessage({action:"detect",provider:id,group:group.id});});th.appendChild(checkGroup);
+    if(id!=="mf0-api")checkGroup.addEventListener("click",()=>{scanning=true;scanningProvider=id;checkErrors[id]="";checkStatus[id]="Checking "+group.label+"…";build();$("save").disabled=true;api.postMessage({action:"detect",provider:id,group:group.id});});
+    if(id!=="mf0-api")th.appendChild(checkGroup);
     if(["vercel-api","opencode-api"].includes(id)&&group.models.length>1){const controls=el("span",{className:"group-sort-controls"});controls.appendChild(document.createTextNode(" Sort "));
     const picker=el("select",{title:"Sort only "+group.label+"; Global order follows the table header"});picker.setAttribute("aria-label","Sort models in "+group.label);
     picker.appendChild(el("option",{value:"",textContent:"Global order"}));columns.forEach(column=>picker.appendChild(el("option",{value:column.key,textContent:column.title||column.label})));picker.value=ownSort?.key||"";
@@ -870,7 +970,11 @@ function fill(id) {
       tr.appendChild(el("td", { className: "numeric", textContent: r.contextWindow ? r.contextWindow.toLocaleString() : "—", title: "Context window in tokens" }));
       tr.appendChild(el("td", { className: "numeric", textContent: (price?.input || "—") + (price?.variable ? " *" : ""), title: price?.title || "Price not reported" }));
       tr.appendChild(el("td", { className: "numeric", textContent: (price?.output || "—") + (price?.variable ? " *" : ""), title: price?.title || "Price not reported" }));
+    } else if (hasPrices) {
+      tr.appendChild(el("td", { className: "numeric", textContent: price?.input || "—", title: price?.title || "Price not reported" }));
+      tr.appendChild(el("td", { className: "numeric", textContent: price?.output || "—", title: price?.title || "Price not reported" }));
     }
+    if (id !== "mf0-api") {
     const limitCell = tr.appendChild(el("td", { className: "numeric" }));
     const limitBox = el("input", { type: "number", min: "0", step: "1000", className: "limit-input", value: r.limit ? String(r.limit) : "",
       title: "Input tokens per minute allowed for " + (r.label || r.id) + ". VERTEX waits rather than exceed it. Empty means no budget." });
@@ -883,7 +987,9 @@ function fill(id) {
     callBox.setAttribute("aria-label", "Requests per minute for " + (r.label || r.id));
     callBox.addEventListener("change", () => { const value = Number(callBox.value); r.callLimit = Number.isFinite(value) && value > 0 ? Math.round(value) : 0; if (!r.callLimit) callBox.value = ""; say(""); });
     callCell.appendChild(callBox);
+    }
     const act = tr.appendChild(el("td"));
+    if (id !== "mf0-api") {
     const checkOne = el("button", { type: "button", textContent: "✓", disabled: scanning || !!r.missing,
       title: "Check only this model with one short paid request (Reply OK, up to 16 output tokens)" });
     checkOne.setAttribute("aria-label", "Check model " + (r.label || r.id));
@@ -900,7 +1006,8 @@ function fill(id) {
     }
     if (r.available === true && r.checked === true) act.appendChild(el("span", { className: "note", textContent: "Checked", title: r.checkedAt || "Model check completed" }));
     if (r.available !== false && r.checked !== true) act.appendChild(el("span", { className: "note", textContent: "Not checked" }));
-    if (r.version) {
+    }
+    if (id !== "mf0-api" && r.version) {
       const remove = el("button", { textContent: "Remove" });
       remove.addEventListener("click", () => { s.rows.splice(i, 1); fill(id); say("Removed - Save to keep it.", "note"); });
       act.appendChild(remove);
@@ -926,7 +1033,7 @@ function fill(id) {
 }
 $("save").addEventListener("click", () => {
   if (!state[use] || !state[use].on) { say("The provider in use stays switched on.", "error"); return; }
-  const bad = INIT.providers.find(p => state[p.id].on && state[p.id].rows && !state[p.id].rows.some(r => r.on));
+  const bad = INIT.providers.find(p => p.id !== "mf0-api" && state[p.id].on && state[p.id].rows && !state[p.id].rows.some(r => r.on));
   if (bad) { say(bad.label + ": keep at least one model switched on.", "error"); return; }
   api.postMessage({ action: "save", provider: use, use,
     providers: INIT.providers.map(p => ({ id: p.id, on: state[p.id].on, rows: state[p.id].rows })) });
@@ -1010,4 +1117,4 @@ INIT.providers.forEach(p => api.postMessage({ action: "load", provider: p.id }))
 </script></body></html>`;
 }
 
-module.exports = { PROVIDERS, shortLabel, read, rows, apply, open, isOn, offered, chooseLogFolder, migrateUnavailable, clearUnavailable, adopt, news };
+module.exports = { PROVIDERS, shortLabel, read, rows, apply, open, isOn, offered, chooseLogFolder, migrateUnavailable, clearUnavailable, adopt, news, mf0Models };

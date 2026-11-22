@@ -261,7 +261,8 @@ function create(vscode, options) {
       changedFiles.set(relative.toLowerCase(),relative);
       if (!written.has(file)) written.set(file, before);
       seen.set(file, change.after);
-      return { file_path: file, changed: true, review: reviewAfter ? "pending after this turn" : "approved" };
+      return { file_path: file, changed: true, review: reviewAfter ? "pending after this turn" : "approved",
+        ...(change.normalizedWhitespace ? { edit_normalization: "VERTEX trimmed leading/trailing spaces or tabs in old_string and new_string to match the source. Your boundary whitespace was inaccurate; use the exact source whitespace on the next edit. The change is applied and awaits review." } : {}) };
     }
     if (name === "Bash") {
       if (typeof args.command !== "string" || !args.command.trim()) throw new Error("A command is required.");
@@ -345,6 +346,8 @@ function create(vscode, options) {
         const id = "local_" + crypto.randomBytes(8).toString("hex");
         const input = { ...args, ...(name === "Bash" ? commandLocation(args) : {}) };
         for (const key of ["file_path", "path"]) if (input[key] && !(name === "Read" && commandOutput.owns(input[key]))) input[key] = resolve(input[key], name === "Read" || name === "Glob" || name === "Grep");
+        if(options.beforeTool&&await options.beforeTool(name,args)===false)return {skipped:true,reason:"Not started because the user supplied new instructions; reconsider this call under the updated request."};
+        options.onToolStart?.(name,args);
         if (options.onStep) options.onStep({ kind: "use", id, name, input, provider: "local" });
         try {
           const result = await execute(name, args);
@@ -368,6 +371,8 @@ function create(vscode, options) {
             if(options.onStep)options.onStep({kind:"result",id:retryId,name:retryName,content:retryError.message,is_error:true,provider:"vertex"});
             throw retryError;
           }
+        } finally {
+          options.onToolEnd?.(name,args);
         }
       });
       const finished = run.finally(() => { outstanding--; });

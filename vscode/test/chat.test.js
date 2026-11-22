@@ -39,6 +39,27 @@ test.beforeEach(t => { t.mock.method(assistant, "resolveAssistant", async (vscod
 test.beforeEach(t => { t.mock.method(require('../orchestrator-plan'), 'verifyStage', async()=>({status:'passed',checks:[],usage:{}})); });
 test.beforeEach(t => { t.mock.method(require('../task-verification'), 'verifyTask', async()=>({status:'passed',checks:[],usage:{}})); });
 
+test("Zero context sends the chat only and bypasses workspace tools and routing", async t => {
+ const vscode = fakeVscode({provider:"openai-api", model:"fixture"});
+ t.mock.method(require("../topic-routing"), "route", async () => assert.fail("Jev routing must not run"));
+ let requests = 0;
+ t.mock.method(compatible, "ask", async request => {
+  assert.equal(request.instructions, "");
+  assert.deepEqual(request.tools, []);
+  assert.doesNotMatch(request.prompt, /PRIVATE_REVIEW|PRIVATE_WORKSPACE/);
+  if (++requests === 1) assert.equal(request.prompt, "First question");
+  else assert.match(request.prompt, /First question[\s\S]*First answer[\s\S]*Follow-up/);
+  return { plan: { answer: "First answer" }, model: "fixture" };
+ });
+ const ask = chat.create(vscode, {editorContext: () => assert.fail("Editor context must not be read")},
+   {start: async () => assert.fail("MCP must not start")}, {get: async () => null});
+ try {
+  await ask("First question", {contextMode:"zero", web:true, routeTopics:true, state:{workspace:"PRIVATE_WORKSPACE"}});
+  await ask("Follow-up", {contextMode:"zero", routeTopics:true});
+  assert.equal(requests, 2);
+ } finally { await ask.dispose(); }
+});
+
 test('read-only Git folder chat does not create a review copy',async t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-readonly-chat-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
