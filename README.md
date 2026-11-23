@@ -5,7 +5,7 @@
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
 
-Current VS Code extension: **0.9.112**.
+Current VS Code extension: **0.9.115**.
 
 For VS Code, the recommended companion is
 [ABAP Syntax Highlighting by Lars Hvam](https://marketplace.visualstudio.com/items?itemName=larshp.vscode-abap)

@@ -1,3 +1,83 @@
+## VSIX 0.9.115
+
+The VS Code extension version is 0.9.115. The VSIX is built after the version changes are approved.
+
+## 2026-11-23 — Consistent tool-call numbering in Flow
+
+AI magic and Flow now number only tool calls within a request, alongside the existing round numbers. Other event cards and the chat's working status no longer show conflicting step numbers.
+
+## 2026-11-23 — Clear AI magic for a new conversation
+
+An open live AI magic view clears when you start a new conversation and shows its first prompt as it is logged. Pressing **AI magic** again reloads the open window for the current request; explicitly opened historical views remain pinned until you choose AI magic.
+
+## 2026-11-23 — Compact Step cards
+
+All Step cards are half as tall, leaving more steps visible; select a card to see its full details.
+
+## 2026-11-23 — Clearer AI magic details
+
+Provider usage is displayed as a table, and screenshot recognition shows its description instead of structured JSON. Step cards share a consistent height; newly recorded tool batches appear in sequence in live Flow.
+
+## 2026-11-23 — AI magic during screenshot recognition
+
+The running chat's full-screen Flow button is now **AI magic**. It can be selected before or during screenshot recognition: the live log opens as soon as the session is available and updates as recognition proceeds.
+
+## 2026-11-23 — Show operation results on Flow cards
+
+Flow tool cards now prioritize the recorded result instead of the request. Bash cards show the exit code and output when available; select a card to see the command and full recorded details. Edit cards retain their change preview when a result is recorded.
+
+## 2026-11-23 — Show panel model names in Flow
+
+Flow shows the model's panel name, such as `GPT-6.1 Terra`, rather than its technical ID when that name is available. Older logs use the loaded provider catalog when it has an exact match; otherwise they keep the recorded ID. Tool-round cards also have more room for their text.
+
+## 2026-11-23 — Readable Flow cards and provider usage
+
+Step cards have more visible theme-aware borders and compact empty event cards. Provider usage cards show recorded run cost and token counts instead of a generic label; select a card for model breakdown and the original JSON. CodeMie prices are identified as estimates.
+
+## 2026-11-23 — Honor shell autoapproval in the selected project
+
+With `vertex.ai.shellWithoutAsking` enabled, Code Agent commands and builds in the selected project no longer ask for Allow, including before a review copy exists. Working-copy commands also remain automatic. Other execution folders still ask; file review and the requirement to Apply pending edits before a project build are unchanged.
+
+## 2026-11-23 — Follow new chats in the live log window
+
+The live Logs & Cost view opened from a running chat switches to the new conversation when its first prompt is logged after **New chat**, keeping the selected Logs or Flow mode. Explicitly opened historical conversations stay pinned instead of following the active chat.
+
+## VSIX 0.9.114
+
+The VS Code extension version is 0.9.114. The VSIX is built after the version changes are approved.
+
+## VSIX 0.9.113
+
+The VS Code extension version is 0.9.113. The VSIX is built after the version changes are approved.
+
+## 2026-11-23 — Compact Flow tool rounds
+
+Step groups each model round that calls tools into one VERTEX column, headed **Round N**. A short model-processing card shows the panel model name and tool-call count above the calls, without repeating their requests. Tool and model details still open on selection; text-only model rounds retain their previews.
+
+## 2026-11-23 — More text in Flow cards and panel model names
+
+Thinking cards now use their body for a longer text preview instead of squeezing the excerpt into the heading. Model response previews also show more text. Flow uses the model selection recorded from the panel (for example, `gpt-6.1-sol`), rather than replacing it with the provider's dated response ID; exact response metadata remains available in details. Logs without a recorded selection retain their recorded model name.
+
+## 2026-11-23 — Distinguish Flow model rounds and connect steps
+
+**LLM processing** cards now show a round number, a short tool-purpose or response preview, the response type and recorded input/output tokens. Metadata-only rounds are identified explicitly. Step connects consecutive cards with directional lines, including transitions between User, model and VERTEX columns; these indicate recorded order, not inferred dependencies.
+
+## 2026-11-23 — Screenshots during processing and readable command approvals
+
+Screenshots sent while chat is working now use the existing recognition animation in a separate progress item, and their factual descriptions reach the next model step. Screenshot-only additions are accepted; if the current request cannot accept an attachment, it is restored in the input instead of lost. Command approval keeps a short heading and places the full command and folder in the native dialog's detail area instead of its oversized heading.
+
+## 2026-11-23 — Open model response details in Flow
+
+The **LLM processing** card now opens the associated logged model text and tool calls with their results, instead of reporting that no detail body was logged. Response metadata remains available; metadata-only steps explicitly explain that no associated text or tool calls were recorded.
+
+## 2026-11-23 — Keep Flow positioned during live log updates
+
+Flow Step retains its horizontal and vertical position when session logs refresh instead of jumping back to the beginning. Live following continues smoothly toward newly added columns; scrolling back to read earlier steps still pauses following.
+
+## 2026-11-23 — Screenshot animation in Zero context
+
+Attached screenshots now start the existing recognition animation in Zero context before the model request. This mode still sends images directly to the selected model without tools, project/SAP context or Jev routing.
+
 ## 2026-11-22 — Label Flow steps by user and model
 
 Flow Step now starts with a **User** column, shows each screenshot as its own compact tile after the question, and labels model-side steps with the model recorded for that request. Screenshot recognition and other technical operations remain under **VERTEX**.

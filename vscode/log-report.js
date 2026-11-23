@@ -4,6 +4,20 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const sessionFileCache = new Map();
+const modelCatalogs = new Map();
+let modelCatalogRevision = 0;
+
+// The panel already has the provider's ID-to-label catalog. Use exact matches only
+// for older logs that did not record the selected label.
+function setModelCatalog(provider, models) {
+  if (typeof provider !== "string" || !Array.isArray(models)) return;
+  const next = new Map(models.filter(item => typeof item?.id === "string" && item.id && typeof item.label === "string" && item.label.trim())
+    .map(item => [item.id, item.label.trim()]));
+  const previous = modelCatalogs.get(provider);
+  if (previous && previous.size === next.size && [...next].every(([id, label]) => previous.get(id) === label)) return;
+  modelCatalogs.set(provider, next);
+  modelCatalogRevision++;
+}
 
 function dateKey(time) {
   const date = new Date(time), pad = value => String(value).padStart(2, "0");
@@ -157,6 +171,7 @@ function parseSession(text, file) {
     }
     const content = record.message?.content;
     if (record.type === "vertex_provider_response") {
+      if (current && record.response?.model) current.model = bareModel(record.response.model, record.provider || provider);
       if(current && record.scope === "cli_run") {
         const estimates = require("./usage-report").cliEstimates(record.provider || provider, record.response);
         if(estimates.length) {
@@ -175,6 +190,10 @@ function parseSession(text, file) {
       } else if (current) current.details.push({ type: record.scope === "request_error" ? "Request failed" + (record.response?.model_step ? " at model step " + record.response.model_step : "") : "Provider usage (" + record.scope + ")",
         ...(record.scope === "request_error" ? { failed: true } : {}),
         text: prettyJson({ provider: record.provider, response: record.response }) });
+      continue;
+    }
+    if (record.type === "vertex_screenshot_descriptions") {
+      if (current && Array.isArray(record.vertex_screenshots)) current.screenshots = record.vertex_screenshots;
       continue;
     }
     if (record.type === "vertex_decision") {
@@ -231,7 +250,8 @@ function parseSession(text, file) {
           key: name + ":" + session.prompts.length, provider, branch: record.vertex_branch || "main", parent: record.vertex_parent || null,
           turnId: typeof record.vertex_turn === "string" ? record.vertex_turn : null,
           relatedTurnId: typeof record.vertex_related_turn === "string" ? record.vertex_related_turn : null,
-          text: prompt.trim(), operation: String(record.vertex_operation || "Chat"), model: "", usage: emptyUsage(), details: [], objects: record.vertex_objects || [],
+          text: prompt.trim(), operation: String(record.vertex_operation || "Chat"), model: bareModel(record.message?.model, provider), displayModel: typeof record.message?.model_label === "string" && record.message.model_label.trim() ? record.message.model_label.trim() : bareModel(record.message?.model, provider),
+          selectedModelId: typeof record.message?.model === "string" ? record.message.model : "", hasModelLabel: typeof record.message?.model_label === "string" && !!record.message.model_label.trim(), usage: emptyUsage(), details: [], objects: record.vertex_objects || [],
           screenshots: Array.isArray(record.vertex_screenshots) ? record.vertex_screenshots : [],
           // Model calls and tool calls in the order they happened.
           timeline: [] };
@@ -269,7 +289,7 @@ function parseSession(text, file) {
       if (current) sumUsage(current.usage, message.usage);
     }
     if (current) {
-      if (message.model) current.model = String(message.model);
+      if (message.model) current.model = bareModel(message.model, provider);
       if (Number.isFinite(time)) current.end = Math.max(current.end || time, time);
       for (const block of Array.isArray(content) ? content : []) {
         if (block?.type === "text" && block.text) current.details.push({ type: "answer", text: String(block.text), objects: record.vertex_objects || [] });
@@ -376,7 +396,7 @@ function readSessions(root, filter = {}) {
       item.session=parseSession(fs.readFileSync(file,"utf8"),entry.name);
       cached.set(entry.name,item);
     }
-    if (item.session) sessions.push({ ...item.session, prompts: item.session.prompts.map(prompt => ({ ...prompt })) });
+    if (item.session) sessions.push({ ...item.session, current: currentNames.has(entry.name), prompts: item.session.prompts.map(prompt => ({ ...prompt })) });
   }
   for (const name of cached.keys()) if (!liveFiles.has(name)) cached.delete(name);
   sessionFileCache.set(cacheKey, cached);
@@ -587,10 +607,14 @@ async function tagTopics(vscode, sessionId) {
 /** The report as the list shows it: every prompt without the parts only an opened prompt needs. */
 function listReport(report) {
   return { ...report, sessions: report.sessions.map(session => ({ ...session,
-    prompts: session.prompts.map(({ details, timeline, events, decision, ...prompt }) => ({ ...prompt, flow: require("./log-flow").summary({ ...prompt, details, timeline, events, decision }), toolCalls: (details || []).filter(d => d.type === "tool").length, text: require("./topic-routing").observations(prompt.text).question.slice(0,2000),
+    prompts: session.prompts.map(({ details, timeline, events, decision, ...recorded }) => {
+      const displayModel = !recorded.hasModelLabel && modelCatalogs.get(session.provider)?.get(recorded.selectedModelId) || recorded.displayModel;
+      const prompt = { ...recorded, displayModel };
+      return { ...prompt, flow: require("./log-flow").summary({ ...prompt, details, timeline, events, decision }), toolCalls: (details || []).filter(d => d.type === "tool").length, text: require("./topic-routing").observations(prompt.text).question.slice(0,2000),
       sections: ["User",...(details?.some(d=>d.type==="answer")?["Model answer"]:[]),
         ...(details?.some(d=>d.type==="tool"||d.type==="tool result")||timeline?.some(t=>t.kind==="model")?["Steps"]:[]),
-        ...(details||[]).filter(d=>!["answer","tool","tool result"].includes(d.type)).map(d=>d.snapshot?(d.snapshot.kind==="uml"?"Recorded UML":"Recorded metrics"):d.type==="Model request and context"?"Request and context":d.type)], lazy: true })) })) };
+        ...(details||[]).filter(d=>!["answer","tool","tool result"].includes(d.type)).map(d=>d.snapshot?(d.snapshot.kind==="uml"?"Recorded UML":"Recorded metrics"):d.type==="Model request and context"?"Request and context":d.type)], lazy: true };
+    }) })) };
 }
 
 /* Where the chat is working now, in the shape the log records. Session Logs opens on that place, so one
@@ -613,7 +637,10 @@ function currentPlace(vscode) {
   } catch (_) { return null; }
 }
 
-let panel;
+let panel, redrawLivePanel;
+function resetLiveConversation(conversationId) {
+  if (panel) void panel.webview.postMessage({ action: "resetLiveConversation", conversationId });
+}
 function sessionContext(root,id){
   if(typeof id!=="string"||!/^[\w.-]{1,240}$/.test(id))return null;
   const resolved=require("./session-log").resolveRoot(root);if(!resolved)return null;
@@ -625,7 +652,8 @@ function open(vscode, options = {}, context) {
   if(options.openSessionId&&!options.openSessionContext){const place=sessionContext(root,options.openSessionId);options={...options,openSessionContext:place,openSessionPlace:options.openSessionPlace||placeKey(place)||"none"};}
   if (panel) {
     panel.reveal(options.fullScreen ? vscode.ViewColumn.One : vscode.ViewColumn.Beside, false);
-    if(options.openSessionId)void panel.webview.postMessage({action:"openConversation",id:options.openSessionId,conversationId:options.openConversationId||"",mode:options.openSessionMode||"logs",live:options.openSessionLive===true,placeKey:options.openSessionPlace||"",place:options.openSessionContext||null,date:options.openSessionDate||""});
+    if (options.openSessionId && options.openSessionLive && redrawLivePanel) redrawLivePanel(options);
+    else if(options.openSessionId)void panel.webview.postMessage({action:"openConversation",id:options.openSessionId,conversationId:options.openConversationId||"",mode:options.openSessionMode||"logs",live:options.openSessionLive===true,placeKey:options.openSessionPlace||"",place:options.openSessionContext||null,date:options.openSessionDate||""});
     return panel;
   }
   panel = vscode.window.createWebviewPanel("vertex.logReport", "VERTEX: Logs & Cost", options.fullScreen ? vscode.ViewColumn.One : vscode.ViewColumn.Beside,
@@ -644,7 +672,21 @@ function open(vscode, options = {}, context) {
   let pendingOpenSessionId=options.openSessionId||"", pendingOpenConversationId=options.openConversationId||"", pendingOpenSessionMode=options.openSessionMode||"logs", pendingOpenSessionLive=options.openSessionLive===true, pendingOpenSessionDate=options.openSessionDate||"";
   const initialDate=/^\d{4}-\d\d-\d\d$/.test(pendingOpenSessionDate)?pendingOpenSessionDate:dateKey(Date.now());
   let activeRange={from:initialDate,to:initialDate,placeKey:options.openSessionPlace||placeKey(currentPlace(vscode))};
-  let full = null, promptIndex = new Map(), lastState = null, refreshing = false, refreshPending = false, ready = false, disposed = false;
+  let full = null, promptIndex = new Map(), lastState = null, refreshing = false, refreshPending = false, ready = false, disposed = false, generation = 0;
+  redrawLivePanel = target => {
+    generation++;
+    ready = false;
+    lastState = null;
+    pendingOpenSessionId = target.openSessionId;
+    pendingOpenConversationId = target.openConversationId || "";
+    pendingOpenSessionMode = target.openSessionMode || "flow";
+    pendingOpenSessionLive = true;
+    pendingOpenSessionDate = target.openSessionDate || "";
+    options = target;
+    const date = /^\d{4}-\d\d-\d\d$/.test(pendingOpenSessionDate) ? pendingOpenSessionDate : dateKey(Date.now());
+    activeRange = { from: date, to: date, placeKey: target.openSessionPlace || placeKey(currentPlace(vscode)) };
+    view.webview.html = view.webview.html;
+  };
   // Check metadata only while visible. Do not reparse an unchanged log folder every second.
   const logState = async (root, filter) => {
     const resolved = require("./session-log").resolveRoot(root);
@@ -664,20 +706,22 @@ function open(vscode, options = {}, context) {
         files.push(...results.filter(Boolean));
       } catch (error) { if (error.code !== "ENOENT") throw error; }
     }
-    return JSON.stringify([folder, files.sort((a,b) => a[0].localeCompare(b[0]))]);
+    return JSON.stringify([folder, modelCatalogRevision, [...currentNames].sort(), files.sort((a,b) => a[0].localeCompare(b[0]))]);
   };
   const refresh = async (automatic = false) => {
     if (disposed || automatic && (!ready || !view.visible)) return;
     if (refreshing) { refreshPending = true; return; }
     refreshing = true;
+    const refreshGeneration = generation;
     try {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
       const state = await logState(root, activeRange);
-      if (disposed || automatic && (!view.visible || state === lastState)) return;
+      if (disposed || refreshGeneration !== generation || automatic && (!view.visible || state === lastState)) return;
       full = readSessions(root, activeRange);
       promptIndex = new Map(full.sessions.flatMap(session => session.prompts).map(prompt => [prompt.key,prompt]));
       const delivered = await view.webview.postMessage({ action: "data", automatic,
         usageRows: require("./usage-report").readUsage(root, activeRange).rows, report: { ...listReport(full), current: currentPlace(vscode) } });
+      if (disposed || refreshGeneration !== generation) return;
       if(pendingOpenSessionId){const id=pendingOpenSessionId,conversationId=pendingOpenConversationId,mode=pendingOpenSessionMode,live=pendingOpenSessionLive,placeKey=options.openSessionPlace||"",place=options.openSessionContext||null,date=pendingOpenSessionDate;pendingOpenSessionId="";await view.webview.postMessage({action:"openConversation",id,conversationId,mode,live,placeKey,place,date});}
       if (delivered !== false) lastState = state;
     } catch (error) {
@@ -822,7 +866,7 @@ function open(vscode, options = {}, context) {
       await refresh();
     }
   });
-  panel.onDidDispose(() => { disposed = true; clearInterval(timer); visibility?.dispose(); if (panel === view) panel = undefined; });
+  panel.onDidDispose(() => { disposed = true; clearInterval(timer); visibility?.dispose(); if (panel === view) { panel = undefined; redrawLivePanel = undefined; } });
   return panel;
 }
 
@@ -833,4 +877,4 @@ function register(vscode, context, options) {
     openSessionDate:/^\d{4}-\d\d-\d\d$/.test(target.date||"")?target.date:""} : options, context)));
 }
 
-module.exports = { listReport, tagTopics, parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns, conversationList, currentPlace, placeKey };
+module.exports = { listReport, setModelCatalog, tagTopics, parseSession, readSessions, register, open, resetLiveConversation, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns, conversationList, currentPlace, placeKey };

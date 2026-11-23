@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.112",
+  "version": "0.9.115",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -1115,7 +1115,7 @@
         "vertex.ai.shellWithoutAsking": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Run the Code Agent's shell commands in its git working copy without asking. Off by default. The working copy keeps file changes for review, but a command can still reach outside it: an absolute path into your folder, git commands on the shared repository (commit, branch, reset, stash, push), the network. A folder outside git always asks."
+          "markdownDescription": "Run the Code Agent's shell commands in its working copy and selected project folder without asking, including builds and commands before a review copy exists. Off by default. Other execution directories still ask. Commands are not sandboxed: they can modify the real project, access other files, run git commands (commit, branch, reset, stash, push), and use the network. Only working-copy changes wait for Apply; direct project changes do not. File edit/write review is unchanged."
         },
         "vertex.animations": {
           "type": "string",

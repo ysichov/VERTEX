@@ -168,10 +168,14 @@ the copy lack ignored files (`node_modules`, build output) and can fail there.
 
 In both, the assistant is told to read files with its read and search tools and to change them only
 with its edit tools, never through the shell. A shell command (a build, a test run) asks in a VS Code
-dialog showing the command; **Allow** runs it, closing the dialog refuses it. In a git working copy
-the setting `vertex.ai.shellWithoutAsking` (off by default) runs the commands without asking: file
-changes they make still come to the review, but a command can reach outside the copy - an absolute
-path into your folder, git commands on the shared repository, the network. While the assistant has a folder, the VERTEX panel shows it as **Folder** beside
+dialog showing the command; **Allow** runs it, closing the dialog refuses it. Enable
+`vertex.ai.shellWithoutAsking` in Settings (off by default) to skip this dialog for commands in the
+selected project and its working copy, including project builds and commands before a copy exists.
+This also applies to a selected non-git folder; file edit/write review is unchanged. Other execution
+directories, such as an external logs folder, still ask. Commands are not sandboxed: they can access
+other files, shared git state and the network. Working-copy changes wait for review; direct project
+changes are already applied and do not wait for **Apply**. A project build still cannot run while
+working-copy edits remain unapplied. While the assistant has a folder, the VERTEX panel shows it as **Folder** beside
 **SAP system** (the full path on hover); the SAP system stays the one its SAP tools use. Project rules in `AGENTS.md` and `CLAUDE.md` apply. Claude Code can additionally load its personal instructions according to its settings. A SAP tab, or a file outside the workspace, works as
 before, through VERTEX's SAP tools: a change goes into its editor tab unsaved, and you review it
 and use Save & Activate or Review & Activate.

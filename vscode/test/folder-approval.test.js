@@ -28,7 +28,8 @@ test("a command asks in a modal dialog naming it; dismissing it denies", async (
   const result = await approval.set(vscodeAnswering("Allow", asked))
     .call({}, "approve_action", { tool_name: "Bash", input: { command: "npm test" } });
   assert.deepEqual(decision(result), { behavior: "allow", updatedInput: { command: "npm test" } });
-  assert.match(asked[0].text, /npm test/);
+  assert.equal(asked[0].text, "VERTEX assistant: Run command");
+  assert.match(asked[0].options.detail, /npm test/);
   assert.equal(asked[0].options.modal, true);
   const denied = await approval.set(vscodeAnswering(undefined, []))
     .call({}, "approve_action", { tool_name: "Bash", input: { command: "rm x" } });

@@ -101,7 +101,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
     discard() { discarded = true; },
     /* A question; screenshots pasted with it are part of it: with the questions option each is saved as a file in
        the conversation's folder beside the log (<log name>/screenshot-<n>.<ext>), without it only counted. */
-    user(text, images) {
+    user(text, images, model, modelLabel) {
       const objects = [];
       const content = on.questions ? sanitizeText(protection.text(text), objects) : NOT_LOGGED;
       const pasted = Array.isArray(images) ? images.filter(image => image && typeof image.data === "string" && image.data) : [];
@@ -116,8 +116,14 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
           return { file: target, media_type: image.media_type || "image/png", ...(typeof image.description === "string" ? { description: protection.text(image.description) } : {}) };
         });
       } else if (pasted.length) screenshots = pasted.map(image => ({ media_type: image.media_type || "image/png" }));
-      write({ type: "user", message: { role: "user", content }, vertex_objects: objects, ...(screenshots ? { vertex_screenshots: screenshots } : {}) });
+      write({ type: "user", message: { role: "user", content, ...(model ? { model: String(model) } : {}), ...(typeof modelLabel === "string" && modelLabel.trim() ? { model_label: modelLabel.trim() } : {}) }, vertex_objects: objects, ...(screenshots ? { vertex_screenshots: screenshots } : {}) });
       return screenshots || [];
+    },
+    screenshotDescriptions(screenshots, images) {
+      if (!on.questions || !Array.isArray(screenshots) || !screenshots.length) return;
+      write({ type: "vertex_screenshot_descriptions", vertex_screenshots: screenshots.map((shot, index) => ({
+        ...shot, ...(typeof images[index]?.description === "string" ? { description: protection.text(images[index].description) } : {})
+      })) });
     },
     interjection(text, timestamp) {
       const objects = [];
@@ -497,6 +503,7 @@ function reset(continued, branch) {
   branchId = branch?.id || "main";
   branchParent = branch?.parent || null;
   conversationId = typeof continued === "string" && /^[\w.:-]{1,320}$/.test(continued) ? continued : newConversationId();
+  return conversationId;
 }
 
 function discardFiles(files) {

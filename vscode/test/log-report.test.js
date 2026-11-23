@@ -51,7 +51,10 @@ test("visible log report follows file changes, retries failures and stops pollin
     await tick(); assert.equal(posted.length, 0, "wait for webview ready");
     await receive({ action: "ready" });
     assert.equal(posted.at(-1).report.sessions.length, 0, "missing log directory is supported");
-    await tick(); assert.equal(posted.length, 1, "unchanged folder is not republished");
+    sandbox.module.exports.resetLiveConversation("next-conversation");
+    assert.equal(posted.at(-1).action, "resetLiveConversation");
+    assert.equal(posted.at(-1).conversationId, "next-conversation");
+    await tick(); assert.equal(posted.length, 2, "unchanged folder is not republished");
     fs.mkdirSync(folder);
     write("codex_live.jsonl", [{ type: "user", message: { content: "New question" } }]);
     await tick();
@@ -79,6 +82,181 @@ test("visible log report follows file changes, retries failures and stops pollin
     assert.equal(posted.at(-1).report.folder, path.join(configuredRoot, "claude_compatible"));
     dispose(); assert.equal(timers.size, 0); assert.equal(visibility, null);
   } finally { dispose(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("AI magic redraws an existing report and opens the requested live session after ready", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-redraw-"));
+  const folder = path.join(root, "claude_compatible");
+  fs.mkdirSync(folder);
+  fs.writeFileSync(path.join(folder, "codex_new.jsonl"), JSON.stringify({ timestamp: new Date().toISOString(), type: "user", vertex_conversation: "new-chat", message: { content: "New prompt" } }) + "\n");
+  const posted = [];
+  let receive, dispose, html = "", assignments = 0;
+  const realRequire = require("node:module").createRequire(path.join(__dirname, "../log-report.js"));
+  const fakeFs = { ...fs, readFileSync(file, ...args) {
+    const relative = path.relative(path.join(__dirname, "../resources"), String(file));
+    if (!relative.startsWith("..") && !path.isAbsolute(relative)) file = path.join(__dirname, "../../org.vertex.abap.ui/resources", relative);
+    return fs.readFileSync(file, ...args);
+  } };
+  const panel = { visible: true, webview: {
+    get html() { return html; }, set html(value) { html = value; assignments++; },
+    postMessage: async message => { posted.push(message); return true; }, onDidReceiveMessage: fn => { receive = fn; }
+  }, onDidDispose: fn => { dispose = fn; }, reveal() {} };
+  const vscode = { ViewColumn: { One: 1, Beside: 2 }, workspace: { getConfiguration: () => ({ get: (key, fallback) => key === "logPath" ? root : fallback }) },
+    window: { createWebviewPanel: () => panel } };
+  const sandbox = { module: { exports: {} }, __dirname: path.join(__dirname, ".."),
+    require: name => name === "fs" ? fakeFs : name === "./usage-report" ? { ...realRequire(name), browserEngine: () => "" } :
+      name === "./review-jev" ? { enabled: () => false } : realRequire(name),
+    setInterval: () => 1, clearInterval() {} };
+  vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../log-report.js"), "utf8"), sandbox);
+  try {
+    sandbox.module.exports.open(vscode);
+    await receive({ action: "ready" });
+    const before = posted.length;
+    sandbox.module.exports.open(vscode, { openSessionId: "codex_new", openConversationId: "new-chat", openSessionMode: "flow", openSessionLive: true });
+    assert.equal(assignments, 2, "the existing webview is reloaded");
+    assert.equal(posted.length, before, "wait for the replacement page");
+    sandbox.module.exports.open(vscode, { openSessionId: "codex_new", openConversationId: "new-chat", openSessionMode: "flow", openSessionLive: true });
+    assert.equal(assignments, 3, "repeated clicks replace the pending redraw");
+    await receive({ action: "ready" });
+    assert.equal(posted.at(-2).action, "data");
+    assert.equal(posted.at(-2).report.sessions[0].prompts[0].text, "New prompt");
+    assert.equal(posted.at(-1).action, "openConversation");
+    assert.equal(posted.at(-1).id, "codex_new");
+    assert.equal(posted.at(-1).conversationId, "new-chat");
+    assert.equal(posted.at(-1).live, true);
+    sandbox.module.exports.open(vscode, { openSessionId: "history", openSessionLive: false });
+    assert.equal(assignments, 3, "historical navigation does not reload the panel");
+    assert.equal(posted.at(-1).id, "history");
+  } finally { dispose(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("chat live logs follow the next conversation while historical logs remain pinned", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const start = page.indexOf("      // Only the chat's live view follows");
+  const code = page.slice(start, page.indexOf("      lastRenderedRecords = render", start));
+  const sandbox = { conversationState: { id: "old", mode: "flow", live: true }, pendingConversationOpen: null,
+    contextKey: place => place?.folder || "",
+    m: { report: { sessions: [
+      { id: "recognition", current: true, relatedConversation: "new", prompts: [{ operation: "Chat" }] },
+      { id: "new", conversation: "next", current: true, context: { mode: "folder", folder: "/project" }, prompts: [{ operation: "Chat" }] }
+    ] } } };
+  vm.createContext(sandbox);
+  vm.runInContext(page.slice(page.indexOf("  var chat = function"), page.indexOf("  function chatStep(")), sandbox);
+  const update = () => vm.runInContext(code, sandbox);
+  update();
+  assert.equal(sandbox.pendingConversationOpen.id, "new");
+  assert.equal(sandbox.pendingConversationOpen.conversationId, "next");
+  assert.equal(sandbox.pendingConversationOpen.mode, "flow");
+  assert.equal(sandbox.pendingConversationOpen.live, true);
+  assert.equal(sandbox.pendingConversationOpen.placeKey, "/project");
+  sandbox.pendingConversationOpen = null;
+  sandbox.conversationState.live = false; update();
+  assert.equal(sandbox.pendingConversationOpen, null, "historical conversations stay pinned");
+  sandbox.conversationState.live = true;
+  sandbox.pendingConversationOpen = { id: "historical" }; update();
+  assert.equal(sandbox.pendingConversationOpen.id, "historical", "explicit navigation wins");
+  sandbox.pendingConversationOpen = null;
+  sandbox.m.report.sessions = []; update();
+  assert.equal(sandbox.pendingConversationOpen, null, "reset waits for the next logged prompt");
+  sandbox.m.report.sessions = [{ id: "old", current: true, prompts: [{ operation: "Chat" }] }]; update();
+  assert.equal(sandbox.pendingConversationOpen, null, "same conversation retains its reading state");
+});
+
+test("new chat immediately clears only the live view and waits for its own prompt", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const start = page.indexOf('    if (m.action === "resetLiveConversation"');
+  const end = page.indexOf('    if (m.action === "openConversation")', start);
+  assert.ok(start > 0 && end > start);
+  const children = [], dialog = { close() { this.closed = true; } };
+  const screen = { hidden: false, set textContent(value) { assert.equal(value, ""); children.length = 0; }, appendChild(item) { children.push(item); } };
+  let disposed = 0;
+  const sandbox = { m: { action: "resetLiveConversation", conversationId: "next" },
+    conversationState: { id: "old", mode: "flow", live: true }, pendingConversationOpen: { id: "old" },
+    deferredReport: {}, pendingReadingScroll: {}, flowDetailVersion: 0, conversationScreen: screen,
+    flowDispose() { disposed++; }, closeConversation() {}, el: (_tag, _class, text) => ({ text }),
+    document: { querySelectorAll: () => [dialog], body: { classList: { add() {} } } } };
+  vm.createContext(sandbox);
+  vm.runInContext(page.slice(start, end), sandbox);
+  assert.equal(disposed, 1); assert.equal(dialog.closed, true);
+  assert.equal(sandbox.conversationState.waiting, true);
+  assert.equal(sandbox.conversationState.conversationId, "next");
+  assert.equal(sandbox.conversationState.mode, "flow");
+  assert.equal(sandbox.pendingConversationOpen, null);
+  assert.match(children[1].text, /Waiting/);
+  sandbox.conversationState = { id: "historical", live: false }; children.length = 0;
+  vm.runInContext(page.slice(start, end), sandbox);
+  assert.equal(children.length, 0, "historical view stays pinned");
+  assert.equal(sandbox.conversationState.id, "historical");
+  assert.match(page, /if \(!conversationState\?\.waiting\) closeConversation\(false\)/);
+  assert.match(page, /if \(conversationState && !conversationState\.waiting\)/);
+});
+
+test("live waiting state follows the matching conversation, not stale or related sessions", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const start = page.indexOf("      // Only the chat's live view follows");
+  const code = page.slice(start, page.indexOf("      lastRenderedRecords = render", start));
+  const sandbox = { conversationState: { id: "", conversationId: "next", mode: "flow", live: true, waiting: true },
+    pendingConversationOpen: null, contextKey: () => "", m: { report: { sessions: [
+      { id: "old", conversation: "old", current: true, prompts: [{ operation: "Chat" }] },
+      { id: "recognition", conversation: "next", current: true, relatedConversation: "next", prompts: [{ operation: "Chat" }] }
+    ] } } };
+  vm.createContext(sandbox);
+  vm.runInContext(page.slice(page.indexOf("  var chat = function"), page.indexOf("  function chatStep(")), sandbox);
+  vm.runInContext(code, sandbox);
+  assert.equal(sandbox.pendingConversationOpen, null);
+  sandbox.m.report.sessions.push({ id: "new", conversation: "next", current: true, prompts: [{ operation: "Chat" }] });
+  vm.runInContext(code, sandbox);
+  assert.equal(sandbox.pendingConversationOpen.id, "new");
+  assert.equal(sandbox.pendingConversationOpen.mode, "flow");
+});
+
+test("opening a historical log explicitly disables previous live following", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const start = page.indexOf("    conversationState = { id: session.id");
+  const code = page.slice(start, page.indexOf("    // Capture Flow", start));
+  const sandbox = { session: { id: "one" }, requestedMode: "logs", previous: { mode: "flow", live: true }, chosenTopic: "all", requestedLive: false };
+  vm.createContext(sandbox);
+  vm.runInContext(code, sandbox);
+  assert.equal(sandbox.conversationState.live, false);
+  sandbox.requestedLive = undefined;
+  vm.runInContext(code, sandbox);
+  assert.equal(sandbox.conversationState.live, true, "automatic reopening preserves live mode");
+});
+
+test("Flow model inspector loads linked text and paired tools through the existing detail bridge", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const sandbox = { flowDetailVersion: 0, richText: text => ({ text }), objectLinks() {},
+    el: (_tag, _class, text) => ({ text }), detailSection: detail => ({ metadata: detail.text }),
+    appendToolEntry: (parent, detail) => parent.appendChild({ tool: detail.type }),
+    loadPromptDetails(prompt, done) { prompt.lazy = false; done(); } };
+  vm.createContext(sandbox);
+  vm.runInContext(page.slice(page.indexOf("  function showFlowDetail("), page.indexOf("  function flowView(")), sandbox);
+  const children = [], inspector = { isConnected: true, appendChild(item) { children.push(item); item.remove = () => children.splice(children.indexOf(item), 1); } };
+  const prompt = { lazy: true, events: [{ kind: "note", model: { text: "Reasoning" } }], details: [
+    { type: "answer", text: "Answer" }, { type: "tool", tool_id: "x" }, { type: "tool result", tool_id: "x", text: "Result" }
+  ] };
+  sandbox.showFlowDetail(prompt, { kind: "model", detailIndices: [0, 1], noteEventIndices: [0], model: { id: "response" } }, inspector);
+  assert.deepEqual(children.slice(0, 4).map(item => item.text || item.tool), ["Reasoning", "Answer", "tool", "tool result"]);
+  assert.match(children[4].metadata, /response/);
+  children.length = 0;
+  sandbox.showFlowDetail(prompt, { kind: "model", detailIndices: [], model: { id: "empty" } }, inspector);
+  assert.match(children[0].text, /Only response metadata/);
+  assert.doesNotMatch(children[0].text, /No detail body was logged for this stage/);
+});
+
+test("reopening a conversation captures Flow before detaching its viewport", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const start = page.indexOf("    conversationState = { id: session.id");
+  const end = page.indexOf('    var head = el("div", "conversation-screen-head");', start);
+  let attached = true, captured = false;
+  const sandbox = { session: { id: "one" }, requestedMode: "flow", previous: { live: true }, chosenTopic: "all", requestedLive: true,
+    flowDispose() { assert.equal(attached, true); captured = true; },
+    conversationScreen: { set textContent(value) { assert.equal(captured, true); attached = false; } } };
+  vm.createContext(sandbox);
+  vm.runInContext(page.slice(start, end), sandbox);
+  assert.equal(sandbox.flowDispose, null);
+  assert.equal(attached, false);
 });
 
 test("automatic log updates wait for the Flow detail dialog to close and retain only the latest report", () => {

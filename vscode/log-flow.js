@@ -3,6 +3,9 @@
 // The log's lightweight graphical index and browser renderer. Full source and answer bodies
 // stay behind the promptDetail bridge; the index carries short summaries of service results.
 (function (root) {
+  function modelName(prompt) {
+    return prompt.displayModel || prompt.model || prompt.provider || "Model unknown";
+  }
   function timeBreakdown(prompt) {
     const total = Number.isFinite(prompt.time) && Number.isFinite(prompt.end) ? Math.max(0, prompt.end - prompt.time) : 0;
     const open = new Map(), intervals = [];
@@ -22,6 +25,36 @@
     toolMs = Math.min(total, toolMs);
     return { totalMs: total, toolMs, modelHostMs: total - toolMs, incompleteTools: open.size > 0 };
   }
+  // A CLI run is an aggregate, not another model call. Show only fields the provider recorded.
+  function providerUsage(detail) {
+    if (!/^Provider usage \(cli_run\)$/.test(detail?.type || "")) return [];
+    let data;
+    try { data = JSON.parse(detail.text); } catch { return []; }
+    const response = data?.response;
+    if (!response || typeof response !== "object") return [];
+    const lines = [], numeric = value => typeof value === "number" && Number.isFinite(value) && value >= 0;
+    const money = value => "$" + value.toLocaleString("en-US", { maximumFractionDigits: 8, useGrouping: false });
+    if (numeric(response.total_cost_usd)) lines.push((data.provider === "codemie" ? "Estimated" : "Provider-reported") + " run cost · " + money(response.total_cost_usd));
+    const tokens = (usage, fields) => fields.filter(([key]) => numeric(usage?.[key]))
+      .map(([key, label]) => usage[key].toLocaleString() + " " + label).join(" · ");
+    const total = tokens(response.usage, [["input_tokens", "input"], ["output_tokens", "output"], ["cache_read_input_tokens", "cache read"], ["cache_creation_input_tokens", "cache write"]]);
+    if (total) lines.push("Run tokens · " + total);
+    if (response.modelUsage && typeof response.modelUsage === "object" && !Array.isArray(response.modelUsage)) {
+      for (const [model, usage] of Object.entries(response.modelUsage).slice(0, 50)) {
+        const parts = tokens(usage, [["inputTokens", "input"], ["outputTokens", "output"], ["cacheReadInputTokens", "cache read"], ["cacheCreationInputTokens", "cache write"]]);
+        const cost = numeric(usage?.costUSD) ? (data.provider === "codemie" ? "estimated " : "provider-reported ") + money(usage.costUSD) : "";
+        if (parts || cost) lines.push(String(model).slice(0, 120) + " · " + [parts, cost].filter(Boolean).join(" · "));
+      }
+    }
+    return lines;
+  }
+
+  function recognitionText(text) {
+    const value = String(text || "");
+    try { const parsed = JSON.parse(value); return typeof parsed?.answer === "string" ? parsed.answer : value; }
+    catch { return value; }
+  }
+
   function summary(prompt) {
     const details = prompt.details || [], timeline = prompt.timeline || [];
     const calls = details.filter(d => d.type === "tool");
@@ -52,21 +85,53 @@
       return { kind: "tool", label: "Tool " + (++toolNumber) + " · " + (call?.name || "unknown"),
         detail: String(detail).replace(/\s+/g, " ").slice(0, 100), time: eventTime(details.indexOf(call)) };
     });
-    let noteEventIndex = null, notePreview = "";
+    let noteEventIndex = null, notePreview = "", modelRound = 0;
     const eventItems = (prompt.events || []).map((event, order) => {
       if (event.kind === "note") {
         noteEventIndex = order;
+        const text = (prompt.operation === "Screenshot recognition" ? recognitionText(event.model?.text) : String(event.model?.text || "")).replace(/\s+/g, " ").trim();
         notePreview = String(event.model?.text || "").split(/\r?\n/).map(line => line.trim()).find(Boolean)?.slice(0, 110) || "";
         return { kind: "note", title: "Thinking", time: event.time || prompt.time || 0, order,
-          preview: notePreview, noteEventIndex, notePreview, state: "recorded" };
+          preview: text.slice(0, 600), noteEventIndex, notePreview, state: "recorded" };
       }
       // Provider responses are model-processing steps. Hiding them makes tool calls
       // look as if they happened before the model was started.
-      if (event.kind === "model") return { kind: "model", title: "LLM processing",
-        time: event.time || prompt.time || 0, order, model: event.model,
-        label: [prompt.model || prompt.provider || "Model", event.model?.usage?.output_tokens
-          ? Number(event.model.usage.output_tokens).toLocaleString() + " output tokens" : "Response received"].join(" · "),
-        state: "recorded" };
+      if (event.kind === "model") {
+        const events = prompt.events || [], detailIndices = [], noteEventIndices = [];
+        let end = order + 1;
+        while (end < events.length && events[end].kind !== "model" && events[end].kind !== "request") end++;
+        // CLI text can arrive before its response metadata. Consecutive notes immediately
+        // before the next response belong to that response, not the preceding tool round.
+        let trailingNotes = end;
+        if (events[end]?.kind === "model") while (trailingNotes > order + 1 && events[trailingNotes - 1].kind === "note") trailingNotes--;
+        for (let index = order - 1; index >= 0 && events[index].kind === "note"; index--) noteEventIndices.unshift(index);
+        for (let index = order + 1; index < end; index++) {
+          const item = events[index], detail = details[item.detail];
+          if (detail?.type === "answer" || detail?.type === "tool") detailIndices.push(item.detail);
+          if (item.kind === "note" && index < trailingNotes) noteEventIndices.push(index);
+        }
+        const round = ++modelRound, linked = detailIndices.map(index => details[index]);
+        const toolCalls = linked.filter(detail => detail.type === "tool");
+        const compact = value => String(value || "").replace(/\s+/g, " ").trim();
+        const text = linked.filter(detail => detail.type === "answer").map(detail => detail.text || "").join("\n")
+          || noteEventIndices.map(index => events[index].model?.text || "").join("\n");
+        const toolPreview = toolCalls.slice(0, 3).map(detail => {
+          const input = detail.input || {}, name = detail.name || "Tool";
+          return name + (input.description || input.file_path || input.pattern || input.command
+            ? ": " + compact(input.description || input.file_path || input.pattern || input.command).slice(0, 70) : "");
+        }).join(" · ");
+        const outcome = toolCalls.length ? toolCalls.length + (toolCalls.length === 1 ? " tool call" : " tool calls")
+          : text ? "Text response" : "Metadata only";
+        const usage = event.model?.usage || {}, tokenInfo = [];
+        for (const [key, label] of [["input_tokens", "in"], ["output_tokens", "out"]]) {
+          if (Number.isFinite(usage[key])) tokenInfo.push(Number(usage[key]).toLocaleString() + " " + label);
+        }
+        return { kind: "model", title: "LLM processing · round " + round,
+          time: event.time || prompt.time || 0, order, model: event.model, detailIndices, noteEventIndices, round, toolCount: toolCalls.length,
+          preview: compact(toolPreview || (prompt.operation === "Screenshot recognition" ? recognitionText(text) : text)).slice(0, 360),
+          label: [modelName(prompt), outcome, ...tokenInfo].join(" · "),
+          state: "recorded" };
+      }
       if (event.kind === "user_interjection") return { kind: "user_interjection", title: "User addition",
         time: event.time || prompt.time || 0, order, preview: event.text || "Question text not logged",
         label: event.state === "sent" ? "Added to the next model request" : "Queued · not yet sent to the model", state: "recorded" };
@@ -86,19 +151,19 @@
       const preview = event.kind === "request"
         ? String(prompt.text || "").replace(/\s+/g, " ").slice(0, 180)
         : detail?.type === "answer"
-          ? String(detail.text || "").replace(/\s+/g, " ").slice(0, 180)
+          ? (prompt.operation === "Screenshot recognition" ? recognitionText(detail.text) : String(detail.text || "")).replace(/\s+/g, " ").slice(0, 180)
           : detail?.type === "thinking"
-            ? String(detail.text || "").split(/\r?\n/).map(line => line.replace(/^\s*(?:#{1,6}\s+|[-*]\s+|\d+[.)]\s+)/, "").replace(/\*\*/g, "").trim()).find(Boolean)?.slice(0, 110) || ""
+            ? String(detail.text || "").split(/\r?\n/).map(line => line.replace(/^\s*(?:#{1,6}\s+|[-*]\s+|\d+[.)]\s+)/, "").replace(/\*\*/g, "").trim()).filter(Boolean).join(" ").slice(0, 600)
             : "";
       let operationPreview = "", operationDiff = null;
       if (event.kind === "tool" && detail) {
-        const result = details.find(item => item.type === "tool result" && item.tool_id === detail.tool_id);
+        const result = detail.tool_id ? resultOf(detail) : null;
         let input = detail.input || {};
         if (!Object.keys(input).length && detail.text) {
           try { input = JSON.parse(String(detail.text).slice(String(detail.text).indexOf("\n") + 1)); } catch { input = {}; }
         }
         const compact = value => String(value || "").replace(/\s+/g, " ").trim();
-        if (detail.name === "Edit" && typeof input.old_string === "string" && typeof input.new_string === "string") {
+        if (detail.name === "Edit" && result && !result.failed && typeof input.old_string === "string" && typeof input.new_string === "string") {
           const before = input.old_string.split(/\r?\n/), after = input.new_string.split(/\r?\n/);
           let start = 0;
           while (start < before.length && start < after.length && before[start] === after[start]) start++;
@@ -120,13 +185,26 @@
                 added: after.slice(prefix, after.length - suffix), suffix: suffix ? before.slice(-suffix) : "" };
             }) };
         } else {
-          const request = Object.entries(input).filter(([, value]) => typeof value === "string" && value.trim())
-            .map(([key, value]) => key + ": " + compact(value)).join(" · ");
-          const answer = compact(result?.text || "");
-          operationPreview = [request && "Request: " + request, answer && "Result: " + answer.slice(0, 150)].filter(Boolean).join("\n");
+          let answer = result?.text || "";
+          let data = answer;
+          for (let depth = 0; depth < 4 && typeof data === "string"; depth++) {
+            try { data = JSON.parse(data); } catch { break; }
+          }
+          if (data && typeof data === "object" && !Array.isArray(data)) {
+            if (detail.name === "Bash") {
+              const code = typeof data.code === "number" ? "Exit code: " + data.code : "";
+              const output = data.code !== 0 && data.stderr ? data.stderr : data.stdout || data.stderr;
+              answer = [code, data.output_truncated ? "Output truncated" : "", output].filter(Boolean).join(" · ");
+              if (!answer) answer = result.text;
+            } else answer = JSON.stringify(data);
+          } else if (typeof data === "string") answer = data;
+          answer = compact(answer);
+          operationPreview = answer ? "Result: " + answer.slice(0, 240) : result ? "Result recorded (empty)" : "Result not recorded";
         }
       }
+      const usagePreview = providerUsage(detail);
       return { kind: event.kind, title: String(title).replace(/\s+/g," ").slice(0,110), time: event.time || prompt.time || 0, order,
+        ...(usagePreview.length ? { usagePreview: usagePreview.slice(0, 4) } : {}),
         ...(preview ? { preview } : {}), ...(operationPreview ? { operationPreview } : {}), ...(operationDiff ? { operationDiff } : {}), detailIndex: event.detail, detailIndices: event.kind === "request" ? event.details : undefined,
         skillName: detail?.routing?.skill || detail?.routing?.candidate, skillStatus: detail?.routing?.status,
         skillProbability: detail?.routing?.probability,
@@ -157,7 +235,7 @@
         ...(d.section ? { section: d.section } : {}),
         ...(d.verification?.status ? { state: d.verification.status } : {}) })),
       models: models.length, cliTurns: models.filter(t => t.usageScope === "cli_turn").length, stepItems, eventItems,
-      answerPreview: prompt.operation === "Screenshot recognition" ? answerText.replace(/\s+/g, " ").slice(0, 130) : "",
+      answerPreview: prompt.operation === "Screenshot recognition" ? recognitionText(answerText).replace(/\s+/g, " ").slice(0, 130) : "",
       jevOutcome: /Jev/i.test(prompt.operation || "") && choice ? (probability ? "P " + probability + " · " : "")
         + (confidence ? "C " + confidence + " · " : "") + choice : "",
       tools: calls.filter(d => !checks.includes(d) && !reviews.includes(d)).length,
@@ -249,20 +327,21 @@
     events.forEach((event,index)=>{
       if (duplicates.has(index) || event.kind === "tool_result" && paired.has(event.detailIndex)) return;
       if (event.kind === "tool" && results.has(event.toolId)) paired.add(results.get(event.toolId).detailIndex);
-      items.push({...event,title:event.kind === "request" ? (prompt.model || prompt.provider || "Model") + " request with system prompt and tools" : event.title,
+      items.push({...event,title:event.kind === "request" ? (modelName(prompt)) + " request with system prompt and tools" : event.title,
         label:event.kind === "tool" ? event.operationPreview || "Open for details" : event.kind === "request"
-        ? [prompt.model || prompt.provider || "Model",prompt.contextSize?.estimatedTokens ? "≈ "+Number(prompt.contextSize.estimatedTokens).toLocaleString()+" context tokens" : "Prepared context"].join(" · ")
+        ? [modelName(prompt),prompt.contextSize?.estimatedTokens ? "≈ "+Number(prompt.contextSize.estimatedTokens).toLocaleString()+" context tokens" : "Prepared context"].join(" · ")
         : event.title === "Skill search" ? event.skillStatus === "skill"
           ? "Matched " + (event.skillName || "project skill") + " · previous messages excluded"
           : "No match" + (event.skillName ? " · " + event.skillName : "") + (Number.isFinite(event.skillProbability) ? " · " + Math.round(event.skillProbability*100) + "%" : "")
         : event.kind === "model" || event.kind === "user_interjection" ? event.label
-        : event.title === "Response" && event.preview ? "" : "Recorded event"});
+        : event.usagePreview?.length || event.title === "Response" && event.preview ? "" : "Recorded event"});
     });
     children.forEach((child,index)=>items.push({kind:/Jev/i.test(child.operation||"")?"jev":"vertex",title:child.operation === "Topic routing with Jev" ? "Choose topic · Jev" : child.operation === "Skill match with Jev" ? "Skill search" : child.operation||"Technical step",
-      label:child.flow?.jevOutcome || child.flow?.answerPreview || String(child.model||child.provider||""),time:child.time||0,order:-1000+index,prompt:child,state:"recorded"}));
+      label:child.flow?.jevOutcome || child.flow?.answerPreview || modelName(child),time:child.time||0,order:-1000+index,prompt:child,state:"recorded"}));
     const openingRank=item=>item.kind==="user"?0:item.kind==="screenshot"?1:2;
     items.sort((a,b)=>openingRank(a)-openingRank(b)||a.time-b.time||a.order-b.order);
-    return items.map((item,index)=>({...item,stepNumber:index+1}));
+    let toolNumber = 0;
+    return items.map((item,index)=>({...item,stepNumber:index+1, ...(item.kind === "tool" ? { toolNumber: ++toolNumber } : {})}));
   }
 
   function groupPrompts(all) {
@@ -337,6 +416,7 @@
     dialogHead.append(dialogTitle, close); dialog.append(dialogHead, inspector); shell.appendChild(dialog);
     rootElement.appendChild(shell);
     let renderer = null, scene = null, camera = null, geometry = null, frame = 0, disposed = false, page = 0, zoom = 1, selectedKey = "", view = "steps";
+    const revealTimers = new Set();
     const followRight = options?.followRight === true;
     let followedWidth = null;
     const pageSize = 48, prompts = groupPrompts(session.prompts || []), meshes = [], nodes = [];
@@ -429,7 +509,11 @@
       if (!dialog.open) dialog.showModal();
       options.details(prompt, node, inspector);
     }
+    let viewportRestored = false;
     function layout() {
+      const scrollLeft = viewportRestored ? viewport.scrollLeft : Number(state.scrollLeft) || 0;
+      const scrollTop = viewportRestored ? viewport.scrollTop : Number(state.scrollTop) || 0;
+      revealTimers.forEach(timer => win.clearTimeout(timer)); revealTimers.clear();
       release(); world.replaceChildren(); nodes.length = 0;
       visiblePrompts=prompts.map((group,index)=>({group,index})).filter(({group})=>selectedTopic==="all"||group.prompt.topic?.id===selectedTopic);
       if(view==="step"&&visiblePrompts.length&&!visiblePrompts.some(item=>item.index===selectedPrompt))selectedPrompt=visiblePrompts[0].index;
@@ -439,7 +523,7 @@
         const prompt = group.prompt;
         if (view === "context") return contextStages(prompt, shownEntries[index].index + 1);
         const technical = item => ({ kind: /Jev/i.test(item.operation || "") ? "jev" : /Orchestrator|Recovery/i.test(item.operation || "") ? "vertex" : "tool", title: item.operation || "Technical step",
-          label: item.flow?.jevOutcome || (item.operation === "Screenshot recognition" ? item.flow?.answerPreview : "") || String(item.model || item.provider || ""),
+          label: item.flow?.jevOutcome || (item.operation === "Screenshot recognition" ? item.flow?.answerPreview : "") || modelName(item),
           section: "User", state: "recorded", prompt: item, time: item.time || 0 });
         const normalize = value => String(value || "").replace(/ \(Jev\)/, " with Jev").toLowerCase();
         if (prompt.flow?.eventItems?.length) {
@@ -448,7 +532,7 @@
             const flow = prompt.flow, lastAnswer = (prompt.details || []).filter(detail => detail.type === "answer" && detail.text).pop();
             const answerPreview = lastAnswer?.text || flow.answerPreview;
             if (answerPreview && !timeline.some(node => node.detailIndex === (prompt.details || []).lastIndexOf(lastAnswer) || node.title === "Response")) timeline.push({ kind: "answer", title: prompt.operation === "Screenshot recognition" ? "Image recognition result" : "LLM response",
-              label: String(answerPreview).replace(/\s+/g," ").slice(0,180), ...(lastAnswer ? { detailIndex: (prompt.details || []).lastIndexOf(lastAnswer) } : {}),
+              label: (prompt.operation === "Screenshot recognition" ? recognitionText(answerPreview) : String(answerPreview)).replace(/\s+/g," ").slice(0,180), ...(lastAnswer ? { detailIndex: (prompt.details || []).lastIndexOf(lastAnswer) } : {}),
               time: prompt.end || prompt.time || 0, order: Number.MAX_SAFE_INTEGER, state: prompt.failed ? "failed" : "recorded" });
             return timeline;
           }
@@ -457,29 +541,59 @@
         const main = stages(prompt).filter(node => node.kind === "prompt" || !group.children.some(item => normalize(item.operation) === normalize(node.title)));
         return main.concat(group.children.map(technical)).sort((a, b) => a.time - b.time);
       });
-      const modelName = prompt => prompt.model || prompt.provider || "Model unknown";
+      if (followRight && view === "step" && blocks[0]) {
+        const priorKeys = state.liveFlowKeys, deadlines = state.liveFlowDeadlines || (state.liveFlowDeadlines = {}), keys = [];
+        let nextDeadline = Math.max(Date.now(), ...Object.values(deadlines).filter(value => value > Date.now()).map(value => value + 120)), earliest = Infinity;
+        blocks[0].forEach(node => {
+          const key = String(shown[0]?.prompt?.key || shown[0]?.prompt?.time || "") + ":" + node.stepNumber + ":" + node.kind + ":" + node.title;
+          keys.push(key);
+          if (priorKeys && !priorKeys.includes(key) && node.kind === "tool") { deadlines[key] = nextDeadline; nextDeadline += 120; }
+          else if (priorKeys && !priorKeys.includes(key) && nextDeadline > Date.now() + 120) deadlines[key] = nextDeadline - 120;
+        });
+        state.liveFlowKeys = keys;
+        blocks[0] = blocks[0].filter(node => {
+          const key = String(shown[0]?.prompt?.key || shown[0]?.prompt?.time || "") + ":" + node.stepNumber + ":" + node.kind + ":" + node.title;
+          if (deadlines[key] > Date.now()) { earliest = Math.min(earliest, deadlines[key]); return false; }
+          delete deadlines[key]; return true;
+        });
+        if (Number.isFinite(earliest)) {
+          const timer = win.setTimeout(() => { revealTimers.delete(timer); if (!disposed) layout(); }, Math.max(1, earliest - Date.now()));
+          revealTimers.add(timer);
+        }
+      }
       const stepRuns = view === "step" ? (blocks[0] || []).reduce((runs, node, index) => {
         const isUser = node.kind === "user" || node.kind === "user_interjection" || node.kind === "screenshot";
-        const isModel = node.kind === "note" || node.kind === "answer" || node.kind === "request" || node.kind === "model"
-          || node.title === "Response" || /^Thinking(?: ·|$)/i.test(node.title || "");
+        const toolRound = node.kind === "model" && node.toolCount > 0;
+        const isModel = !toolRound && (node.kind === "note" || node.kind === "answer" || node.kind === "request" || node.kind === "model"
+          || node.title === "Response" || /^Thinking(?: ·|$)/i.test(node.title || ""));
         const side = isUser ? "User" : isModel ? modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}) : "VERTEX";
-        if (!runs.length || runs[runs.length - 1].side !== side) runs.push({ side, isModel, rows: [] });
+        if (!runs.length || runs[runs.length - 1].side !== side || toolRound) runs.push({ side, isModel, round: node.kind === "model" ? node.round : null, rows: [] });
         runs[runs.length - 1].rows.push(index);
         return runs;
       }, []) : [];
       const stepPositions = new Map();
-      stepRuns.forEach((run, column) => run.rows.forEach((row, stack) => stepPositions.set(row, { column, stack, side: run.side })));
-      const stepStackSize = Math.max(1, ...stepRuns.map(run => run.rows.length));
+      const stepHeight = () => 75;
+      stepRuns.forEach((run, column) => {
+        let y = 125;
+        run.rows.forEach(row => {
+          stepPositions.set(row, { column, y, side: run.side });
+          y += stepHeight(blocks[0][row]) + 24;
+        });
+        run.bottom = y;
+      });
+      const stepBottom = Math.max(299, ...stepRuns.map(run => run.bottom));
       const width = view === "step" ? Math.max(1236, stepRuns.length * 280 + 36) : Math.max(1, shown.length) * 280 + 24;
       const maxBlockTokens = Math.max(1, ...blocks.flat().filter(node => node.kind === "included" || node.kind === "excluded")
         .map(node => Number(node.estimatedTokens || 0)));
       const nodeHeight = node => view === "context" && node.kind === "section" ? 40 : view === "context" && (node.kind === "included" || node.kind === "excluded")
         ? 52 + Math.round(108 * Math.sqrt(Number(node.estimatedTokens || 0) / maxBlockTokens))
-        : view === "steps" && node.kind === "note" ? Math.max(40, Math.min(72, 28 + 14 * Math.ceil(String(node.preview || "").length / 42)))
+        : view === "steps" && node.usagePreview?.length ? Math.min(150, 50 + node.usagePreview.length * 22)
+          : view === "steps" && node.kind === "note" ? 150
           : view === "steps" && node.kind === "prompt" ? 92
             : view === "steps" && node.kind === "tool" ? node.operationDiff ? 92 : node.operationPreview ? 88 : 60
-              : view === "steps" && (node.kind === "screenshot" || node.preview && (node.kind === "request" || node.kind === "user" || node.kind === "user_interjection" || node.title === "Response")) ? 92 : 72;
-      const height = view === "step" ? Math.max(340, 125 + stepStackSize * 174 + 30) : Math.max(672, ...blocks.map(items => (view==="context"?242:88) + items.reduce((sum, node, row) => sum + nodeHeight(node) + 24 + (view === "steps" && node.kind === "tool" && items[row - 1]?.kind !== "note" && (items[row - 1]?.kind !== "tool" || items[row - 1]?.noteEventIndex !== node.noteEventIndex) ? 32 : 0), 0)));
+              : view === "steps" && node.kind === "model" ? 132
+                : view === "steps" && (node.kind === "screenshot" || node.preview && (node.kind === "request" || node.kind === "user" || node.kind === "user_interjection" || node.title === "Response")) ? 92 : 72;
+      const height = view === "step" ? Math.max(340, stepBottom + 30) : Math.max(672, ...blocks.map(items => (view==="context"?242:88) + items.reduce((sum, node, row) => sum + nodeHeight(node) + 24 + (view === "steps" && node.kind === "tool" && items[row - 1]?.kind !== "note" && (items[row - 1]?.kind !== "tool" || items[row - 1]?.noteEventIndex !== node.noteEventIndex) ? 32 : 0), 0)));
       const surface = color("--vscode-editorWidget-background"), border = color("--vscode-panel-border");
       shown.forEach((group, index) => {
         const prompt = group.prompt;
@@ -525,9 +639,8 @@
         }
         let cursorY = view==="context"?230:view === "step" ? 125 : 76;
         if (view === "step") stepRuns.forEach((run, column) => {
-          const owner = make("strong", "", run.side); owner.style.position = "absolute"; owner.style.left = 10 + column * stepWidth + "px";
+          const owner = make("strong", "", run.round != null ? "Round " + run.round : run.side); owner.style.position = "absolute"; owner.style.left = 10 + column * stepWidth + "px";
           owner.style.top = "96px"; owner.style.color = color(run.isModel ? "--vscode-charts-blue" : run.side === "User" ? "--vscode-charts-orange" : "--vscode-charts-green"); lane.appendChild(owner);
-        if (column < stepRuns.length - 1) plane(x + 10 + column * stepWidth + 260, 119, 20, 2, border, 1);
         });
         let thinkingGroup = null;
         recordedStages.forEach((node, row) => {
@@ -538,8 +651,9 @@
           const y = stepView ? 125 : cursorY, accent = color(node.state === "failed" ? "--vscode-errorForeground" : node.state === "unknown" || node.state === "unverified" ? "--vscode-descriptionForeground" : stepView && node.kind === "request" ? colors.included : (view === "steps" || stepView) && (node.kind === "request" || node.kind === "user" || node.kind === "user_interjection" || node.kind === "model") ? colors.request : (view === "steps" || stepView) && (node.kind === "answer" || node.title === "Response") ? colors.answer : view === "context" && (node.kind === "included" || node.kind === "excluded") ? colors[node.kind] : topicColor || colors[node.kind]);
           const isPrompt = node.kind === "prompt" && view === "steps";
           const stepPosition = stepView ? stepPositions.get(row) : null;
-          const blockWidth = stepView ? 260 : 236, left = stepView ? 10 + stepPosition.column * stepWidth : 12, blockHeight = stepView ? 150 : nodeHeight(node);
-          const stepY = stepView ? 125 + stepPosition.stack * 174 : y;
+          const compactRound = stepView && node.kind === "model" && node.toolCount > 0;
+          const blockWidth = stepView ? 260 : 236, left = stepView ? 10 + stepPosition.column * stepWidth : 12, blockHeight = stepView ? stepHeight(node) : nodeHeight(node);
+          const stepY = stepView ? stepPosition.y : y;
           if (!stepView) cursorY += blockHeight + (view === "steps" && node.kind === "note" ? 8 : 24);
           if (view === "steps" && (node.kind === "note" || node.kind === "tool" || node.kind === "model")) {
             if (node.kind === "note" || !thinkingGroup || thinkingGroup.dataset.noteEventIndex !== String(node.noteEventIndex)) {
@@ -567,8 +681,29 @@
           }
           if (row < recordedStages.length - 1) {
             if (stepView) {
-              const next = stepPositions.get(row + 1);
-              if (next.column === stepPosition.column) plane(x + left + 130, stepY + blockHeight + 5, 2, 19, border, 1);
+              const nextPosition = stepPositions.get(row + 1);
+              const nextLeft = 10 + nextPosition.column * stepWidth, nextY = nextPosition.y;
+              const nextHeight = stepHeight(recordedStages[row + 1]);
+              // DOM connectors survive the accessible/WebGL fallback and follow the world zoom.
+              const connection = make("div", "flow-connection");
+              connection.setAttribute("aria-hidden", "true");
+              connection.title = "recorded order";
+              Object.assign(connection.style, { position: "absolute", pointerEvents: "none", color: "var(--vscode-descriptionForeground)", background: "transparent" });
+              if (nextPosition.column === stepPosition.column) {
+                Object.assign(connection.style, { left: left + blockWidth / 2 + "px", top: stepY + blockHeight + "px", height: nextY - stepY - blockHeight + "px", borderLeft: "1px solid currentColor" });
+                const arrow = make("span", "", "↓");
+                Object.assign(arrow.style, { position: "absolute", bottom: "-2px", left: "-5px", background: "transparent" });
+                connection.appendChild(arrow);
+              } else {
+                const fromY = stepY + blockHeight / 2, toY = nextY + nextHeight / 2;
+                Object.assign(connection.style, { left: left + blockWidth + "px", top: Math.min(fromY, toY) + "px", width: "20px", height: Math.abs(fromY - toY) + "px" });
+                const outgoing = make("span"), vertical = make("span"), incoming = make("span", "", "→");
+                Object.assign(outgoing.style, { position: "absolute", left: "0", top: fromY - Math.min(fromY, toY) + "px", width: "10px", borderTop: "1px solid currentColor", background: "transparent" });
+                Object.assign(vertical.style, { position: "absolute", left: "10px", top: "0", height: "100%", borderLeft: "1px solid currentColor", background: "transparent" });
+                Object.assign(incoming.style, { position: "absolute", left: "9px", top: toY - Math.min(fromY, toY) - 9 + "px", width: nextLeft - left - blockWidth - 9 + "px", background: "transparent" });
+                connection.append(outgoing, vertical, incoming);
+              }
+              lane.appendChild(connection);
             } else plane(x + 24, y + blockHeight - 2, 2, 26, border, 1);
           }
           plane(x + left, stepY, blockWidth, blockHeight, accent, node.state === "unknown" ? .05 : node.kind === "excluded" ? .04 : .12);
@@ -581,21 +716,28 @@
           button.setAttribute("aria-label", (stepView ? "Prompt " + promptNumber + ", " : "Prompt " + promptNumber + ": ") + node.title + ", " + node.label);
           button.title = node.title + ": " + node.label;
           if (isPrompt) {
-            const modelName = [prompt.model, prompt.provider].filter(Boolean).join(" · ") || "Model unknown";
-            button.appendChild(make("span", "flow-model", modelName));
+            button.appendChild(make("span", "flow-model", modelName(prompt)));
             const promptText = make("span", "flow-prompt-text", node.label); button.appendChild(promptText);
             const info = usageLines(actualUsage);
             const footer = make("span", "flow-prompt-footer");
-            footer.appendChild(make("strong", "", (node.stepNumber ? "Step " + node.stepNumber + " · " : "") + "Prompt " + promptNumber + (view === "steps" && node.stepNumber ? " · " + recordedStages.length + " steps" : "")));
+            footer.appendChild(make("strong", "", "Prompt " + promptNumber));
             if (topicNumber) { const badge = make("span", "flow-topic-badge", "T" + topicNumber); badge.style.color = topicAccent; footer.appendChild(badge); }
             footer.appendChild(make("small", "flow-usage", info.join(" · ")));
             footer.title=info.join(" · ");
             button.appendChild(footer);
           } else {
             const sharedCard = view === "steps" || stepView;
-            const cardTitle = node.kind === "tool" ? node.title + (node.fileName ? " · " + node.fileName : "")
-              : node.kind === "note" ? "Thinking · " + (node.preview || "Assistant text") : node.title;
-            button.appendChild(make("strong", "", (sharedCard && node.stepNumber ? node.stepNumber + ". " : "") + cardTitle));
+            const cardTitle = compactRound ? modelName(target) + " · processing"
+              : node.kind === "tool" ? node.title + (node.fileName ? " · " + node.fileName : "")
+                : node.kind === "note" ? "Thinking" : node.title;
+            button.appendChild(make("strong", "", (sharedCard && node.kind === "tool" && node.toolNumber ? node.toolNumber + ". " : "") + cardTitle));
+            if (sharedCard && node.usagePreview?.length) {
+              button.appendChild(make("span", "flow-step-preview", node.usagePreview.join("\n")));
+            }
+            if (sharedCard && !compactRound && (node.kind === "model" || node.kind === "note") && node.preview) {
+              button.appendChild(make("span", "flow-step-preview", node.preview));
+              button.title += "\n" + node.preview;
+            }
             if ((stepView || view === "steps") && node.kind === "tool" && node.operationDiff) {
               const diff = make("span", "flow-step-preview flow-step-diff");
               node.operationDiff.changes.forEach(change => {
@@ -621,7 +763,8 @@
             if ((!sharedCard || node.kind !== "tool" && node.kind !== "note")
               && !(sharedCard && node.preview && (node.kind === "request" || node.kind === "user" || node.kind === "user_interjection" || node.title === "Response"))
               && !(sharedCard && node.kind === "screenshot")) {
-              if (node.label) button.appendChild(make("span", "", node.label));
+              if (node.label) button.appendChild(make("span", "", compactRound
+                  ? node.toolCount + (node.toolCount === 1 ? " tool call" : " tool calls") : node.label));
             } else if (node.kind === "tool" && node.explanation && !node.operationPreview && !node.operationDiff) button.appendChild(make("span", "", node.explanation));
             if (node.prompt && node.prompt !== prompt && node.prompt.usage) {
               const own = groupUsage({ prompt: node.prompt }, node.prompt.costKind === "jev" ? "jev" : "model");
@@ -640,6 +783,11 @@
       world.style.width = width + "px"; world.style.height = height + "px"; world.style.transform = "scale(" + zoom + ")";
       zoomLabel.textContent = Math.round(zoom * 100) + "%";
       space.style.width = width * zoom + "px"; space.style.height = height * zoom + "px";
+      // A remounted viewport has no scroll range until its content is sized.
+      // Rebuilding cards can also temporarily clamp an existing viewport to zero.
+      viewport.scrollLeft = scrollLeft; viewport.scrollTop = scrollTop;
+      viewportRestored = true;
+      lastScrollLeft = viewport.scrollLeft;
       if (followRight && view === "step") {
         const contentWidth = width * zoom, right = Math.max(0, contentWidth - viewport.clientWidth);
         if (followedWidth === null) { if(!followPaused&&state.scrollLeft==null)viewport.scrollLeft = right; }
@@ -691,20 +839,20 @@
       changeZoom(zoom * Math.exp(-event.deltaY / 320), event.clientX - bounds.left, event.clientY - bounds.top);
     };
     viewport.addEventListener("wheel", wheelZoom, { passive: false });
-    viewport.addEventListener("scroll", () => {
+    const onScroll = () => {
       const current=viewport.scrollLeft;
       if(followRight&&current<lastScrollLeft)followPaused=true;
       else if(followRight&&followPaused&&current>=Math.max(0,world.offsetWidth*zoom-viewport.clientWidth)-32)followPaused=false;
       lastScrollLeft=current;schedule();
-    });
+    };
+    viewport.addEventListener("scroll", onScroll);
     const resize = new win.ResizeObserver(schedule); resize.observe(stage);
     const theme = new win.MutationObserver(layout); theme.observe(doc.body, { attributes: true, attributeFilter: ["class", "style"] });
     const lost = event => { event.preventDefault(); shell.classList.add("flow-fallback"); hint.textContent = "Graphics context lost; flow blocks and details remain available."; };
     renderer?.domElement.addEventListener("webglcontextlost", lost);
-    viewport.scrollLeft = state.scrollLeft || 0; viewport.scrollTop = state.scrollTop || 0;
     setView(["steps", "context"].includes(state.view) ? state.view : "step");
-    return () => { Object.assign(state, { page, zoom, view, selectedPrompt, topicFilter: selectedTopic, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, followedWidth, followPaused }); disposed = true; if(dialog.open)dialog.close(); if (frame) win.cancelAnimationFrame(frame); resize.disconnect(); theme.disconnect(); viewport.removeEventListener("scroll", schedule); viewport.removeEventListener("wheel", wheelZoom); release(); geometry?.dispose(); renderer?.domElement.removeEventListener("webglcontextlost", lost); renderer?.dispose(); renderer?.forceContextLoss(); shell.remove(); };
+    return () => { Object.assign(state, { page, zoom, view, selectedPrompt, topicFilter: selectedTopic, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, followedWidth, followPaused }); disposed = true; revealTimers.forEach(timer => win.clearTimeout(timer)); revealTimers.clear(); if(dialog.open)dialog.close(); if (frame) win.cancelAnimationFrame(frame); resize.disconnect(); theme.disconnect(); viewport.removeEventListener("scroll", onScroll); viewport.removeEventListener("wheel", wheelZoom); release(); geometry?.dispose(); renderer?.domElement.removeEventListener("webglcontextlost", lost); renderer?.dispose(); renderer?.forceContextLoss(); shell.remove(); };
   }
-  const api = { summary, timeBreakdown, stages, contextStages, contextStats, chronologicalStages, groupPrompts, groupUsage, usageLines, mount };
+  const api = { summary, timeBreakdown, stages, contextStages, contextStats, chronologicalStages, groupPrompts, groupUsage, usageLines, providerUsage, mount };
   if (typeof module === "object" && module.exports) module.exports = api; else root.vertexLogFlow = api;
 })(typeof window === "object" ? window : globalThis);

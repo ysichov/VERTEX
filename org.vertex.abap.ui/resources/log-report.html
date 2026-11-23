@@ -233,9 +233,13 @@
   button.flow-node:hover { background: var(--vscode-list-hoverBackground); }
   button.flow-node:focus-visible, button.flow-node.selected { border-color: var(--vscode-focusBorder); outline: 1px solid var(--vscode-focusBorder); }
   .flow-step-lane .flow-lane-heading { top: 24px; }
-   .flow-step-lane .flow-node.flow-step-node { width: 260px; box-sizing: border-box; padding: 10px; }
+   .flow-step-lane .flow-node.flow-step-node { width: 260px; box-sizing: border-box; padding: 6px 10px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 42%, var(--vscode-editorWidget-background)); }
+   .flow-step-lane .flow-node.flow-step-node > strong { flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .flow-step-lane .flow-node.flow-step-node:focus-visible, .flow-step-lane .flow-node.flow-step-node.selected { border-color: var(--vscode-focusBorder); }
    .flow-step-lane .flow-node.flow-step-node span { overflow-wrap: anywhere; }
    .flow-node .flow-step-preview { display: -webkit-box; min-width: 0; color: var(--vscode-descriptionForeground); font-size: .72em; line-height: 1.25; white-space: pre-line; overflow-wrap: anywhere; -webkit-line-clamp: 5; -webkit-box-orient: vertical; }
+    .flow-node.flow-thinking-note .flow-step-preview { -webkit-line-clamp: 10; color: var(--vscode-charts-purple, var(--vscode-descriptionForeground)); }
+    .flow-node.model .flow-step-preview { -webkit-line-clamp: 7; }
     .flow-step-screenshot-tiles { display: flex !important; flex-direction: row; gap: 4px; min-width: 0; max-height: 42px; }
     .flow-step-screenshot-tile { display: flex !important; flex: 1 1 0; flex-direction: column; min-width: 0; padding: 3px 4px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editorWidget-background); }
     .flow-step-screenshot-tile strong { color: var(--vscode-descriptionForeground); font-size: .68em; }
@@ -248,9 +252,6 @@
    body.vscode-high-contrast .flow-node .flow-step-diff .flow-diff-removed { background: color-mix(in srgb, var(--vscode-diffEditor-removedTextBackground, transparent) 28%, var(--vscode-editor-background, #000)); }
    body.vscode-high-contrast .flow-node .flow-step-diff .flow-diff-added { background: color-mix(in srgb, var(--vscode-diffEditor-insertedTextBackground, transparent) 28%, var(--vscode-editor-background, #000)); }
    .flow-node .flow-step-diff > .flow-diff-empty { color: var(--vscode-descriptionForeground); border-color: var(--vscode-panel-border); }
-   .flow-step-lane .flow-lane-heading { top: 24px; }
-   .flow-step-lane .flow-node.flow-step-node { width: 260px; box-sizing: border-box; padding: 10px; }
-   .flow-step-lane .flow-node.flow-step-node span { overflow-wrap: anywhere; }
    .flow-node.unknown { border: 1px dashed var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
   .flow-node.excluded { border-style: dashed; border-color: var(--flow-accent); }
   .flow-fallback .flow-lane { background: var(--vscode-editorWidget-background); }
@@ -687,6 +688,14 @@ function markdown(text, target) {
     });
     if (request) vscode.postMessage({ action: "promptDetail", key: p.key });
   }
+  function recognitionText(text) {
+    var value = String(text || "");
+    try {
+      var parsed = JSON.parse(value);
+      if (parsed && typeof parsed.answer === "string") return parsed.answer;
+    } catch (_) { /* Older logs may contain plain text. */ }
+    return value;
+  }
   function serviceResult(p, target) {
     var pending=el("div","muted","Loading result…");target.appendChild(pending);
     loadPromptDetails(p,function(error){
@@ -695,7 +704,7 @@ function markdown(text, target) {
       var answers=(p.details||[]).filter(function(d){return d.type==="answer"&&d.text;});
       if(answers.length){answers.forEach(function(d){
         var table=p.decision?jevTable(d.text,p.decision):null;
-        target.appendChild(table||richText(d.text));objectLinks(target,d.objects);
+        target.appendChild(table||richText(p.operation === "Screenshot recognition" ? recognitionText(d.text) : d.text));objectLinks(target,d.objects);
       });return;}
       var visible=(p.details||[]).map(function(d){return detailSection(d,p,"");}).filter(Boolean);
       if(visible.length)visible.forEach(function(d){target.appendChild(d);d.open=true;});
@@ -971,6 +980,7 @@ function markdown(text, target) {
 
   // The rows of a conversation: chat questions and AI Review rounds, each a step of the chat in time order. Every other
   // request (Jev, recognition, commit message...) is a technical step of the question it belongs to.
+  var chat = function (p) { return p.operation === "Chat" || p.operation === "Web search"; };
   function chatStep(p){return p.operation==="Chat"||p.operation==="Web search"||p.operation==="AI Review";}
   function promptSteps(prompts){
     var chronological=prompts.slice().sort(function(a,b){return (a.time||0)-(b.time||0)||String(a.key||"").localeCompare(String(b.key||""));});
@@ -1290,6 +1300,27 @@ function markdown(text, target) {
 
   // Session Logs shows every conversation by default; the place is a filter the reader chooses. The chat's
   // own Continue a chat list is the opposite: it offers only the place the chat is working in.
+  function usageTable(lines) {
+    var wrap = el("div", "table-scroll"), table = el("table", "jev-table"), head = el("thead"), body = el("tbody"), header = el("tr");
+    ["Scope", "Metric", "Value"].forEach(function(label) { header.appendChild(el("th", "", label)); });
+    head.appendChild(header);
+    lines.forEach(function(lineText) {
+      var parts = lineText.split(" · "), scope = parts.shift();
+      if (parts.length === 1 && /run cost$/i.test(scope)) {
+        var costRow = el("tr"); costRow.append(el("td", "", "Run"), el("td", "", scope), el("td", "num", parts[0])); body.appendChild(costRow); return;
+      }
+      if (scope === "Run tokens") scope = "Run";
+      parts.forEach(function(part) {
+        var cost = /^(estimated|provider-reported)\s+(\$\S+)$/i.exec(part);
+        var match = /^(\S+)\s+(.+)$/.exec(part), row = el("tr");
+        row.appendChild(el("td", "", scope));
+        row.appendChild(el("td", "", cost ? cost[1] + " cost" : match ? match[2] : "Value"));
+        row.appendChild(el("td", "num", cost ? cost[2] : match ? match[1] : part));
+        body.appendChild(row);
+      });
+    });
+    table.append(head, body); wrap.appendChild(table); return wrap;
+  }
   function showFlowDetail(prompt, node, inspector) {
     var version = ++flowDetailVersion;
     function show() {
@@ -1297,11 +1328,31 @@ function markdown(text, target) {
       if(node.prompt){serviceResult(prompt,inspector);return;}
       if(node.kind==="note" && node.noteEventIndex!=null){
         var note=(prompt.events||[])[node.noteEventIndex]?.model;
-        if(note?.text){inspector.appendChild(richText(note.text));return;}
+        if(note?.text){inspector.appendChild(richText(prompt.operation === "Screenshot recognition" ? recognitionText(note.text) : note.text));return;}
       }
       if(node.kind==="user_interjection"){
         inspector.appendChild(el("p","",node.preview||"User text was not logged."));
         inspector.appendChild(el("p","muted",node.label||"Added to the active conversation."));
+        return;
+      }
+      if(node.kind==="model"){
+        var hasBody=false;
+        (node.noteEventIndices||[]).forEach(function(index){
+          var note=(prompt.events||[])[index]?.model;
+          if(note?.text){inspector.appendChild(richText(prompt.operation === "Screenshot recognition" ? recognitionText(note.text) : note.text));hasBody=true;}
+        });
+        (node.detailIndices||[]).forEach(function(index){
+          var recorded=(prompt.details||[])[index];
+          if(recorded?.type==="answer"){
+            inspector.appendChild(richText(prompt.operation === "Screenshot recognition" ? recognitionText(recorded.text) : recorded.text));objectLinks(inspector,recorded.objects);hasBody=true;
+          }else if(recorded?.type==="tool"){
+            appendToolEntry(inspector,recorded,prompt);hasBody=true;
+            var paired=(prompt.details||[]).find(function(item){return item.type==="tool result"&&item.tool_id===recorded.tool_id;});
+            if(paired)appendToolEntry(inspector,paired,prompt);
+          }
+        });
+        if(!hasBody)inspector.appendChild(el("p","muted","Only response metadata is available for this model step; no associated text or tool calls were logged."));
+        if(node.model){var metadata=detailSection({type:"Provider response metadata",text:JSON.stringify(node.model,null,2)},prompt,"");if(metadata)inspector.appendChild(metadata);}
         return;
       }
       if(node.kind==="request" && node.detailIndices){node.detailIndices.forEach(function(index){var part=detailSection((prompt.details||[])[index],prompt,"");if(part)inspector.appendChild(part);});return;}
@@ -1312,7 +1363,15 @@ function markdown(text, target) {
           if(recorded.type==="tool"){var paired=(prompt.details||[]).find(function(item){return item.type==="tool result"&&item.tool_id===recorded.tool_id;});if(paired)appendToolEntry(inspector,paired,prompt);}
           return;
         }
-        if(recorded?.type==="answer"){inspector.appendChild(richText(recorded.text));objectLinks(inspector,recorded.objects);return;}
+        if(recorded?.type==="answer"){inspector.appendChild(richText(prompt.operation === "Screenshot recognition" ? recognitionText(recorded.text) : recorded.text));objectLinks(inspector,recorded.objects);return;}
+        if(recorded && window.vertexLogFlow){
+          var usageLines=window.vertexLogFlow.providerUsage(recorded);
+          if(usageLines.length){
+            inspector.appendChild(usageTable(usageLines));
+            var raw=detailSection(recorded,prompt,"Raw ");if(raw)inspector.appendChild(raw);
+            return;
+          }
+        }
         if(recorded){var recordedSection=detailSection(recorded,prompt,"");if(recordedSection){inspector.appendChild(recordedSection);recordedSection.open=true;return;}}
       }
       if(node.title==="Conversation context" || node.title==="Context unavailable") { inspector.appendChild(el("p", "muted", node.label)); return; }
@@ -1330,7 +1389,7 @@ function markdown(text, target) {
       }
       if(node.kind==="answer"){
         var answer=(prompt.details||[]).filter(function(d){return d.type==="answer";}).pop();
-        if(answer){inspector.appendChild(richText(answer.text));objectLinks(inspector,answer.objects);return;}
+        if(answer){inspector.appendChild(richText(prompt.operation === "Screenshot recognition" ? recognitionText(answer.text) : answer.text));objectLinks(inspector,answer.objects);return;}
       }
       var detail=(prompt.details||[]).find(function(d){return d.type===node.title;});
       if(detail){var sectionNode=detailSection(detail,prompt,"");if(sectionNode){inspector.appendChild(sectionNode);sectionNode.open=true;return;}}
@@ -1407,7 +1466,9 @@ function markdown(text, target) {
     var topicIds=new Map();session.prompts.forEach(function(prompt){var topic=prompt.topic;if(topic&&topic.id&&!topicIds.has(topic.id))topicIds.set(topic.id,topic.label||"");});
     var chosenTopic=previous?.topic||listState.topic||"all";
     if(chosenTopic!=="all"&&!topicIds.has(chosenTopic))chosenTopic="all";
-    conversationState = { id: session.id, mode: requestedMode || (previous ? previous.mode : "logs"), topic:chosenTopic, live:requestedLive === true || Boolean(previous?.live) };
+    conversationState = { id: session.id, mode: requestedMode || (previous ? previous.mode : "logs"), topic:chosenTopic, live:requestedLive === undefined ? Boolean(previous?.live) : requestedLive === true };
+    // Capture Flow's viewport while it is still attached and has a scroll range.
+    if (flowDispose) { flowDispose(); flowDispose = null; }
     conversationScreen.textContent = "";
     var head = el("div", "conversation-screen-head");
     var back = el("button", "continue-session", "← Back");
@@ -1464,7 +1525,7 @@ function markdown(text, target) {
   });
   function render(report) {
     var preserveSelection = arguments[1];
-    closeConversation(false);
+    if (!conversationState?.waiting) closeConversation(false);
     if (typeof flowDispose === "function") { flowDispose(); flowDispose = null; }
     var from = document.getElementById("from").value, to = document.getElementById("to").value;
     document.getElementById("date-error").textContent = from && to && from > to ? "From date must be on or before To date." : "";
@@ -1581,7 +1642,6 @@ function markdown(text, target) {
     content.appendChild(tools);
     var actionPanel=el("div","list-tools conversation-actions");actionPanel.hidden=true;
     actionPanel.setAttribute("aria-label","Actions for the selected conversation");content.appendChild(actionPanel);
-    var chat = function (p) { return p.operation === "Chat" || p.operation === "Web search"; };
     // Technical conversations by kind (topic tagging, context optimization...): a checkbox each shows or hides that kind.
     var kindOf = function (s) { return String((s.prompts[0] && s.prompts[0].operation) || "Technical").replace(/ with Jev.*$/, ""); };
     var kinds = {};
@@ -1769,7 +1829,7 @@ function markdown(text, target) {
       var restored = records.find(function (r) { return r.item.id === flowSelectedId && !r.rows[0].hidden; });
       if (restored) restored.toggle();
     }
-    if (conversationState) {
+    if (conversationState && !conversationState.waiting) {
       var reopened = records.find(function (r) { return r.item.id === conversationState.id; });
       if (reopened) reopened.toggle(); else conversationState = null;
     }
@@ -1984,14 +2044,41 @@ function markdown(text, target) {
   window.addEventListener("message", function (event) {
     var m = event.data || {};
     if (m.action === "data" && m.automatic && document.querySelector("dialog[open]")) { deferredReport = m; return; }
+    if (m.action === "resetLiveConversation" && conversationState?.live && m.conversationId) {
+      deferredReport = null;
+      pendingConversationOpen = null;
+      pendingReadingScroll = null;
+      if (flowDispose) { flowDispose(); flowDispose = null; }
+      flowDetailVersion++;
+      document.querySelectorAll("dialog[open]").forEach(function (dialog) { dialog.close(); });
+      conversationState = { id:"", conversationId:String(m.conversationId), mode:conversationState.mode, live:true, waiting:true };
+      conversationScreen.textContent = "";
+      var back = el("button", "continue-session", "← Back");
+      back.type = "button"; back.onclick = function () { closeConversation(); };
+      conversationScreen.appendChild(back);
+      conversationScreen.appendChild(el("p", "muted", "Waiting for the new conversation's first prompt."));
+      conversationScreen.hidden = false;
+      document.body.classList.add("conversation-open");
+    }
     if (m.action === "openConversation") { pendingConversationOpen = { id:String(m.id || ""), conversationId:String(m.conversationId||""), mode:m.mode === "flow" ? "flow" : "logs", live:m.live===true, placeKey:String(m.placeKey||""), place:m.place&&typeof m.place==="object"?m.place:null, date:String(m.date||"") }; openRequestedConversation(); }
     if (m.action === "data") {
       deferredReport = null;
       var scrollX = window.scrollX, scrollY = window.scrollY;
       var anchor = m.automatic ? readingAnchor() : null;
-      var inside = conversationScroll();
+      var inside = conversationState?.waiting ? null : conversationScroll();
       rememberReading();
       lastReport = m.report; usageRows = m.usageRows || [];
+      // Only the chat's live view follows a reset conversation; saved logs stay pinned.
+      if (conversationState?.live && !pendingConversationOpen) {
+        var currentSession = (m.report.sessions || []).find(function (session) {
+          return session.current && !session.relatedConversation && session.prompts.some(chat)
+            && (!conversationState.waiting || session.conversation === conversationState.conversationId);
+        });
+        if (currentSession && currentSession.id !== conversationState.id) {
+          pendingConversationOpen = { id:currentSession.id, conversationId:currentSession.conversation || "", mode:conversationState.mode, live:true,
+            placeKey:contextKey(currentSession.context), place:currentSession.context || null, date:"" };
+        }
+      }
       lastRenderedRecords = render(m.report, m.automatic) || []; if (reportMode === "costs") renderCosts();
       openRequestedConversation();
       restoreReadingAnchor(anchor, scrollX, scrollY);

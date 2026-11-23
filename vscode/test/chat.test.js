@@ -16,7 +16,7 @@ for (const allow of [false, true]) test(`Folder build with SAP Orchestrator sele
  const vscode=fakeVscode({provider:'codex-subscription',model:'test-model'});
  vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];
  let approvals=0,executed=false,served;
- vscode.window.showWarningMessage=async(message,_options,choice)=>{approvals++;assert.match(message,/build/);return allow?choice:undefined;};
+ vscode.window.showWarningMessage=async(message,options,choice)=>{approvals++;assert.equal(message,'VERTEX assistant: Run command');assert.match(options.detail,/build/);return allow?choice:undefined;};
  const server={token:'test',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:set=>{served=set;return {route:'/chat/test',dispose(){}};}};
  t.mock.method(assistant,'ask',async options=>{
   assert.ok(options.tools.includes('Bash'));
@@ -58,6 +58,26 @@ test("Zero context sends the chat only and bypasses workspace tools and routing"
   await ask("Follow-up", {contextMode:"zero", routeTopics:true});
   assert.equal(requests, 2);
  } finally { await ask.dispose(); }
+});
+
+for (const provider of ['openai-api', 'claude-subscription']) test(`Zero context shows screenshot recognition before the ${provider} request`, async t => {
+ const vscode = fakeVscode({provider, model:'fixture'}), progress = [];
+ const images = [{media_type:'image/png', data:'aW1hZ2U='}];
+ t.mock.method(require('../topic-routing'), 'route', async () => assert.fail('Zero context must not route'));
+ t.mock.method(provider === 'openai-api' ? compatible : assistant, 'ask', async request => {
+  assert.equal(progress.length, 1, 'recognition must start before waiting for the provider');
+  assert.equal(progress[0].kind, 'recognize');assert.equal(progress[0].imageIndex, 0);
+  assert.match(progress[0].status, /Recognizing screenshot/);
+  assert.deepEqual(request.images, images);assert.deepEqual(request.tools, []);assert.equal(request.instructions, '');
+  request.onProgress({status:'Model request 1'});
+  return {plan:{answer:'Visible error'}, model:'fixture'};
+ });
+ const ask = chat.create(vscode, {editorContext:()=>assert.fail('Do not read editor context')},
+  {start:async()=>assert.fail('Do not start MCP')}, {get:async()=>null});
+ try {
+  assert.equal((await ask('', {contextMode:'zero', images, onProgress:update=>progress.push(update)})).answer, 'Visible error');
+  assert.equal(progress.length, 2);assert.equal(progress[1].status, 'Model request 1');
+ } finally {await ask.dispose();}
 });
 
 test('read-only Git folder chat does not create a review copy',async t=>{
@@ -1227,6 +1247,49 @@ test('screenshot-only task is recognized without history and enriches Jev and fu
  await ask('What failed?');assert.equal(calls.length,3);assert.equal(calls[2].images,undefined);
  assert.match(calls[2].prompt,/Save selected failed: Z_TILE_TRANSLATOR/);assert.match(calls[2].prompt,/screenshot\.png/);
  assert.doesNotMatch(calls[2].prompt,/aW1hZ2U=/);
+});
+
+test('live log contains the question while screenshot recognition is pending and records its description afterwards',async t=>{
+ const logger=require('../session-log'),report=require('../log-report');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-live-image-'));logger.reset();
+ let release,started;const waiting=new Promise(resolve=>{started=resolve;});const progress=[];
+ t.mock.method(assistant,'ask',async options=>{
+  if(options.images){started();await new Promise(resolve=>{release=resolve;});return {plan:{answer:'Visible error'},model:'test'};}
+  return {plan:{answer:'Answer'},model:'test'};
+ });
+ const vscode=fakeVscode({provider:'claude-subscription',model:'test',logPath:root,'log.questions':true,'log.answers':true});
+ const ask=chat.create(vscode,{schemas:[],instructions:'',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+ try{
+  const running=ask('Explain image',{images:[{media_type:'image/png',data:'aW1hZ2U='}],onProgress:update=>progress.push(update)});
+  await waiting;
+  const update=progress.find(item=>item.kind==='recognize');assert.ok(update.logSessionId);
+  let sessions=report.readSessions(root).sessions;let main=sessions.find(item=>item.id===update.logSessionId);
+  assert.equal(main.prompts[0].text,'Explain image');assert.equal(main.prompts[0].screenshots.length,1);
+  assert.ok(sessions.some(item=>item.relatedConversation===main.conversation&&item.prompts.some(p=>p.operation==='Screenshot recognition')));
+  release();await running;
+  sessions=report.readSessions(root).sessions;main=sessions.find(item=>item.id===update.logSessionId);
+  assert.equal(main.prompts.length,1);assert.equal(main.prompts[0].screenshots[0].description,'Visible error');
+ }finally{await ask.dispose();logger.reset();fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('screenshots added during processing are independently recognized before the next model step',async t=>{
+ const calls=[],progress=[];let ask,release,started;
+ const waiting=new Promise(resolve=>{started=resolve;});
+ t.mock.method(assistant,'ask',async options=>{
+  calls.push(options);
+  if(options.images)return {plan:{answer:'Visible error ADDED_SCREENSHOT'},model:'test'};
+  if(calls.length===1){started();await new Promise(resolve=>{release=resolve;});}
+  return {plan:{answer:'Helpful answer'},model:'test'};
+ });
+ ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test'}),{schemas:[],instructions:'PRIVATE_INSTRUCTIONS',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+ const running=ask('Inspect the problem');await waiting;
+ assert.equal(ask.interject('',null,[{media_type:'image/png',data:'PRIVATE_BYTES'}],update=>progress.push(update)),true);
+ assert.equal(progress[0].kind,'recognize');
+ release();await running;
+ assert.equal(calls.length,3);
+ assert.deepEqual(calls[1].tools,[]);assert.doesNotMatch(calls[1].prompt+calls[1].instructions,/PRIVATE_INSTRUCTIONS|Inspect the problem/);
+ assert.match(calls[2].prompt,/ADDED_SCREENSHOT/);assert.doesNotMatch(calls[2].prompt,/PRIVATE_BYTES/);
+ assert.equal(progress.at(-1).remove,true);
 });
 
 test('failed screenshot recognition stops before routing or answering from old history',async t=>{

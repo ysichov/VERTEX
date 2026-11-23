@@ -1,3 +1,121 @@
+## Prepare VSIX 0.9.115
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## 2026-11-23 — Number tool calls in Flow
+
+Searched the VS Code Flow renderer, chat progress and existing log numbering, plus Eclipse's assistant and shared report resources. Reused the chronological tool events and round grouping: tool numbers restart for each prompt and ignore other cards and paired results. Internal chronology indices remain for live reveal. Chat progress no longer invents a competing step number. Eclipse receives the shared renderer through its prepare script; no controls or styles changed.
+
+Focused Flow baseline: 27 of 29 passed, with chronology and body-free index failures. After updating the obsolete chronology assertion and adding coverage, 29 of 30 passed; the same body-free index failure remains, with no new failures. Chat-progress tests: 6 passed. Actual host rendering remains unverified; no package built.
+
+## 2026-11-23 — Redraw AI magic on demand
+
+Searched VS Code sidebar, log report and session refresh, plus Eclipse's report and shared resources. Reused the existing live-session command and webview panel: an AI magic click reloads an already open page, resets the date and place, and opens the requested conversation after the replacement page is ready. A generation check prevents an older in-flight refresh from opening the wrong session. Historical navigation still uses the existing message path; no controls or styles changed. Focused tests cover reload, repeated clicks, current log delivery and historical navigation. Actual VS Code interaction remains unverified; no package built.
+
+## 2026-11-23 — Clear live AI magic on chat reset
+
+Searched VS Code session logging, live report refresh and sidebar reset, plus Eclipse and shared report resources. Reused the existing live conversation view, Back button and current-session navigation; no new styling or control. Reset sends the new log conversation ID to an open report, immediately disposes the old Flow and closes its details, then waits for a matching main chat prompt. Explicit historical views remain pinned; stale and related sessions cannot replace the waiting view. Shared page changes apply to both hosts, while the reset notification originates in VS Code.
+
+Focused baseline: 67 tests, 52 pass and 15 fail; after preparing generated pages, 69 tests, 54 pass and the same 15 failing names. Five focused reset, logging and live-follow checks passed after the final test additions. Actual VS Code rendering and interaction remain unverified; no package built and version unchanged.
+
+## 2026-11-23 — Compact Step cards
+
+Searched both hosts' Flow renderers and shared report styles; reused the existing Step layout and connectors. Reduced the uniform Step card height from 150 to 75 pixels and clipped overflow while preserving the existing detail dialog. Timeline and Context sizing remain unchanged. Focused Flow tests: 27 of 29 passed, with the same two failures as the pre-change baseline (chronology and index body assertions). Actual host rendering in light and dark themes remains unverified; no package built.
+
+## 2026-11-23 — Readable live Flow details
+
+Searched both hosts' Flow renderers, report pages, shared resources and existing tables and animations. Reused the report table styling and rich-text renderer; recognition unwraps structured answer text while preserving plain-text logs. The Step layout uses equal card heights and staggers newly recorded live tool batches by 120 ms without delaying tool execution or replaying saved history. Raw provider usage remains available separately.
+
+Focused Flow tests: 27 passed, with the same two failures as the pre-change baseline (chronology and index body assertions). Actual host rendering in light and dark themes remains unverified; no package built.
+
+## 2026-11-23 — Open AI magic before screenshot recognition completes
+
+Searched VS Code chat/session logging and both hosts' Flow/report implementations and shared resources; reused the existing full-screen live Flow button, session grouping and refresh, without new controls or styles. The chat prompt and screenshot references are logged before recognition, and a later append-only record supplies descriptions without duplicating the prompt. Existing question-logging privacy settings remain in force. An early click is queued until the main session becomes available; the host also retains the session ID to avoid a message-order race. Early failures leave the original question and any recorded recognition failure visible.
+
+Focused regressions cover a deferred click, a pending recognition with a main prompt and linked recognition session, and continuation with descriptions. The final targeted run passed 18 tests. An earlier comparable baseline passed 15 of 16, with the pre-existing sidebar HTML test failing on an obsolete `context-mode` assertion; the same failure remained in a subsequent comparison. Actual VS Code host and theme rendering remain unverified; no package built and version unchanged.
+
+## 2026-11-23 — Result-first Flow tool cards
+
+Searched the VS Code Flow index and renderer, Eclipse assistant copy and shared log-report resources. Reused the existing paired tool results, bounded card preview and detail dialog; no new control or style. Bash previews extract the recorded exit code and stdout or error output, indicating truncation. Other tools show a bounded result, while successful recorded edits retain their existing diff; missing and empty results are labeled rather than inferred. Failed edits show the result rather than a proposed diff. Eclipse picks up the shared Flow source via prepare.js.
+
+Focused Flow baseline: 26 tests, 24 pass and 2 fail; after: 27 tests, 25 pass and the same 2 fail (chronology and body-free index), no new failures. The added test covers Bash, other tools, failed edits and absent or empty results. Actual host and theme rendering remains unverified; no package built, version unchanged.
+
+## 2026-11-23 — Flow panel model labels and tool-round text
+
+Searched both hosts and shared resources for model naming, catalog handling, Flow cards and existing previews. Reused the panel's provider catalog (`id`/`label`), selected model logging and existing Flow renderer. Chat saves the selected label alongside its ID when the catalog is already loaded. Older logs use an exact, provider-scoped catalog match during report generation, without altering response IDs or cost accounting; absent matches stay as recorded. Refresh reacts to catalog changes, and recorded labels take precedence over later catalogs. Tool-round cards have additional height, using the existing layout and connectors.
+
+Focused baseline: 48 tests, 46 pass and 2 fail; final: 50 tests, 48 pass and the same 2 fail (chronology and body-free index), no new failures. The new tests cover label logging, exact catalog matches, provider isolation and fallback. The separate chat catalog check passed for persistent APIs; the local catalog test failed before catalog loading at the existing memory fixture. Actual VS Code/Eclipse and light/dark rendering remain unverified; no package built, version unchanged.
+
+## 2026-11-23 — Flow card borders, compact events and CLI usage
+
+Searched the Flow renderer, shared log-report page, usage accounting and Eclipse-generated copies in both hosts. Reused the existing Flow cards, preview and detail section; the shared source is copied to both hosts during packaging. Step card borders mix active theme foreground and widget background; empty recorded details use compact heights and the same positioning/connector calculation. CLI aggregate previews extract only recorded values, distinguish CodeMie estimates from other provider-reported costs, and keep aggregate and per-model figures separate. Selecting a usage card shows the breakdown and retains raw JSON; missing or malformed usage remains a generic event.
+
+Focused Flow baseline: 24 tests, 22 pass and 2 fail; after: 25 tests, 23 pass and the same 2 fail (chronology expectation and body-free graph index), no new failures. The new test covers estimates, zero values, missing data and compact card layout. Actual VS Code/Eclipse and light/dark rendering remain unverified; no package built, version unchanged.
+
+## 2026-11-23 — Extend local shell autoapproval to the selected project
+
+Searched `vscode/`, `org.vertex.abap.ui/` and its shared resources for existing shellWithoutAsking handling and command approval. Reused the provider-independent local tool's canonical real-path execution targets and existing permission dialog; no new control, setting or helper. With strict boolean opt-in, commands in either the selected project or working copy skip approval regardless of lazy review-copy creation. Other execution directories retain approval. File edit/write review, cancellation checks, project diffs and the guard against builds omitting unapplied edits remain unchanged. Updated the setting description and local execution guide to disclose direct project mutations and the non-sandboxed shell.
+
+Focused baseline: 24 tests, 19 pass, 4 fail, 1 skipped. After: 25 tests, 22 pass, 2 fail, 1 skipped; no new failing names. Updated the fixture to read the existing modal detail and aligned target tests with the existing unapplied-build guard. New regression covers commands/builds/artifacts before and after review-copy creation, a selected non-git folder, and external-directory denial. Remaining pre-existing failures concern generated-page path mapping and output-log write rejection. `git diff --check` passed. Actual VS Code UI behavior remains unverified; no package built, version unchanged.
+
+## 2026-11-23 — Retarget chat-opened live logs after New chat
+
+Searched both hosts (`vscode/`, `org.vertex.abap.ui/` and shared resources) for live-session opening, current log files, conversation grouping and refresh handling. Reused the existing `current` session marker, pending conversation navigation, place filter and live Flow mode; no new control, style or helper. The shared report now queues the current main chat conversation when a live view receives its next logged prompt after reset. Related recognition/Jev sessions cannot become the target, and explicit navigation takes precedence. Explicit `live:false` clears prior following; automatic reopening with no live argument preserves it. Historical views remain pinned.
+
+Two added focused regressions passed. Baseline: 45 tests / 35 pass / 10 fail; final: 47 / 37 / 10 with identical failing names and no new failures. The first review-copy run had an additional missing generated `vscode/resources/log-report.html` failure; `copy-pages.js` prepared the shared assets before final verification. `git diff --check` passed. Actual VS Code/Eclipse behavior remains unverified; no package built, version unchanged.
+
+Review-check repair: moved the existing Chat/Web search predicate from the render-local scope to the shared script scope so the live-update message handler can call it. The regression now evaluates that actual declaration instead of supplying a fake `chat` global, which had masked the undefined reference. Both targeted live/historical regressions passed (2 tests, 2 pass, 0 fail); automatic host checks await rerun.
+
+## Prepare VSIX 0.9.114
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## Prepare VSIX 0.9.113
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## 2026-11-23 — Compact Step tool rounds under Round headings
+
+Searched both hosts and shared resources for Flow cards, processing labels, operation previews and Thinking headings; reused existing cards, theme colors, connectors and lazy detail selection rather than adding a separate control or style. Model index entries now retain round and linked tool-call count. In Step, each tool-calling round starts one VERTEX actor run with a 64-pixel processing summary above its tool cards, omitting duplicated tool-purpose previews. Column headings use Round N; the summary retains the panel model name and tool count. Text-only rounds and Steps previews remain available. Variable card heights drive positioning, graph height and connector endpoints; selecting summaries and calls preserves the existing detail bridge.
+
+Focused baseline: 23 tests / 21 pass / 2 fail; final: 24 / 22 / 2, with the same failing names (complete chronology expectation and body-free graph index expectation), no new failures. Regression coverage checks round headings, three-call and one-call groups, column sharing, compact heights, preview retention in Steps and model/tool detail selection. Actual host and light/dark rendering remain unverified; no packaging performed, version unchanged.
+
+## 2026-11-23 — Expand Flow text previews and preserve selected model names
+
+Searched both hosts (`vscode/`, `org.vertex.abap.ui/` and shared resources) for model labels, recorded user models, Thinking cards and preview styles. Reused the model saved by `session-log.user`, existing `bareModel` normalization and `flow-step-preview`. Parsing now preserves that selection as `displayModel` separately from response `model`; Flow labels and actor headings prefer the selection, without stripping dates or versions heuristically. Old logs without a selection fall back to their recorded model. Cost calculations and response metadata keep the exact model.
+
+Thinking cards have a short heading and up to 600 characters across paragraphs in their body, with the existing preview style allowing ten lines; Timeline reserves 150 pixels for them. Compact tool-group headings keep the existing first-line limit. Model text previews allow 360 characters and seven lines. No new controls or independent card style were introduced. Focused baseline: 21 tests / 19 pass / 2 fail; final: 23 / 21 / 2, with the same failing names (chronology expectation and body-free index expectation), no new failures. The new parser fixture initially omitted timestamps and was corrected; both added regressions then passed. Live host and light/dark rendering remain unverified; no build performed, version unchanged.
+
+## 2026-11-23 — Flow round summaries and chronological connectors
+
+Searched `vscode/`, `org.vertex.abap.ui/` and shared resources for response labels, Flow cards, previews and connectors. Reused the model-round detail/note linking, `flow-step-preview`, theme colors and lazy inspector. Round summaries now include at most three tool purposes (bounded excerpts), or 180 characters of associated text, and actual recorded token fields including zero; missing usage is not estimated. Full response/tool-result bodies remain in the inspector. Timeline model cards grow to fit the preview. No separate controls or card styles were added.
+
+Step's decorative lines between column headings were replaced by DOM directional connectors between consecutive numbered cards, including the final card of one actor run to the first of the next. These also work without WebGL and inherit theme foreground; they represent chronological order only, not causal dependencies. Two new regressions cover summary bounds, missing metadata, zero usage, previews and both connector directions in the fallback host. Focused baseline: 19 tests / 17 pass / 2 fail; after: 21 / 19 / 2, with identical failing names and no new failures. `git diff --check` passed. Actual VS Code/Eclipse light/dark rendering remains unverified; no build performed, version unchanged.
+
+## 2026-11-23 — Recognize active-run screenshot additions; bound approval headings
+
+Searched both hosts (`vscode/`, `org.vertex.abap.ui/` and shared resources) for screenshot recognition, task scenes and command approvals. Reused the isolated recognition request, shared `recognize` SVG scene, screenshot binding and native modal `detail` convention already used by code-workbench. The busy submit branch previously sent text only, leaving screenshot attachments behind. It now forwards screenshot-only or text/image additions and clears accepted input. The host restores rejected attachments. Recognition uses a separate auxiliary progress ID, which cannot change the main chat running state; completion removes that scene even on cancellation. Interjection consumption awaits recognition before injecting descriptions, never image bytes, into the next agent step. Providers without an initialized isolated recognizer (including Zero context) restore attachments for the next request rather than silently dropping them. Command approval uses a short fixed heading and full `describe()` text in `detail`, preserving Allow/deny/cancellation behavior.
+
+The new backend interjection regression and screenshot submission regression passed; seven targeted recognition/approval/Flow inspector tests passed, and the scene/submission pair passed. Same-suite baseline was 140 tests / 97 passed / 43 failed; final was 141 / 98 / 43 with identical failing names and no new failures. Existing baseline includes missing review-copy dependencies and legacy assertions; this is not a clean full-suite pass. Updated approval assertions to inspect native detail instead of the heading. Live VS Code/Eclipse and light/dark rendering were not checked; no package was built and the version is unchanged. Existing LLM processing detail handling was retained and its focused inspector regression passed.
+
+## 2026-11-23 — Link Flow model steps to logged response details
+
+Searched `vscode/`, `org.vertex.abap.ui/` and shared resources for model events, detail indices and the prompt-detail bridge. Reused `showFlowDetail`, `richText`, `objectLinks`, `appendToolEntry` and `detailSection`; no new controls or styles. Model summary nodes now carry detail/note indices bounded by the next model response or request. CLI notes immediately preceding response metadata attach to that response; tool calls reuse the existing result pairing. Full bodies remain behind the lazy prompt-detail bridge, and metadata-only steps have an explicit fallback. The screenshot session confirmed provider metadata precedes local tool steps while the final streamed note precedes its metadata.
+
+Three added regression tests passed, covering model-round isolation, duplicate metadata, pre/post-response notes, request boundaries, body-free indices, lazy inspector loading, paired tool results and the metadata-only fallback. Focused baseline: 61 tests / 49 passed / 12 failed. After generating the required shared page copies in the review folder: 64 / 52 / 12, identical failing names and no new failures. The initial review-copy run also failed because generated `vscode/resources/log-report.html` was absent; `copy-pages.js` resolved that prerequisite. `git diff --check` passed. Live VS Code/Eclipse rendering was not checked, no package was built, and the version is unchanged.
+
+## 2026-11-23 — Restore Flow scroll after layout, before following
+
+The Flow renderer restored offsets before its new viewport had any scrollable content, so the browser clamped them to zero on each remount. It now restores both offsets after sizing the world and scroll space, preserves them through card/theme relayouts, and resets the scroll observer's comparison point before reusing the existing smooth right-follow logic. Conversation reopening disposes the previous Flow while its viewport is still attached, and disposal removes the actual scroll listener. Searched `vscode/`, `org.vertex.abap.ui/` and shared resources for existing scroll/follow handling; reused the current renderer and follow behavior without new controls or styles.
+
+Three regression tests cover clamped remounts, appended-column smooth following, paused/manual reading, saved non-live positions, theme relayout and disposal-before-detachment. The focused two-file baseline was 58 tests / 45 passed / 13 failed; after the change it was 61 / 48 / 13, with identical failing test names and no new failures. Live VS Code/Eclipse rendering was not checked. No package was built; the current version is unchanged.
+
+## 2026-11-23 — Start the existing recognition scene in Zero context
+
+The early Zero-context branch bypassed the screenshot-recognition progress event used by ordinary chat, so its direct image request never selected the recognition scene. It now emits `kind: recognize` with the first attachment index before calling the provider and uses the shared progress reporter for subsequent updates. Reused the existing `paintTaskScene` attachment binding and `vertex-task-visual.js` scene after searching `vscode/`, `org.vertex.abap.ui/` and the shared resources; no new UI, animation or independent recognition request was introduced.
+
+Five focused tests passed, covering API/CLI progress ordering, Zero-context isolation, the shared animated scene and screenshot binding. The broader two-file baseline had 29 failures among 97 tests; its post-edit rerun was killed with SIGKILL, so a no-new-failure comparison is unverified. Live VS Code rendering was not checked; no VSIX was built and the version remains 0.9.113.
+
 ## 2026-11-22 — Correct Flow Step chronology and actor labels
 
 The Step timeline had grouped the user question under LLM and kept screenshots inside that card. It now creates a User run, adds compact screenshot nodes immediately after the question, and then orders recorded operations by time. Model-side runs and request cards use the prompt's recorded model name; VERTEX operations remain separately labeled. Screenshot tiles reuse the existing theme-aware tile styling. No build or runtime verification performed.

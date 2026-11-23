@@ -33,6 +33,31 @@ async function session(include) {
   return { raw, lines: raw.trim().split("\n").map(l => JSON.parse(l)) };
 }
 
+test("selected model ID and panel label survive logging independently of responses", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-model-label-"));
+  try {
+    const log = sessionLog.create(root, "codemie", "20261123_071208_abcdef", { questions: true });
+    log.user("Fix", undefined, "gpt-6.1-terra-2026-10-26", "GPT-6.1 Terra");
+    log.providerResponse({ provider: "codemie", scope: "model_response", response: { model: "actual-response-id" } });
+    const parsed = require("../log-report").parseSession(fs.readFileSync(log.file, "utf8"), log.file);
+    assert.equal(parsed.prompts[0].selectedModelId, "gpt-6.1-terra-2026-10-26");
+    assert.equal(parsed.prompts[0].displayModel, "GPT-6.1 Terra");
+    assert.equal(parsed.prompts[0].model, "actual-response-id");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("reset returns the identifier recorded on the next chat prompt", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-reset-log-"));
+  try {
+    const conversation = sessionLog.reset();
+    const log = sessionLog.current(root, "codemie", { questions: true });
+    log.user("New question");
+    const records = fs.readFileSync(log.file, "utf8").trim().split("\n").map(JSON.parse);
+    assert.ok(records.some(record => record.vertex_conversation === conversation));
+    assert.notEqual(sessionLog.reset(), conversation);
+  } finally { sessionLog.reset(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("no folder, no log", () => {
   assert.equal(sessionLog.create("", "claude"), null);
 });

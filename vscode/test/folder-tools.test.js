@@ -8,7 +8,7 @@ function fixture(t, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-local-tools-"));
   const page = {}, asked = [];
   const vscode = { workspace: { getConfiguration: () => ({ get: (key, fallback) => key === 'logPath' ? root : fallback }) }, ViewColumn: { Beside: 2 }, window: {
-    showWarningMessage: options.showWarningMessage || (async text => { asked.push(text); return options.allow ? "Allow" : undefined; }),
+    showWarningMessage: options.showWarningMessage || (async (text, details) => { asked.push(text + "\n" + (details?.detail || "")); return options.allow ? "Allow" : undefined; }),
     createWebviewPanel: () => ({ webview: { html: "", onDidReceiveMessage: fn => { page.send = fn; }, postMessage: async () => {} },
       onDidDispose: fn => { page.close = fn; }, dispose: () => page.close(), reveal() {} }) } };
   const steps = [];
@@ -282,26 +282,46 @@ test('commands default to the copy, builds default to the real project, and expl
  const command=process.platform==='win32'?'(Get-Location).Path':'pwd';
  const diagnostic=await agent.call('Bash',{command,purpose:'command'});
  assert.equal(diagnostic.cwd,fs.realpathSync(root));assert.equal(diagnostic.target,'working_copy');assert.equal(asked.length,0);
- const build=await agent.call('Bash',{command,purpose:'build'});
- assert.equal(build.cwd,fs.realpathSync(project));assert.equal(build.target,'project');assert.equal(fs.realpathSync(build.stdout.trim()),build.cwd);
- assert.deepEqual(build.unapplied_changes,['unapplied.txt']);assert.match(build.warning,/unapplied/);
- assert.match(asked[0],/Folder:/);assert.ok(asked[0].includes(build.cwd));assert.match(asked[0],/unapplied.txt/);
+ await assert.rejects(agent.call('Bash',{command,purpose:'build'}),/unapplied working-copy edits/);
+ assert.equal(asked.length,0);
+ const projectCommand=await agent.call('Bash',{command,purpose:'command',target:'project'});
+ assert.equal(projectCommand.cwd,fs.realpathSync(project));assert.equal(projectCommand.target,'project');
+ assert.deepEqual(projectCommand.unapplied_changes,['unapplied.txt']);assert.match(projectCommand.warning,/unapplied/);
+ assert.equal(asked.length,0);
  const copyBuild=await agent.call('Bash',{command,purpose:'build',target:'working_copy'});
- assert.equal(copyBuild.cwd,diagnostic.cwd);assert.equal(asked.length,1);
+ assert.equal(copyBuild.cwd,diagnostic.cwd);assert.equal(asked.length,0);
  const custom=await agent.call('Bash',{command,purpose:'build',target:'directory',directory:elsewhere});
- assert.equal(custom.cwd,fs.realpathSync(elsewhere));assert.equal(fs.realpathSync(custom.stdout.trim()),custom.cwd);assert.equal(custom.target,'directory');assert.equal(asked.length,2);
+ assert.equal(custom.cwd,fs.realpathSync(elsewhere));assert.equal(fs.realpathSync(custom.stdout.trim()),custom.cwd);assert.equal(custom.target,'directory');assert.equal(asked.length,1);
  assert.equal(steps.filter(step=>step.kind==='use').at(-1).input.cwd,custom.cwd);
  fs.writeFileSync(path.join(project,'source.txt'),'real source');
  await assert.rejects(agent.call('Read',{file_path:path.join(project,'source.txt')}),/outside/);
  for(const args of [{target:'unknown'},{target:'directory'},{target:'directory',directory:'relative'},{target:'project',directory:elsewhere},{purpose:'unknown'}])await assert.rejects(agent.call('Bash',{command,...args}),/target|purpose|directory/);
 });
 
-test('a build denied in the real project never executes even when copy shell approval is disabled',async t=>{
+test('a build denied in the real project never executes when autoapproval is off',async t=>{
  const project=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-build-denied-'));
  t.after(()=>fs.rmSync(project,{recursive:true,force:true}));
- const {agent,asked}=fixture(t,{projectFolder:project,shellWithoutAsking:true,allow:false});
+ const {agent,asked}=fixture(t,{projectFolder:project,shellWithoutAsking:false,allow:false});
  await assert.rejects(agent.call('Bash',{command:'exit 0',purpose:'build'}),/denied/);
  assert.equal(asked.length,1);assert.ok(asked[0].includes(fs.realpathSync(project)));
+});
+
+test('autoapproval covers project builds and commands before a review copy exists, not external directories',async t=>{
+ const project=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-auto-project-'));
+ const elsewhere=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-auto-external-'));
+ t.after(()=>{fs.rmSync(project,{recursive:true,force:true});fs.rmSync(elsewhere,{recursive:true,force:true});});
+ for(const reviewAfter of [false,true]){
+  const {agent,asked}=fixture(t,{projectFolder:project,shellWithoutAsking:true,reviewAfter,allow:false});
+  for(const args of [{purpose:'command'},{purpose:'build'},{purpose:'artifact'},{purpose:'command',target:'project'},{purpose:'command',target:'directory',directory:project}]){
+   const result=await agent.call('Bash',{command:'exit 0',...args});
+   assert.equal(result.code,0);assert.equal(asked.length,0);
+  }
+  await assert.rejects(agent.call('Bash',{command:'exit 0',purpose:'command',target:'directory',directory:elsewhere}),/denied/);
+  assert.equal(asked.length,1);
+ }
+ const {agent,asked}=fixture(t,{cwd:project,projectFolder:project,reviewAfter:false,shellWithoutAsking:true,allow:false});
+ assert.equal((await agent.call('Bash',{command:'exit 0',purpose:'build'})).code,0);
+ assert.equal(asked.length,0);
 });
 
 test('an ignored binary build output can be transferred to the project without source review',async t=>{

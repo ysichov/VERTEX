@@ -42,6 +42,54 @@ test('Enter sends successive chat requests and clears the prompt', () => {
   assert.equal(context.progressItems.size,2);
 });
 
+test('sending a screenshot during processing forwards it and clears attachments', () => {
+  const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};
+  vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.render=html;',sandbox);
+  const script=sandbox.module.exports.render('addition-test').match(/<script nonce="addition-test">([\s\S]*?)<\/script>/)[1];
+  const nodes=new Map(),posted=[];
+  const get=id=>{if(!nodes.has(id))nodes.set(id,{value:'',addEventListener(name,fn){this[name]=fn;}});return nodes.get(id);};
+  const context={document:{getElementById:get},api:{postMessage:m=>posted.push(m)},chatRunning:true,historyOpening:false,
+    images:[{media_type:'image/png',data:'SCREENSHOT'}],drawImages(){},fitPrompt(){}};
+  const start=script.lastIndexOf("document.getElementById('chat').addEventListener('submit'");
+  vm.runInNewContext(script.slice(start,script.indexOf('\n});',start)+4),context);
+  get('chat').submit({preventDefault(){}});
+  assert.equal(posted[0].action,'interjectChat');assert.equal(posted[0].images[0].data,'SCREENSHOT');
+  assert.equal(context.images.length,0);assert.equal(get('prompt').value,'');
+  assert.match(script,/if\(!update\.auxiliary\)setChatRunning/);
+  assert.match(script,/requestScreenshots\.set\(update\.id,update\.images\)/);
+});
+
+test('early AI magic click opens the live flow when the session becomes available', async () => {
+  const source=fs.readFileSync(path.join(__dirname,'../sidebar.js'),'utf8');
+  const start=source.indexOf('        if (message.action === "showCurrentLog") {');
+  const handler=source.slice(start,source.indexOf('        if (message.action === "openLogConversation")',start));
+  const progressStart=source.indexOf('              onProgress: update => {',start);
+  const progress=source.slice(progressStart,source.indexOf('\n              } });',progressStart)+16).replace(/^\s*onProgress: /,'');
+  const commands=[],pendingChat={kind:'chat',cancelled:false},context={pendingChat,pending:pendingChat,message:{action:'showCurrentLog'},
+    vscode:{commands:{executeCommand:async (...args)=>commands.push(args)}},view:{webview:{postMessage:async()=>true}},requestId:1,taskKind:'thinking'};
+  vm.createContext(context);await vm.runInContext('(async()=>{'+handler+'})()',context);
+  assert.equal(pendingChat.openLogWhenReady,true);assert.equal(commands.length,0);
+  const onProgress=vm.runInContext('('+progress+')',context);
+  onProgress({logSessionId:'session',logConversationId:'conversation'});
+  assert.equal(commands.length,1);assert.equal(commands[0][1].sessionId,'session');assert.equal(commands[0][1].live,true);
+  onProgress({logSessionId:'session',logConversationId:'conversation'});assert.equal(commands.length,1);
+  await vm.runInContext('(async()=>{'+handler+'})()',context);
+  assert.equal(commands.length,2);assert.equal(commands[1][1].sessionId,'session');
+});
+
+test('AI magic stays available before the log session is ready', () => {
+  const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};
+  vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.render=html;',sandbox);
+  const script=sandbox.module.exports.render('magic-test').match(/<script nonce="magic-test">([\s\S]*?)<\/script>/)[1];
+  const nodes=new Map(), get=id=>{if(!nodes.has(id))nodes.set(id,{dataset:{},setAttribute(){},addEventListener(){}});return nodes.get(id);};
+  const context={document:{getElementById:get},renderHistory(){get('new-conversation').disabled=false;}};
+  const start=script.indexOf('let chatRunning = false');
+  vm.runInNewContext(script.slice(start,script.indexOf("stopChat.addEventListener",start))+'\nthis.setRunning=setChatRunning;',context);
+  context.setRunning(true);assert.equal(get('new-conversation').textContent,'AI magic');
+  assert.equal(get('new-conversation').disabled,false);assert.equal(get('new-conversation').dataset.action,'showCurrentLog');
+  context.setRunning(false);assert.equal(get('new-conversation').textContent,'New conversation');
+});
+
 test("sidebar HTML contains an executable chat script", () => {
   const folder = path.join(__dirname, "..");
   const source = fs.readFileSync(path.join(folder, "sidebar.js"), "utf8");

@@ -194,7 +194,8 @@ function set(vscode, read = file => fs.readFileSync(file, "utf8")) {
           const cancel = () => finish(undefined);
           pendingDialogs.add(cancel);
           try {
-            Promise.resolve(vscode.window.showWarningMessage("VERTEX assistant: " + describe(name, input), { modal: true }, choice))
+            Promise.resolve(vscode.window.showWarningMessage("VERTEX assistant: " + (name === "Bash" ? "Run command" : name),
+              { modal: true, detail: describe(name, input) }, choice))
               .then(finish, error => { if (settled) return; settled = true; pendingDialogs.delete(cancel); reject(error); });
           } catch (error) { settled = true; pendingDialogs.delete(cancel); reject(error); }
         });

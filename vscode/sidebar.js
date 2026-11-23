@@ -248,7 +248,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
       const showFolder = async () => {if(!ready)return;await view.webview.postMessage({folder:ask.state().contextFolder??require("./chat").currentWorkingFolder(vscode),contextMode:ask.state().contextMode});await updateFileLinks();};
       const clearConversation = async () => {
         await closeReview();
-        require("./session-log").reset();
+        const conversationId = require("./session-log").reset();
+        require("./log-report").resetLiveConversation(conversationId);
         await vscode.commands.executeCommand("vertex.resetTranspilerRunNumbers");
         ask.newConversation();
         reviewAsk = null;
@@ -383,9 +384,12 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if (message.action === "showCurrentLog") {
-          if (!pendingChat || !message.sessionId) return;
+          if (!pendingChat || pendingChat.kind !== "chat") return;
+          const sessionId=message.sessionId||pendingChat.logSessionId;
+          if (!sessionId) { pendingChat.openLogWhenReady = true; return; }
+          pendingChat.openLogWhenReady=false;
           const now=new Date(),date=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");
-          await vscode.commands.executeCommand("vertex.showLogs",{sessionId:String(message.sessionId),conversationId:String(message.conversationId||""),fullScreen:true,mode:"flow",live:true,date});
+          await vscode.commands.executeCommand("vertex.showLogs",{sessionId:String(sessionId),conversationId:String(message.conversationId||pendingChat.logConversationId||""),fullScreen:true,mode:"flow",live:true,date});
           return;
         }
         if (message.action === "openLogConversation") {
@@ -424,14 +428,18 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if (message.action === "interjectChat") {
           const pending = pendingChat, text = String(message.text || "").trim();
-          if (!pending || pending.cancelled || pending.kind === "decision" || !text) return;
+          const images = (Array.isArray(message.images) ? message.images : []).filter(image => image
+            && /^image\/(png|jpeg|gif|webp)$/.test(image.media_type) && typeof image.data === "string" && image.data);
+          if (!pending || pending.cancelled || pending.kind === "decision" || (!text && !images.length)) return;
           const timestamp = typeof message.timestamp === "string" && Number.isFinite(Date.parse(message.timestamp)) ? message.timestamp : new Date().toISOString();
-          if (!ask.interject?.(text, timestamp)) {
-            if(pending.started){await view.webview.postMessage({progress:{id:pending.id,userAdditionRejected:text}});return;}
+          const recognitionId = "recognize-" + (++nextRequest);
+          const progress = update => { if (update.remove || !pending.cancelled) Promise.resolve(view.webview.postMessage({progress:{id:recognitionId,auxiliary:true,images,...update}})).catch(() => {}); };
+          if (!ask.interject?.(text, timestamp, images, progress)) {
+            if(pending.started || images.length){await view.webview.postMessage({progress:{id:pending.id,userAdditionRejected:text,rejectedImages:images}});return;}
             pending.interjections ||= [];
-            pending.interjections.push({ text, time: timestamp });
+            pending.interjections.push({ text, images, time: timestamp });
           }
-          await view.webview.postMessage({ progress: { id: pending.id, userAddition: text } });
+          await view.webview.postMessage({ progress: { id: pending.id, userAddition: text + (images.length ? " [" + images.length + " screenshot(s)]" : "") } });
           return;
         }
         if (message.action === "stopChat") {
@@ -491,7 +499,16 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
             const reply = await ask(asked ? review.askRequest(asked.review_result ? shown : message.text, asked) : shown, {model: message.model, state, web,routeTopics:!!message.routeTopics,contextMode:asked?.system==="local"?"folder":asked?"sap":ask.state().contextMode,
               interjections: pending.interjections,
               ...(images.length ? { images } : {}),
-              onProgress: update => { if(pending.cancelled)return; Promise.resolve(view.webview.postMessage({ progress: { id: requestId, kind:taskKind,...update } })).catch(() => {}); } });
+              onProgress: update => {
+                if(pending.cancelled)return;
+                if(update.logSessionId){pending.logSessionId=update.logSessionId;pending.logConversationId=update.logConversationId||"";}
+                if(pending.openLogWhenReady && update.logSessionId){
+                  pending.openLogWhenReady=false;
+                  const now=new Date(),date=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");
+                  Promise.resolve(vscode.commands.executeCommand("vertex.showLogs",{sessionId:update.logSessionId,conversationId:update.logConversationId||"",fullScreen:true,mode:"flow",live:true,date})).catch(()=>{});
+                }
+                Promise.resolve(view.webview.postMessage({ progress: { id: requestId, kind:taskKind,...update } })).catch(() => {});
+              } });
             if (pending.cancelled || reply.stopped) { await view.webview.postMessage({progress:{id:requestId,stopped:true,done:true}}); return; }
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId,
@@ -921,7 +938,7 @@ function applyContextMode(mode){
 let historyItems=[],historyLoading=false,historyOpening=false,historyRequest=0;
 const historyBox=document.getElementById('conversation-history'),historyStatus=document.getElementById('history-status');
 function renderHistory(){
- document.getElementById('new-conversation').disabled=historyOpening||chatRunning&&!activeLogSessionId;
+ document.getElementById('new-conversation').disabled=historyOpening;
  const list=document.getElementById('history-list');list.replaceChildren();
  const query=document.getElementById('history-search').value.trim().toLocaleLowerCase();
  const matches=historyItems.filter(item=>(item.title+' '+item.lastQuestion+' '+item.providers).toLocaleLowerCase().includes(query));
@@ -1062,9 +1079,9 @@ document.getElementById('chat').addEventListener('submit', event => {
   const field = document.getElementById('prompt');
   const text = field.value.trim();
   if(chatRunning){
-    if(!text)return;
-    api.postMessage({action:'interjectChat',text,timestamp:new Date().toISOString()});
-    field.value='';fitPrompt();
+    if(!text&&!images.length)return;
+    api.postMessage({action:'interjectChat',text,images:images.map(image=>({media_type:image.media_type,data:image.data})),timestamp:new Date().toISOString()});
+    images=[];drawImages();field.value='';fitPrompt();
     return;
   }
   // With a review's blocks on the chip an empty question asks the default one.
@@ -1128,7 +1145,7 @@ document.getElementById('prompt').addEventListener('paste', event => {
 // The message field grows with what is typed or pasted, up to a few lines; ⤢ lets it take most of the panel.
 let chatRunning = false, chatStopping = false, activeLogSessionId = '', activeLogConversationId = '';
 const stopChat = document.getElementById('chat-stop');
-function setChatRunning(value) { chatRunning=value;if(!value){chatStopping=false;activeLogSessionId='';activeLogConversationId='';}stopChat.hidden=!value;stopChat.disabled=chatStopping;const button=document.getElementById('new-conversation');button.textContent=value?'⛶':'New conversation';button.title=value?'Open the current run’s recorded steps full screen':'Start a new conversation';button.setAttribute('aria-label',button.title);button.dataset.action=value?'showCurrentLog':'newConversation';document.getElementById('prompt').title=value?'Send this as an addition to the active conversation; it will be included at the next model step.':'Enter sends a new message.';renderHistory(); }
+function setChatRunning(value) { chatRunning=value;if(!value){chatStopping=false;activeLogSessionId='';activeLogConversationId='';}stopChat.hidden=!value;stopChat.disabled=chatStopping;const button=document.getElementById('new-conversation');button.textContent=value?'AI magic':'New conversation';button.title=value?'AI magic — open the current run’s recorded steps full screen':'Start a new conversation';button.setAttribute('aria-label',button.title);button.dataset.action=value?'showCurrentLog':'newConversation';document.getElementById('prompt').title=value?'Send this as an addition to the active conversation; it will be included at the next model step.':'Enter sends a new message.';renderHistory(); }
 stopChat.addEventListener('click',()=>{chatStopping=true;stopChat.disabled=true;api.postMessage({action:'stopChat'});});
 const promptField = document.getElementById('prompt'), expandPrompt = document.getElementById('expand-prompt');
 function fitPrompt() { promptField.style.height = 'auto'; promptField.style.height = promptField.scrollHeight + 2 + 'px'; }
@@ -1241,12 +1258,14 @@ window.addEventListener('message', event => {
     const update = event.data.progress;
     if(typeof update.logSessionId==='string')activeLogSessionId=update.logSessionId;
     if(typeof update.logConversationId==='string')activeLogConversationId=update.logConversationId;
-    setChatRunning(!update.done&&!update.remove);
+    if(!update.auxiliary)setChatRunning(!update.done&&!update.remove);
+    if(Array.isArray(update.images))requestScreenshots.set(update.id,update.images);
     if (update.toolSupport && document.getElementById('provider-select').value === update.toolSupport.provider) {
       const model = modelCatalog.find(m => m.id === update.toolSupport.model);
       if (model) { model.capabilities = { ...model.capabilities, tools:false }; model.toolSupportEvidence = update.toolSupport.evidence; drawModelCapabilities(); }
     }
     if(typeof update.userAdditionRejected==='string'){
+      if(Array.isArray(update.rejectedImages)){images.push(...update.rejectedImages);drawImages();}
       const field=document.getElementById('prompt');
       field.value=[update.userAdditionRejected,field.value].filter(Boolean).join('\\n');fitPrompt();field.focus();
       document.getElementById('model-status').textContent='The active request is finishing. This message is ready to send as the next prompt.';
