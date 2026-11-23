@@ -1,3 +1,35 @@
+## VSIX 0.9.118
+
+The VS Code extension version is 0.9.118. The VSIX is built after the version changes are approved.
+
+## VSIX 0.9.117
+
+The VS Code extension version is 0.9.117. The VSIX is built after the version changes are approved.
+
+## 2026-11-23 — Restore LLM rounds with their tool calls in Flow
+
+AI magic again shows each tool-calling LLM round as its own processing step, with the tools launched by that round stacked beneath it instead of placing the LLM card in one column and its tools in a separate VERTEX column.
+
+## 2026-11-23 — Restored chat questions show the timestamp like new ones
+
+Questions restored from a historical conversation in the chat now show their time on the right, in the same muted style as a newly sent question, instead of inline as “You · HH:MM: …”.
+
+## 2026-11-23 — AI magic updates an open log window
+
+Clicking AI magic while the Logs & Cost window is already open now brings that window to the current chat run's live Flow, including a run started after **New conversation**. Before, the open window stayed on the previous conversation.
+
+## 2026-11-23 — Timestamp user questions in chat
+
+Chat questions show a small, muted timestamp aligned to the right of “You”; questions from earlier calendar days also show the date. The conversation list of historical chats and the “Continued from the session log” line use the same format: HH:MM for today, DD.MM.YY HH:MM for earlier days.
+
+## 2026-11-23 — Keep chat responsive and follow new AI magic rounds
+
+Chat submissions are no longer blocked while the model catalog is loading; model selectors stay hidden until the available choices are known. Live AI magic smoothly follows newly added rounds to the right unless the user has manually paused following; a panel resize no longer makes that movement jump instantly.
+
+## 2026-11-23 — Keep chat available when no AI model is configured
+
+When no provider or model is available, the model controls no longer obstruct the chat input or prevent sending a question. Model-only controls stay hidden while the provider catalog loads and after an empty/error response.
+
 ## 2026-11-23 — VERTEX diff alignment in transport reviews
 
 Transport review code views offer **Standard diff / VERTEX diff**. VERTEX alignment keeps repeated statements in order when a block is commented or uncommented, instead of greedily matching a later statement. Whole commented blocks no longer revert to Standard pairing above 64 lines. Switching does not rebuild the review or change saved decisions.

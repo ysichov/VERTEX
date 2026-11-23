@@ -24,6 +24,32 @@ test("each Tools page marks the shared code once and declares none of its names 
     assert.match(fs.readFileSync(path.join(RESOURCES, name), "utf8"), /^var USER_KIND = "(user|you)";$/m, name + " says how its user's lines look");
 });
 
+test("chat user messages show a subtle right-aligned local time and include the date when not from today", () => {
+  const page = fs.readFileSync(path.join(RESOURCES, "chat.html"), "utf8");
+  assert.match(page, /\.you \.who\s*\{[^}]*display:\s*flex/);
+  assert.match(page, /\.you \.who\s*\{[^}]*width:\s*100%/);
+  assert.match(page, /\.you \.message-time\s*\{[^}]*margin-left:\s*auto/);
+  assert.match(page, /\.you \.message-time\s*\{[^}]*color:\s*var\(--muted\)[^}]*font-size:\s*9px/);
+  const start = page.indexOf("function questionTimestamp(");
+  const end = page.indexOf("// The project name arrives", start);
+  const fixedNow = new Date(2026, 10, 23, 14, 30);
+  class FixedDate extends Date {
+    constructor(...args) { super(...(args.length ? args : [fixedNow.getTime()])); }
+  }
+  const box = { children: [], appendChild(child) { this.children.push(child); }, get scrollHeight() { return this.children.length; }, set scrollTop(value) { this.position = value; } };
+  const context = vm.createContext({ Date: FixedDate, Number, document: {
+    createElement: tag => ({ tagName: tag, children: [], appendChild(child) { this.children.push(child); } }),
+    createTextNode: text => ({ textContent: text }), getElementById: () => box
+  } });
+  vm.runInContext(page.slice(start, end), context);
+  context.say("you", "You", "Today's question");
+  const today = box.children[0].children[0].children[0];
+  assert.equal(today.tagName, "time");
+  assert.equal(today.textContent, "14:30");
+  assert.equal(today.dateTime, fixedNow.toISOString());
+  assert.equal(context.questionTimestamp(new Date(2026, 10, 22, 14, 30).toISOString()), "22.11.26 14:30");
+});
+
 test("with the shared code put in, every script of every Tools page parses", () => {
   for (const name of PAGES) {
     const page = toolsPage(name);

@@ -1272,6 +1272,31 @@ test('live log contains the question while screenshot recognition is pending and
  }finally{await ask.dispose();logger.reset();fs.rmSync(root,{recursive:true,force:true});}
 });
 
+test('clarifications preserve and total usage across interrupted CodeMie model rounds', async t => {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-clarification-cost-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  let ask,release,started;const waiting=new Promise(resolve=>{started=resolve;});let calls=0;
+  const tool={name:'read_evidence',description:'read',inputSchema:{type:'object',properties:{}}};
+  const tools={schemas:[tool],instructions:'',editorContext:()=>null,execute:async()=>({ok:true})};
+  t.mock.method(assistant,'ask',async options=>{
+    calls++;
+    if(calls===1){started();await new Promise(resolve=>{release=resolve;});return {model:'claude-fable-5-2',plan:{answer:'First draft'},usage:{input_tokens:12,output_tokens:4},cost:0.002};}
+    return {model:'claude-fable-5-2',plan:{answer:'Refined'},usage:{input_tokens:8,output_tokens:3},cost:0.001};
+  });
+  const vscode=fakeVscode({provider:'codemie',model:'claude-fable-5-2',logPath:root,'log.questions':true,'log.answers':true});
+  ask=chat.create(vscode,tools,{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'test'});
+  const pending=ask('Inspect the existing logic');await waiting;
+  assert.equal(ask.interject('Use a different interpretation'),true);
+  release();const result=await pending;
+  assert.equal(result.answer,'Refined');assert.equal(result.usage.input_tokens,20);assert.equal(result.usage.output_tokens,7);assert.equal(result.cost,0.003);
+  const records=fs.readFileSync(fs.readdirSync(path.join(root,'claude_compatible')).map(name=>path.join(root,'claude_compatible',name))[0],'utf8').trim().split('\\n').map(JSON.parse);
+  const usage=records.filter(record=>record.type==='assistant'&&record.message?.usage).map(record=>record.message.usage);
+  assert.deepEqual(usage.map(value=>[value.input_tokens,value.output_tokens]),[[12,4],[8,3]]);
+  assert.equal(usage.reduce((sum,value)=>sum+(value.cost_usd||0),0),0.003);
+  assert.equal(records.filter(record=>record.type==='vertex_provider_response'&&record.scope==='request_interrupted_by_user').length,1);
+  await ask.dispose();
+});
+
 test('screenshots added during processing are independently recognized before the next model step',async t=>{
  const calls=[],progress=[];let ask,release,started;
  const waiting=new Promise(resolve=>{started=resolve;});

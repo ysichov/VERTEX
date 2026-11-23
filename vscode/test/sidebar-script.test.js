@@ -18,6 +18,21 @@ test("Edit scene changes to AI reasoning when the tool returns", () => {
   assert.match(markup, /\.vertex\.task\[data-task-kind\]::before\{display:none\}/);
 });
 
+test('chat sends while the model picker is still loading', () => {
+  const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};
+  vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.render=html;',sandbox);
+  const script=sandbox.module.exports.render('loading-send-test').match(/<script nonce="loading-send-test">([\s\S]*?)<\/script>/)[1];
+  const nodes=new Map(),posted=[];
+  const make=()=>({value:'',hidden:true,disabled:false,children:[],handlers:{},addEventListener(name,fn){this.handlers[name]=fn;},appendChild(child){this.children.push(child);}});
+  const get=id=>{if(!nodes.has(id))nodes.set(id,make());return nodes.get(id);};
+  get('model-select').value='';get('model-select').disabled=true;get('review-chip').hidden=true;get('prompt').value='Find ZCL_EXAMPLE';
+  const context={document:{body:{classList:{toggle(){},remove(){},add(){}}},getElementById:get,createElement:make,querySelector:()=>null},api:{postMessage:m=>posted.push(m)},modelCatalog:[],images:[],chatRunning:false,historyOpening:false,progressItems:new Map(),refreshTopicView(){},setChatRunning(value){context.chatRunning=value;},drawImages(){},fitPrompt(){}};
+  const start=script.indexOf("document.getElementById('system-select').addEventListener('change'");
+  vm.runInNewContext(script.slice(start,script.indexOf('// Screenshots pasted',start)),context);
+  get('chat').handlers.submit({preventDefault(){}});
+  assert.equal(posted[0].action,'chat');assert.equal(posted[0].text,'Find ZCL_EXAMPLE');assert.equal(context.chatRunning,true);
+});
+
 test('Enter sends successive chat requests and clears the prompt', () => {
   const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};
   vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.render=html;',sandbox);
@@ -26,8 +41,8 @@ test('Enter sends successive chat requests and clears the prompt', () => {
   const make=()=>({value:'',hidden:true,children:[],handlers:{},addEventListener(name,fn){this.handlers[name]=fn;},appendChild(child){this.children.push(child);}});
   const get=id=>{if(!nodes.has(id))nodes.set(id,make());return nodes.get(id);};
   get('chat').requestSubmit=()=>get('chat').handlers.submit({preventDefault(){}});
-  get('model-select').value='test-model';
-  const context={document:{getElementById:get,createElement:make,querySelector:()=>null},api:{postMessage:m=>posted.push(m)},modelCatalog:[],images:[],chatRunning:false,historyOpening:false,progressItems:new Map(),setChatRunning(value){context.chatRunning=value;},drawImages(){},fitPrompt(){}};
+  get('model-select').value='';get('model-select').disabled=true;
+  const context={document:{body:{classList:{toggle(){},remove(){}}},getElementById:get,createElement:make,querySelector:()=>null},api:{postMessage:m=>posted.push(m)},modelCatalog:[],images:[],chatRunning:false,historyOpening:false,progressItems:new Map(),refreshTopicView(){},setChatRunning(value){context.chatRunning=value;},drawImages(){},fitPrompt(){}};
   const start=script.indexOf("document.getElementById('system-select').addEventListener('change'");
   vm.runInNewContext(script.slice(start,script.indexOf('// Screenshots pasted',start)),context);
   const keyStart=script.indexOf("document.getElementById('prompt').addEventListener('keydown'");
@@ -233,7 +248,7 @@ for (const gateway of ['vercel-api','openrouter-api','opencode-api']) test(gatew
  const source=fs.readFileSync(path.join(__dirname,'..','sidebar.js'),'utf8'),sandbox={module:{exports:{}},require,__dirname:path.join(__dirname,'..')};vm.runInNewContext(source+'\nmodule.exports.render=html;',sandbox);const html=sandbox.module.exports.render('test');const script=html.match(/<script nonce="test">([\s\S]*?)<\/script>/)[1];
  const pick=name=>{const start=script.indexOf('function '+name+'(');return script.slice(start,script.indexOf('\n}\n',start)+2);};
  const nodes=Object.fromEntries(['provider-select','subprovider-select','model-select','model-status'].map(id=>[id,{value:'',replaceChildren(...items){this.options=items;}}]));nodes['provider-select'].value=gateway;const posted=[];
- const context={document:{getElementById:id=>nodes[id]},Option:function(text,value){this.text=text;this.value=value;},groupModels:require('../model-capabilities').groupModels,sortModels:require('../model-capabilities').sortModels,lastVercelModels:new Map(),modelCatalog:[{id:'openai/a',label:'A'},{id:'google/g1',label:'G1'},{id:'google/g2',label:'G2'}],drawModelCapabilities(){},api:{postMessage:m=>posted.push(m)}};
+ const context={document:{body:{classList:{toggle(){},remove(){}}},getElementById:id=>nodes[id]},Option:function(text,value){this.text=text;this.value=value;},groupModels:require('../model-capabilities').groupModels,sortModels:require('../model-capabilities').sortModels,lastVercelModels:new Map(),modelCatalog:[{id:'openai/a',label:'A'},{id:'google/g1',label:'G1'},{id:'google/g2',label:'G2'}],drawModelCapabilities(){},api:{postMessage:m=>posted.push(m)}};
  vm.runInNewContext(pick('vercelGroups')+pick('drawModelPickers')+pick('chooseVercelProvider'),context);
  context.drawModelPickers('google/g2');assert.equal(nodes['subprovider-select'].value,'google');assert.deepEqual(nodes['model-select'].options.map(o=>o.value),['google/g1','google/g2']);assert.equal(nodes['model-select'].value,'google/g2');assert.equal(nodes['subprovider-select'].hidden,false);
  nodes['subprovider-select'].value='openai';context.chooseVercelProvider();assert.equal(nodes['model-select'].value,'openai/a');assert.equal(posted.at(-1).model,'openai/a');nodes['subprovider-select'].value='google';context.chooseVercelProvider();assert.equal(nodes['model-select'].value,'google/g2');
@@ -264,10 +279,19 @@ test('focused model selector copies the exact model ID rather than its display l
  field.value='';handlers.keydown({key:'c',metaKey:true});assert.equal(sent.length,1);
 });
 
-test("with no provider offered the provider, model and effort choice is hidden", () => {
+test("without AI providers the picker is hidden and loading model catalogs never block chat", () => {
   const source = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "sidebar.js"), "utf8");
   assert.match(source, /body\.no-providers #provider-select,[^{]*body\.no-providers \.model-picker,[^{]*body\.no-providers #effort-select[^{]*\{ display:none !important; \}/);
   assert.match(source, /document\.body\.classList\.toggle\('no-providers', !select\.options\.length\);/);
+  assert.match(source,/body\.models-loading #vercel-row-break, body\.models-loading #subprovider-select, body\.models-loading \.model-picker, body\.models-loading #effort-select \{ display:none !important; \}/);
+  assert.doesNotMatch(source,/model-select'\)\.disabled\)\{document\.getElementById\('model-status'\)\.textContent='Wait for the model list to load\.'/);
+  assert.match(source,/if \(data\.error\)[\s\S]*?document\.body\.classList\.add\('no-choice'\)/);
+  assert.match(source,/document\.body\.classList\.remove\('models-loading'\);[\s\S]*?modelCatalog = data\.models;drawModelPickers\(data\.model\)/);
+   assert.match(source,/document\.body\.classList\.add\('no-choice'\);[\s\S]*?select\.title = data\.error/);
+   assert.match(source,/body\.model-list-pending #provider-select,[^{]*body\.model-list-pending \.model-picker[^\{]*\{ display:none !important; \}/);
+   assert.match(source,/document\.body\.classList\.add\('model-list-pending'\);[\s\S]*?api\.postMessage\(\{ action: 'setProvider'/);
+   assert.match(source,/if \(!Array\.isArray\(event\.data\.ai\.providers\) \|\| !event\.data\.ai\.providers\.length\)[\s\S]*?classList\.remove\('models-loading', 'no-choice', 'model-list-pending'\)/);
+   assert.match(source,/\} else if \(!Array\.isArray\(data\.models\) \|\| !data\.models\.length\)[\s\S]*?classList\.add\('no-choice'\)/);
 });
 test('topic badges accept numeric IDs and expose manual continuation using theme variables',()=>{const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.renderForTest=html;',sandbox);const page=sandbox.module.exports.renderForTest('topic-test');assert.doesNotMatch(page,/id="optimize-context"/);assert.doesNotMatch(page,/id="route-topics"/);assert.match(page,/<option value="full">Full history<\/option><option value="auto">Auto \(Jev\)<\/option>/);assert.match(page,/class="vertex-segment-toggle" id="history-mode"/);assert.doesNotMatch(page,/New topic/);const start=page.indexOf('function setTopic('),end=page.indexOf("window.addEventListener('message'",start);const item={dataset:{},style:{},firstChild:null,querySelector:()=>null,insertBefore(value){this.badge=value;}};vm.runInNewContext(page.slice(start,end)+'\nsetTopic(item,{id:"topic_0001",label:"Code",dependencies:["topic_0002"]});',{item,document:{createElement:()=>({})}});assert.equal(item.dataset.topicId,'topic_0001');assert.match(item.style.borderLeft,/var\(--vscode-charts-/);assert.equal(item.badge.textContent,'topic_0001 · Code');assert.equal(item.badge.onclick,undefined);assert.match(item.badge.title,/topic_0002/);});
 

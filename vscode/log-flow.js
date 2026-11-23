@@ -88,7 +88,7 @@
     let noteEventIndex = null, notePreview = "", modelRound = 0;
     const eventItems = (prompt.events || []).map((event, order) => {
       if (event.kind === "note") {
-        noteEventIndex = order;
+        if (noteEventIndex === null) noteEventIndex = order;
         const text = (prompt.operation === "Screenshot recognition" ? recognitionText(event.model?.text) : String(event.model?.text || "")).replace(/\s+/g, " ").trim();
         notePreview = String(event.model?.text || "").split(/\r?\n/).map(line => line.trim()).find(Boolean)?.slice(0, 110) || "";
         return { kind: "note", title: "Thinking", time: event.time || prompt.time || 0, order,
@@ -97,13 +97,16 @@
       // Provider responses are model-processing steps. Hiding them makes tool calls
       // look as if they happened before the model was started.
       if (event.kind === "model") {
+        noteEventIndex = null;
         const events = prompt.events || [], detailIndices = [], noteEventIndices = [];
         let end = order + 1;
         while (end < events.length && events[end].kind !== "model" && events[end].kind !== "request") end++;
         // CLI text can arrive before its response metadata. Consecutive notes immediately
         // before the next response belong to that response, not the preceding tool round.
+        // In an open run the next response has not arrived yet, so the same notes stay out of this round.
         let trailingNotes = end;
-        if (events[end]?.kind === "model") while (trailingNotes > order + 1 && events[trailingNotes - 1].kind === "note") trailingNotes--;
+        if (events[end]?.kind === "model" || (prompt.open === true && end >= events.length))
+          while (trailingNotes > order + 1 && events[trailingNotes - 1].kind === "note") trailingNotes--;
         for (let index = order - 1; index >= 0 && events[index].kind === "note"; index--) noteEventIndices.unshift(index);
         for (let index = order + 1; index < end; index++) {
           const item = events[index], detail = details[item.detail];
@@ -132,9 +135,11 @@
           label: [modelName(prompt), outcome, ...tokenInfo].join(" · "),
           state: "recorded" };
       }
+      noteEventIndex = null;
       if (event.kind === "user_interjection") return { kind: "user_interjection", title: "User addition",
         time: event.time || prompt.time || 0, order, preview: event.text || "Question text not logged",
         label: event.state === "sent" ? "Added to the next model request" : "Queued · not yet sent to the model", state: "recorded" };
+      noteEventIndex = null;
       const detail = details[event.detail];
       const input = detail?.input || {};
       const toolName = detail?.name || event.tool || "Tool";
@@ -418,7 +423,7 @@
     let renderer = null, scene = null, camera = null, geometry = null, frame = 0, disposed = false, page = 0, zoom = 1, selectedKey = "", view = "steps";
     const revealTimers = new Set();
     const followRight = options?.followRight === true;
-    let followedWidth = null;
+    let followedWidth = null, followedItemCount = Number.isInteger(options?.state?.followedItemCount) ? options.state.followedItemCount : null;
     const pageSize = 48, prompts = groupPrompts(session.prompts || []), meshes = [], nodes = [];
     let selectedPrompt = Math.max(0, prompts.length - 1);
     const state = options?.state || {};
@@ -547,8 +552,8 @@
         blocks[0].forEach(node => {
           const key = String(shown[0]?.prompt?.key || shown[0]?.prompt?.time || "") + ":" + node.stepNumber + ":" + node.kind + ":" + node.title;
           keys.push(key);
-          if (priorKeys && !priorKeys.includes(key) && node.kind === "tool") { deadlines[key] = nextDeadline; nextDeadline += 120; }
-          else if (priorKeys && !priorKeys.includes(key) && nextDeadline > Date.now() + 120) deadlines[key] = nextDeadline - 120;
+          if (priorKeys?.length && !priorKeys.includes(key) && node.kind === "tool") { deadlines[key] = nextDeadline; nextDeadline += 120; }
+          else if (priorKeys?.length && !priorKeys.includes(key) && nextDeadline > Date.now() + 120) deadlines[key] = nextDeadline - 120;
         });
         state.liveFlowKeys = keys;
         blocks[0] = blocks[0].filter(node => {
@@ -785,15 +790,25 @@
       space.style.width = width * zoom + "px"; space.style.height = height * zoom + "px";
       // A remounted viewport has no scroll range until its content is sized.
       // Rebuilding cards can also temporarily clamp an existing viewport to zero.
-      viewport.scrollLeft = scrollLeft; viewport.scrollTop = scrollTop;
+      // Assigning the same offset still cancels a running smooth scroll, so write only a real change.
+      if (viewport.scrollLeft !== scrollLeft) viewport.scrollLeft = scrollLeft;
+      if (viewport.scrollTop !== scrollTop) viewport.scrollTop = scrollTop;
       viewportRestored = true;
       lastScrollLeft = viewport.scrollLeft;
       if (followRight && view === "step") {
         const contentWidth = width * zoom, right = Math.max(0, contentWidth - viewport.clientWidth);
-        if (followedWidth === null) { if(!followPaused&&state.scrollLeft==null)viewport.scrollLeft = right; }
-        else if (!followPaused && contentWidth > followedWidth && viewport.scrollLeft >= Math.max(0, followedWidth - viewport.clientWidth) - 32)
+        const itemCount = blocks[0]?.length || 0;
+        const previousWidth = followedWidth ?? state.followedWidth;
+        const previousItemCount = followedItemCount ?? state.followedItemCount;
+        if (previousWidth == null) {
+          if (!followPaused && state.scrollLeft == null) viewport.scrollLeft = right;
+        } else if (!followPaused && previousItemCount != null && itemCount > previousItemCount) {
+          // A persisted scroll offset may no longer be at the end when a live Flow is reopened.
+          // Explicit manual scrolling pauses follow; otherwise every newly recorded step follows right.
           viewport.scrollTo({ left: right, behavior: "smooth" });
+        }
         followedWidth = contentWidth;
+        followedItemCount = itemCount;
       }
       previous.hidden = next.hidden = view === "step" || visiblePrompts.length <= pageSize;
       previous.disabled = page === 0; next.disabled = (page + 1) * pageSize >= visiblePrompts.length;
@@ -846,12 +861,22 @@
       lastScrollLeft=current;schedule();
     };
     viewport.addEventListener("scroll", onScroll);
-    const resize = new win.ResizeObserver(schedule); resize.observe(stage);
+    // A panel that is still settling changes the viewport width after mount. Keep following,
+    // but do not replace the round's smooth movement with an instantaneous assignment.
+    const onResize = () => {
+      if (followRight && view === "step" && !followPaused) {
+        const right = Math.max(0, world.offsetWidth * zoom - viewport.clientWidth);
+        if (viewport.scrollLeft !== right) viewport.scrollTo({ left: right, behavior: "smooth" });
+        lastScrollLeft = viewport.scrollLeft;
+      }
+      schedule();
+    };
+    const resize = new win.ResizeObserver(onResize); resize.observe(stage);
     const theme = new win.MutationObserver(layout); theme.observe(doc.body, { attributes: true, attributeFilter: ["class", "style"] });
     const lost = event => { event.preventDefault(); shell.classList.add("flow-fallback"); hint.textContent = "Graphics context lost; flow blocks and details remain available."; };
     renderer?.domElement.addEventListener("webglcontextlost", lost);
     setView(["steps", "context"].includes(state.view) ? state.view : "step");
-    return () => { Object.assign(state, { page, zoom, view, selectedPrompt, topicFilter: selectedTopic, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, followedWidth, followPaused }); disposed = true; revealTimers.forEach(timer => win.clearTimeout(timer)); revealTimers.clear(); if(dialog.open)dialog.close(); if (frame) win.cancelAnimationFrame(frame); resize.disconnect(); theme.disconnect(); viewport.removeEventListener("scroll", onScroll); viewport.removeEventListener("wheel", wheelZoom); release(); geometry?.dispose(); renderer?.domElement.removeEventListener("webglcontextlost", lost); renderer?.dispose(); renderer?.forceContextLoss(); shell.remove(); };
+    return () => { Object.assign(state, { page, zoom, view, selectedPrompt, topicFilter: selectedTopic, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, followedWidth, followedItemCount, followPaused }); disposed = true; revealTimers.forEach(timer => win.clearTimeout(timer)); revealTimers.clear(); if(dialog.open)dialog.close(); if (frame) win.cancelAnimationFrame(frame); resize.disconnect(); theme.disconnect(); viewport.removeEventListener("scroll", onScroll); viewport.removeEventListener("wheel", wheelZoom); release(); geometry?.dispose(); renderer?.domElement.removeEventListener("webglcontextlost", lost); renderer?.dispose(); renderer?.forceContextLoss(); shell.remove(); };
   }
   const api = { summary, timeBreakdown, stages, contextStages, contextStats, chronologicalStages, groupPrompts, groupUsage, usageLines, providerUsage, mount };
   if (typeof module === "object" && module.exports) module.exports = api; else root.vertexLogFlow = api;

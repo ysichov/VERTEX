@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.116**
+**Version: 0.9.118**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -431,7 +431,8 @@ The **VERTEX** panel in the Activity Bar has a free-prompt chat. The panel's tit
 three icons: **SAP Systems**, **LLM Providers**, and the gear for every VERTEX
 setting. The top line holds the **SAP system** list. The question
 box, the provider and model lists and **New conversation** stay at the bottom of the panel; the
-answers scroll above them, questions and answers in different colours. Asking for a VERTEX
+answers scroll above them, questions and answers in different colours. Each question shows its local
+time; questions from earlier dates also show the date. Asking for a VERTEX
 function — *open table SFLIGHT*, *show the diff of ZCL_FOO* — opens a **VERTEX Tools** window on
 it. To begin with a package or program, name it in the first request, for example *open package
 Z_BILLING* or *open program Z_INVOICE*. A single match opens in Object Navigator; if a plain
@@ -572,7 +573,7 @@ off - choose another first. With no provider switched on, the chat panel shows n
 effort choice; the same holds when the provider in use has no models - its error stays in the panel, and **VERTEX: LLM Providers** switches to another. While no provider with models is available, review pages hide their **ASK AI** buttons and keep the prompt buttons. Save refuses a provider with no model ticked, and resets a chosen
 model that is no longer offered. The choice is kept in `vertex.ai.modelConfig`.
 If a provider has no model entries, the panel explains that instead of showing a blank table.
-Model-loading errors in the sidebar appear below the model selector.
+The chat hides model-only controls while its catalog loads or has no models; sending is not blocked by the picker state, and the provider reports any request error.
 
 - **Claude subscription** lists Claude versions by full id (`claude-opus-5`, `claude-sonnet-4-6`,
   ...). Claude Code reports no list of its own, so this list is VERTEX's, in `assistant.js`

@@ -180,6 +180,8 @@ function parseSession(text, file) {
         }
       }
       if (current && record.scope === "request_error") current.failed = true;
+      // The run is still open until its closing record; a live Flow keeps notes that precede a model reply pending.
+      if (current && ["cli_run", "request_error", "request_stopped", "request_interrupted_by_user"].includes(record.scope)) current.open = false;
       // A model call within the run is a step of the timeline: the events Claude Code sends for one message (its
       // text, then a tool call) share the message id and are one step. The run's total stays a detail of its own.
       if (current && record.scope === "model_response") {
@@ -251,7 +253,7 @@ function parseSession(text, file) {
           turnId: typeof record.vertex_turn === "string" ? record.vertex_turn : null,
           relatedTurnId: typeof record.vertex_related_turn === "string" ? record.vertex_related_turn : null,
           text: prompt.trim(), operation: String(record.vertex_operation || "Chat"), model: bareModel(record.message?.model, provider), displayModel: typeof record.message?.model_label === "string" && record.message.model_label.trim() ? record.message.model_label.trim() : bareModel(record.message?.model, provider),
-          selectedModelId: typeof record.message?.model === "string" ? record.message.model : "", hasModelLabel: typeof record.message?.model_label === "string" && !!record.message.model_label.trim(), usage: emptyUsage(), details: [], objects: record.vertex_objects || [],
+          selectedModelId: typeof record.message?.model === "string" ? record.message.model : "", hasModelLabel: typeof record.message?.model_label === "string" && !!record.message.model_label.trim(), usage: emptyUsage(), details: [], open: true, objects: record.vertex_objects || [],
           screenshots: Array.isArray(record.vertex_screenshots) ? record.vertex_screenshots : [],
           // Model calls and tool calls in the order they happened.
           timeline: [] };
@@ -658,14 +660,16 @@ function open(vscode, options = {}, context) {
   }
   panel = vscode.window.createWebviewPanel("vertex.logReport", "VERTEX: Logs & Cost", options.fullScreen ? vscode.ViewColumn.One : vscode.ViewColumn.Beside,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
-  const nonce = crypto.randomBytes(16).toString("hex");
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
-  panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
+  // Each page gets a new nonce, so its HTML always differs: VS Code ignores an assignment of identical HTML,
+  // and a redraw that reassigns the same string never reloads the page.
+  const pageHtml = () => { const nonce = crypto.randomBytes(16).toString("hex"); return fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
     .replace("</head>", () => '<script nonce="' + nonce + '">' + fs.readFileSync(path.join(__dirname, "resources", "three.min.js"), "utf8").replace(/<\/script/gi, "<\\/script") + '</script><script nonce="' + nonce + '">' + fs.readFileSync(path.join(__dirname, "log-flow.js"), "utf8").replace(/<\/script/gi, "<\\/script") + '</script></head>')
     .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
     .replace("</head>", () => '<script nonce="' + nonce + '">' + require("./usage-report").browserEngine() + 'window.vertexCanContinue = true;window.vertexCanReadVersions = ' + Boolean(options.readVersion) + ';window.vertexCanTagTopics = ' + require("./review-jev").enabled(vscode) + ';</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
-    .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
+    .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>"); };
+  panel.webview.html = pageHtml();
   // The page gets the list only - each prompt without its details, steps and Jev input - and asks for one prompt's
   // full record when it is opened: the whole log folder can be tens of megabytes, too much to hold in a webview.
   const view = panel;
@@ -685,7 +689,7 @@ function open(vscode, options = {}, context) {
     options = target;
     const date = /^\d{4}-\d\d-\d\d$/.test(pendingOpenSessionDate) ? pendingOpenSessionDate : dateKey(Date.now());
     activeRange = { from: date, to: date, placeKey: target.openSessionPlace || placeKey(currentPlace(vscode)) };
-    view.webview.html = view.webview.html;
+    view.webview.html = pageHtml();
   };
   // Check metadata only while visible. Do not reparse an unchanged log folder every second.
   const logState = async (root, filter) => {

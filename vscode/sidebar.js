@@ -57,11 +57,11 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     await closeReview();
     const view = currentView;
     await view.webview.postMessage({ cleared: true });
-    const first = found.turns.find(turn => turn.time), when = first ? new Date(first.time).toLocaleString() : "";
-    await view.webview.postMessage({ chat: "VERTEX: Continued from the session log" + (when ? " of " + when : "") + ": " + count + " question" + (count === 1 ? "" : "s")
-      + (found.files > 1 ? " from " + found.files + " providers' logs" : "") + ". The next question carries them as history; the tools' results of that session are not repeated." });
     const localDateKey=time=>{const date=new Date(time);return Number.isFinite(date.getTime())?date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0")+"-"+String(date.getDate()).padStart(2,"0"):"";};
     const questionTime=time=>{const date=new Date(time);if(!Number.isFinite(date.getTime()))return "";const hhmm=String(date.getHours()).padStart(2,"0")+":"+String(date.getMinutes()).padStart(2,"0");if(localDateKey(time)===localDateKey(Date.now()))return hhmm;return String(date.getDate()).padStart(2,"0")+"."+String(date.getMonth()+1).padStart(2,"0")+"."+String(date.getFullYear()).slice(-2)+" "+hhmm;};
+    const first = found.turns.find(turn => turn.time), when = first ? questionTime(first.time) : "";
+    await view.webview.postMessage({ chat: "VERTEX: Continued from the session log" + (when ? " of " + when : "") + ": " + count + " question" + (count === 1 ? "" : "s")
+      + (found.files > 1 ? " from " + found.files + " providers' logs" : "") + ". The next question carries them as history; the tools' results of that session are not repeated." });
     for (const turn of found.turns) {
       await view.webview.postMessage({ ...(turn.topic?{topic:{...turn.topic,label:restoredLabels.get(turn.topic.id)||turn.topic.label}}:{}), chat: "You: " + turn.question
         + (turn.images?.length ? "  [" + turn.images.length + " screenshot(s) restored]" : "")
@@ -678,6 +678,7 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages p.usage { font-size: 11px; opacity: .7; margin: -0.6em 0 1em; white-space: pre-line; }
 #messages p.tool-status { font-size: 11px; opacity: .8; }
 #messages p.you { color: var(--vscode-charts-blue); }
+#messages .you .message-time { display: block; text-align: right; color: var(--vscode-descriptionForeground); font-size: .8em; white-space: nowrap; }
 #messages .vertex { color: var(--vscode-charts-green); white-space: normal; line-height: 1.5; margin: 1em 0; }
 /* Fixed logo slot: the existing VERTEX mark rotates slowly only while this request is active. */
 #messages .vertex.task { position: relative; min-height:36px; padding-left: 42px; }
@@ -713,8 +714,10 @@ body[data-provider="vercel-api"] #vercel-row-break, body[data-provider="opencode
 #subprovider-select[hidden] { display:none; }
 /* No provider offered (none ticked in LLM Providers): there is nothing to choose, so the choice is not shown. */
 body.no-providers #provider-select, body.no-providers #vercel-row-break, body.no-providers #subprovider-select, body.no-providers .model-picker, body.no-providers #effort-select, body.no-providers #model-status { display:none !important; }
-/* Keep the provider picker available when its selected provider has no usable model catalog, so the user can switch away. */
-body.no-choice #vercel-row-break, body.no-choice #subprovider-select, body.no-choice .model-picker, body.no-choice #effort-select { display:none !important; }
+/* While a provider catalog is loading or unavailable, hide all model-selection UI; chat input remains usable. */
+body.models-loading #provider-select, body.models-loading #vercel-row-break, body.models-loading #subprovider-select, body.models-loading .model-picker, body.models-loading #effort-select { display:none !important; }
+body.no-choice #provider-select, body.no-choice #vercel-row-break, body.no-choice #subprovider-select, body.no-choice .model-picker, body.no-choice #effort-select, body.no-choice #model-status { display:none !important; }
+body.model-list-pending #provider-select, body.model-list-pending #vercel-row-break, body.model-list-pending #subprovider-select, body.model-list-pending .model-picker, body.model-list-pending #effort-select { display:none !important; }
 body[data-provider="vercel-api"] #subprovider-select, body[data-provider="opencode-api"] #subprovider-select, body[data-provider="openrouter-api"] #subprovider-select { flex:0 1 150px; max-width:45%; }
 body[data-provider="vercel-api"] .model-picker, body[data-provider="opencode-api"] .model-picker, body[data-provider="openrouter-api"] .model-picker { flex:1 1 170px; }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
@@ -819,7 +822,7 @@ body.vscode-reduce-motion #tools .tools-logo::before { animation: none; }
 ${require(require("path").join(__dirname,"git-prompt-bar")).CSS}
 ${require(require("path").join(__dirname,"code-review")).controlsCss}
 ${require(require("path").join(__dirname,"jev-panel")).css}
-</style></head><body class="${require(require("path").join(__dirname,"motion")).mode()==="auto"?"":"vertex-motion-"+require(require("path").join(__dirname,"motion")).mode()}">
+</style></head><body class="model-list-pending ${require(require("path").join(__dirname,"motion")).mode()==="auto"?"":"vertex-motion-"+require(require("path").join(__dirname,"motion")).mode()}">
 <dialog id="mcp-start-dialog" aria-labelledby="mcp-start-title"><strong id="mcp-start-title">MCP server</strong><span class="mcp-start-scene" id="mcp-start-scene"></span><div id="mcp-start-status" role="status" aria-live="polite"></div><div id="mcp-start-options"></div><form method="dialog"><button type="button" class="secondary" id="mcp-start-go" hidden>Start</button><button type="button" class="secondary" id="mcp-start-node" hidden>Get Node.js</button><button class="secondary" id="mcp-start-close">Close</button></form></dialog>
 <dialog id="model-details-dialog" aria-labelledby="model-details-title"><strong id="model-details-title">Model details</strong><div id="model-capabilities"></div><form method="dialog"><button class="secondary">Close</button></form></dialog>
 <div id="chat-header"><div class="line" id="context-controls"><label class="context-check"><input type="checkbox" data-context="sap"><span>SAP</span></label><label class="context-check"><input type="checkbox" data-context="folder" checked><span>Folder</span></label><label class="context-check"><input type="checkbox" data-context="zero"><span>Zero context</span></label><span id="sap-context-controls"><span>SAP system</span>
@@ -937,14 +940,15 @@ function applyContextMode(mode){
 }
 let historyItems=[],historyLoading=false,historyOpening=false,historyRequest=0;
 const historyBox=document.getElementById('conversation-history'),historyStatus=document.getElementById('history-status');
-function renderHistory(){
+function historyTime(value){const date=new Date(value);if(!Number.isFinite(date.getTime()))return '';const pad=n=>String(n).padStart(2,'0'),clock=pad(date.getHours())+':'+pad(date.getMinutes());const now=new Date();return date.getFullYear()===now.getFullYear()&&date.getMonth()===now.getMonth()&&date.getDate()===now.getDate()?clock:pad(date.getDate())+'.'+pad(date.getMonth()+1)+'.'+pad(date.getFullYear()%100)+' '+clock;}
+ function renderHistory(){
  document.getElementById('new-conversation').disabled=historyOpening;
  const list=document.getElementById('history-list');list.replaceChildren();
  const query=document.getElementById('history-search').value.trim().toLocaleLowerCase();
  const matches=historyItems.filter(item=>(item.title+' '+item.lastQuestion+' '+item.providers).toLocaleLowerCase().includes(query));
  for(const item of matches){const button=document.createElement('button');button.type='button';button.className='secondary history-item';button.disabled=chatRunning||historyOpening;button.title=item.lastQuestion;
  const title=document.createElement('span');title.className='history-title';title.textContent=item.title||'(no prompt text)';
- const meta=document.createElement('span');meta.className='history-meta';meta.textContent=(item.time?new Date(item.time).toLocaleString()+' · ':'')+item.count+' questions · '+item.providers;
+ const meta=document.createElement('span');meta.className='history-meta';meta.textContent=(item.time?historyTime(item.time)+' · ':'')+item.count+' questions · '+item.providers;
  button.append(title,meta);button.onclick=()=>{if(chatRunning||historyOpening)return;historyOpening=true;historyStatus.textContent='Restoring conversation…';renderHistory();api.postMessage({action:'continueHistory',id:item.id});};list.appendChild(button);}
  if(!historyLoading&&!historyOpening)historyStatus.textContent=matches.length?'Select a conversation to continue.':query?'No matching conversations.':'No saved conversations.';
 }
@@ -991,6 +995,7 @@ function drawModelPickers(selected) {
   if(selected&&!offered.some(m=>m.id===selected))offered.push({id:selected,label:selected+' (off)'});
   model.disabled=!offered.length;
   if(!offered.length){model.replaceChildren(new Option('Loading…',''));sub.replaceChildren(new Option('Loading…',''));sub.disabled=true;return;}
+  document.body.classList.remove('models-loading');
   const chosen=selected||offered[0].id;
   if(vercel){
     const groups=vercelGroups(offered),group=groups.find(g=>g.models.some(m=>m.id===chosen))||groups[0];
@@ -1037,6 +1042,7 @@ document.getElementById('effort-select').addEventListener('change', event => {
 });
 document.getElementById('provider-select').addEventListener('change', event => {
   document.body.dataset.provider = event.target.value;
+  document.body.classList.add('model-list-pending');
   drawEffort(event.target.value);
   modelCatalog = []; drawModelPickers('');drawModelCapabilities();
   api.postMessage({ action: 'setProvider', provider: event.target.value });
@@ -1072,6 +1078,22 @@ document.getElementById('mcp-select').addEventListener('change', event => {
 document.getElementById('system-select').addEventListener('change', event => {
   api.postMessage({ action: 'system', name: event.target.value });
 });
+function formatQuestionTime(value) {
+  const date = new Date(value), now = new Date();
+  if (!Number.isFinite(date.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  const clock = pad(date.getHours()) + ':' + pad(date.getMinutes());
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
+    ? clock : pad(date.getDate()) + '.' + pad(date.getMonth() + 1) + '.' + pad(date.getFullYear() % 100) + ' ' + clock;
+}
+function showUserMessage(item, text, time) {
+  item.textContent = text;
+  if (time) {
+    const stamp = document.createElement('time');
+    stamp.className = 'message-time'; stamp.textContent = time;
+    item.appendChild(stamp);
+  }
+}
 let nextRequest = 0;
 document.getElementById('chat').addEventListener('submit', event => {
   event.preventDefault();
@@ -1086,7 +1108,6 @@ document.getElementById('chat').addEventListener('submit', event => {
   }
   // With a review's blocks on the chip an empty question asks the default one.
   if (!text && document.getElementById('review-chip').hidden && !images.length) return;
-  if(document.getElementById('model-select').disabled){document.getElementById('model-status').textContent='Wait for the model list to load.';return;}
   const selected = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
   if (images.length && selected?.capabilities?.vision === false) { document.getElementById('model-status').textContent = 'This model does not accept screenshots. Choose a Vision model or remove the images.'; return; }
   topicViewMode='current';
@@ -1094,7 +1115,7 @@ document.getElementById('chat').addEventListener('submit', event => {
   setChatRunning(true);
   const requestId = ++nextRequest;
   const optimisticUser = document.createElement('p');
-  optimisticUser.className = 'you'; optimisticUser.textContent = 'You: ' + text;
+  optimisticUser.className = 'you'; showUserMessage(optimisticUser, 'You: ' + text, formatQuestionTime(Date.now()));
   document.querySelector('#messages .chat-empty')?.remove();
   document.getElementById('messages').appendChild(optimisticUser);
   const optimisticTask = document.createElement('div');
@@ -1461,27 +1482,47 @@ window.addEventListener('message', event => {
   }
   if (event.data && event.data.ai) {
     const select = document.getElementById('provider-select');
+    if (!Array.isArray(event.data.ai.providers) || !event.data.ai.providers.length) {
+      document.body.classList.add('no-providers');
+      document.body.classList.remove('models-loading', 'no-choice', 'model-list-pending');
+    } else {
+      document.body.classList.remove('no-providers');
+      if (event.data.ai.provider !== select.value) document.body.classList.add('models-loading');
+      document.body.classList.remove('model-list-pending');
+    }
     const previousProvider=select.value;
     select.replaceChildren(...(event.data.ai.providers || []).map(p => new Option(p.short, p.setting)));
     document.body.classList.toggle('no-providers', !select.options.length);
     if(!Array.from(select.options).some(o=>o.value===event.data.ai.provider)&&event.data.ai.provider==='typesafe-api'){const option=new Option('TypeSafe JEV · Decision evaluation','typesafe-api');option.hidden=true;select.add(option);}
     select.value = event.data.ai.provider;
     document.body.dataset.provider = select.value;
-    if(previousProvider!==select.value){modelCatalog=[];drawModelPickers('');drawModelCapabilities();}
+    if(previousProvider!==select.value){modelCatalog=[];document.body.classList.add('models-loading');drawModelPickers('');drawModelCapabilities();}
     if (typeof event.data.effort === 'string') effort = event.data.effort;
     drawEffort(select.value);
   }
   if (event.data && event.data.models) {
     const select = document.getElementById('model-select');
     const data = event.data.models;
+    document.body.classList.remove('model-list-pending');
     if (data.error) {
+      document.body.classList.remove('models-loading');
       modelCatalog = [];drawModelPickers('');drawModelCapabilities();
-      select.replaceChildren(new Option('no models', ''));
-      // Nothing to choose: the provider in use has no models. Its error stays in model-status; LLM Providers switches provider.
       document.body.classList.add('no-choice');
+      select.replaceChildren(new Option('no models', ''));
+      document.body.classList.add('no-choice');
+      document.body.classList.remove('models-loading');
+      // Nothing to select for this provider; the chat remains available to resolve an available configured provider model.
       select.title = data.error;
       const status = document.getElementById('model-status');
-      if (status) status.textContent = data.error;
+      if (status) status.textContent = '';
+    } else if (!Array.isArray(data.models) || !data.models.length) {
+      document.body.classList.remove('models-loading');
+      modelCatalog = [];drawModelPickers('');drawModelCapabilities();
+      document.body.classList.add('no-choice');
+      select.replaceChildren(new Option('no models', ''));
+      select.title = 'No models are currently offered by this provider.';
+      const status = document.getElementById('model-status');
+      if (status) status.textContent = '';
     } else {
       select.title = 'Model';
       document.body.classList.remove('no-choice');
@@ -1504,7 +1545,7 @@ window.addEventListener('message', event => {
     const mine = event.data.chat.startsWith('You: ');
     const item = document.createElement(mine ? 'p' : 'div');
     item.className = mine ? 'you' : 'vertex';
-    if (mine) { const question=event.data.chat.replace(/^You:\\s*/,"");item.textContent=event.data.questionTime?'You · '+event.data.questionTime+': '+question:event.data.chat; } else { markdown(event.data.chat, item); }
+    if (mine) { const question=event.data.chat.replace(/^You:\s*/,"");if(event.data.questionTime)showUserMessage(item,'You: '+question,event.data.questionTime);else item.textContent=event.data.chat; } else { markdown(event.data.chat, item); }
     if(event.data.topic)setTopic(item,event.data.topic);
     // Each found object is a link: a click opens it, as a single match is opened.
     if (!mine) { links(item, event.data.choices || []);linkProjectFiles(item);linkSapNames(item); }

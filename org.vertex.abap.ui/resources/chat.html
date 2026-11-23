@@ -42,6 +42,8 @@ body[data-assistant="codemie"] #who option { color: var(--fg); background: var(-
 .object-link:hover { text-decoration: underline; }
 .copy-answer { margin: -6px 0 12px; padding: 1px 8px; font-size: 11px; }
 .message .who { display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+.you .who { display: flex; align-items: baseline; width: 100%; }
+.you .message-time { margin-left: auto; color: var(--muted); font-size: 9px; font-weight: 400; white-space: nowrap; }
 .you .who, .you { color: var(--you); }
 .vertex .who, .vertex { color: var(--vertex); }
 .error .who, .error { color: var(--error); }
@@ -108,18 +110,36 @@ function sessionStamp() {
 }
 var session = sessionStamp();
 
+function questionTimestamp(value) {
+  var d = value ? new Date(value) : new Date();
+  if (!Number.isFinite(d.getTime())) { d = new Date(); }
+  var now = new Date(), pad = function (n) { return String(n).padStart(2, "0"); };
+  var clock = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+    ? clock : pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + pad(d.getFullYear() % 100) + " " + clock;
+}
+
 function say(kind, who, text, choices) {
   var item = document.createElement("div");
   item.className = "message " + kind;
   var label = document.createElement("span");
   label.className = "who";
   label.textContent = who;
+  if (kind === "you") {
+    var stamp = document.createElement("time");
+    stamp.className = "message-time";
+    stamp.dateTime = new Date().toISOString();
+    stamp.textContent = questionTimestamp(stamp.dateTime);
+    label.appendChild(stamp);
+  }
   item.appendChild(label);
   if (kind === "vertex") { markdown(text, item); } else { item.appendChild(document.createTextNode(text)); }
   if (kind === "vertex") { links(item, choices || []); }
   var box = document.getElementById("messages");
   box.appendChild(item);
-  box.scrollTop = box.scrollHeight;
+  // Scroll the new message into view only if already at bottom, to avoid interrupting reading history.
+  var wasAtBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 50;
+  if (wasAtBottom) { item.scrollIntoView({ behavior: "instant", block: "end" }); }
 }
 
 // The project name arrives through the host's queue, like any other answer.

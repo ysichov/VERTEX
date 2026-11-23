@@ -1499,6 +1499,24 @@ function vertexPairRun(ops, dels, adds) {
     for (i = 0; i < n; i++) { pairs[adds[i]] = dels[i]; }
     return pairs;
   }
+  // Detect when old code was commented out and new code was added: they are separate blocks, not to be aligned.
+  // A commented block has most lines starting with *, while active code rarely does.
+  var oldCommented = oldLines.filter(function (line) { return /^\s*\*/.test(line); }).length;
+  var newCommented = newLines.filter(function (line) { return /^\s*\*/.test(line); }).length;
+  var oldActive = n - oldCommented, newActive = m - newCommented;
+  // If one side is mostly commented and the other is mostly active, treat them as separate blocks.
+  if ((oldCommented > oldActive && newActive > newCommented) || (newCommented > newActive && oldActive > oldCommented)) {
+    return pairs;
+  }
+  // Detect when old code was commented out and new code was added: they are separate blocks, not to be aligned.
+  // A commented block has most lines starting with *, while active code rarely does.
+  var oldCommented = oldLines.filter(function (line) { return /^\s*\*/.test(line); }).length;
+  var newCommented = newLines.filter(function (line) { return /^\s*\*/.test(line); }).length;
+  var oldActive = n - oldCommented, newActive = m - newCommented;
+  // If one side is mostly commented and the other is mostly active, treat them as separate blocks.
+  if ((oldCommented > oldActive && newActive > newCommented) || (newCommented > newActive && oldActive > oldCommented)) {
+    return pairs;
+  }
   // Bound fuzzy work, not correctness by returning to the greedy Standard algorithm.
   // Huge mixed rewrites remain separate removals/additions rather than misleading matches.
   if (n * m > 262144) { return pairs; }

@@ -98,7 +98,7 @@ test("AI magic redraws an existing report and opens the requested live session a
     return fs.readFileSync(file, ...args);
   } };
   const panel = { visible: true, webview: {
-    get html() { return html; }, set html(value) { html = value; assignments++; },
+    get html() { return html; }, set html(value) { if (value === html) return; html = value; assignments++; },
     postMessage: async message => { posted.push(message); return true; }, onDidReceiveMessage: fn => { receive = fn; }
   }, onDidDispose: fn => { dispose = fn; }, reveal() {} };
   const vscode = { ViewColumn: { One: 1, Beside: 2 }, workspace: { getConfiguration: () => ({ get: (key, fallback) => key === "logPath" ? root : fallback }) },

@@ -1290,6 +1290,15 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       while (turn.interjections.length && !turn.wrapUp && !turn.controller.signal.aborted) {
         const addition = await takeInterjections();
         if (!addition) break;
+        if (result.interrupted && (id === "codemie" || id === "claude")) {
+          const completedRun = stoppedRunAccount(id, streamedCalls.values());
+          if (completedRun) {
+            log?.providerResponse({ provider: id, scope: "cli_run", response: completedRun.response });
+            log?.assistant({ model, usage: { input_tokens: completedRun.tokens.input, output_tokens: completedRun.tokens.output,
+              cache_creation_input_tokens: completedRun.tokens.cacheWrite, cache_read_input_tokens: completedRun.tokens.cacheRead,
+              ...(completedRun.cost !== undefined ? { estimated_cost_usd: completedRun.cost } : {}) }, text: completedRun.text });
+          }
+        }
         reportProgress({ status: "Adding your message to the active conversation…" });
         const previousAnswer = String(result.plan?.answer || "");
         const continuation = await runModel({ ...requestOptions, prompt: requestOptions.prompt

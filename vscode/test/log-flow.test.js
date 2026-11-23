@@ -5,10 +5,10 @@ const fs = require("node:fs"), os = require("node:os"), path = require("node:pat
 
 // Model browser clamping: an empty/new viewport cannot retain a scroll offset.
 function flowHost() {
-  const elements = [], observers = [];
+  const elements = [], observers = [], resizers = [];
   const win = { getComputedStyle: () => ({ color: "rgb(100,100,100)", backgroundColor: "rgb(30,30,30)" }),
     requestAnimationFrame: () => 1, cancelAnimationFrame() {}, setTimeout, clearTimeout,
-    ResizeObserver: class { observe() {} disconnect() {} },
+    ResizeObserver: class { constructor(fn) { resizers.push(fn); } observe() {} disconnect() {} },
     MutationObserver: class { constructor(fn) { observers.push(fn); } observe() {} disconnect() {} } };
   const doc = { defaultView: win, createElement(tag) {
     let left = 0, top = 0;
@@ -35,7 +35,7 @@ function flowHost() {
     elements.push(node); return node;
   } };
   doc.body = doc.createElement("body");
-  return { root: doc.createElement("div"), elements, observers,
+  return { root: doc.createElement("div"), elements, observers, resizers,
     viewport: () => elements.find(node => node.className === "flow-viewport") };
 }
 
@@ -67,6 +67,44 @@ test("Flow restores scroll after sizing on remount and smoothly follows appended
   paused.observers[0]();
   assert.equal(paused.viewport().scrollLeft, 180);
   finish();
+});
+
+test("live step Flow smoothly re-pins to the right edge when the panel is resized after mount", () => {
+  const session = { prompts: [{ text: "Fix", model: "model", flow: { eventItems:
+    Array.from({ length: 8 }, (_, i) => ({ kind: i % 2 ? "tool" : "note", title: "Stage " + i, time: i + 1 })) } }] };
+  const host = flowHost(), state = {};
+  const close = flow.mount(host.root, session, { state, followRight: true });
+  const viewport = host.viewport();
+  viewport.clientWidth = 300;
+  host.resizers[0]();
+  assert.equal(viewport.calls.length, 1);
+  assert.equal(viewport.calls[0].behavior, "smooth");
+  const pinned = viewport.scrollLeft;
+  viewport.scrollLeft = 1e9;
+  assert.equal(viewport.scrollLeft, pinned, "resized viewport is at the right edge");
+  viewport.scrollLeft = pinned;
+  assert.notEqual(state.followPaused, true);
+  close();
+});
+
+test("live Flow follows each appended round after reopening, even when the width is unchanged", () => {
+  const prompt = count => {
+    const details = Array.from({ length: count }, (_, index) => ({ type: "tool", name: "Read", tool_id: "read-" + index, input: { file_path: "file-" + index + ".js" } }));
+    return { prompts: [{ key: "conversation:0", text: "Follow up", model: "model", flow: { eventItems: Array.from({ length: count }, (_, index) => ({ kind: "tool", title: "Read " + index, time: index + 1 })) }, details,
+      events: [{ kind: "request" }, { kind: "model" }, ...details.map((_, index) => ({ kind: "tool", detail: index }))] }] };
+  };
+  const state = {}, first = flowHost(), closeFirst = flow.mount(first.root, prompt(2), { state, followRight: true });
+  const firstViewport = first.viewport();
+  assert.ok(firstViewport.scrollLeft > 0);
+  closeFirst();
+  // A live Flow can be reopened with a stored offset that is no longer near its old right edge.
+  // Unless the user explicitly scrolled left (followPaused), the new round should still be followed.
+  state.scrollLeft = 0;
+  state.followPaused = false;
+  const reopened = flowHost(), closeReopened = flow.mount(reopened.root, prompt(4), { state, followRight: true });
+  assert.equal(reopened.viewport().calls.length, 1, "new rounds trigger smooth follow even at a stale saved offset");
+  assert.equal(reopened.viewport().calls[0].behavior, "smooth");
+  closeReopened();
 });
 
 test("saved non-live Flow keeps both offsets without forcing follow", () => {
@@ -113,6 +151,17 @@ test("model links respect request boundaries and notes logged after metadata", (
   const models = flow.summary(prompt).eventItems.filter(item => item.kind === "model");
   assert.deepEqual(models.map(item => item.detailIndices), [[0], [1]]);
   assert.deepEqual(models.map(item => item.noteEventIndices), [[1], []]);
+});
+
+test("open run keeps trailing notes out of the round before the pending reply", () => {
+  const events = [
+    { kind: "model" }, { kind: "tool", detail: 0 }, { kind: "note", model: { text: "Next thinking" } }
+  ], details = [{ type: "tool", name: "Read", tool_id: "x" }];
+  const openModels = flow.summary({ open: true, details, events }).eventItems;
+  assert.deepEqual(openModels.filter(item => item.kind === "model")[0].noteEventIndices, []);
+  assert.equal(openModels.find(item => item.kind === "note").kind, "note", "pending note stays visible as its own step");
+  const closedModels = flow.summary({ open: false, details, events }).eventItems;
+  assert.deepEqual(closedModels.filter(item => item.kind === "model")[0].noteEventIndices, [2], "finished run keeps the note in its round");
 });
 
 test("model cards distinguish rounds, bounded tool purposes, text and metadata-only responses", () => {
