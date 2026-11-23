@@ -1,4 +1,8 @@
-## Prepare VSIX 0.9.118
+## 2026-11-23 — Move AI magic Flow process labels into cards
+
+Reused the existing compact Step-card style rather than adding a detached owner-caption control. The Step lane heading now carries the prompt number and question in one line; process captions above columns are removed. Each model round starts higher, shows “Round N: model” on its first model card, and tool rounds keep their tool cards stacked beneath. Other non-model process runs show “Vertex processing” on their first card; the user run identifies its first card as “User: …”. Other standalone model-processing steps retain their model name and “processing” label. Updated shared report CSS and the Flow DOM regression to cover the integrated labels and card positions. Kept the current version. Actual host rendering, light/dark review and test execution remain pending.
+
+## Prepare VSIX 0.9.119
 
 The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
 

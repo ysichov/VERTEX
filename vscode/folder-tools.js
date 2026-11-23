@@ -344,7 +344,8 @@ function create(vscode, options) {
           args={...args,command,target:"working_copy",directory:undefined};
         }
         const id = "local_" + crypto.randomBytes(8).toString("hex");
-        const input = { ...args, ...(name === "Bash" ? commandLocation(args) : {}) };
+        const loggedArgs = name === "Bash" ? { ...args, ...commandLocation(args) } : args;
+        const input = { ...loggedArgs };
         for (const key of ["file_path", "path"]) if (input[key] && !(name === "Read" && commandOutput.owns(input[key]))) input[key] = resolve(input[key], name === "Read" || name === "Glob" || name === "Grep");
         if(options.beforeTool&&await options.beforeTool(name,args)===false)return {skipped:true,reason:"Not started because the user supplied new instructions; reconsider this call under the updated request."};
         options.onToolStart?.(name,args);

@@ -571,7 +571,7 @@
         const toolRound = node.kind === "model" && node.toolCount > 0;
         const isModel = !toolRound && (node.kind === "note" || node.kind === "answer" || node.kind === "request" || node.kind === "model"
           || node.title === "Response" || /^Thinking(?: ·|$)/i.test(node.title || ""));
-        const side = isUser ? "User" : isModel ? modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}) : "VERTEX";
+        const side = isUser ? "User" : isModel ? modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}) : "Vertex processing";
         if (!runs.length || runs[runs.length - 1].side !== side || toolRound) runs.push({ side, isModel, round: node.kind === "model" ? node.round : null, rows: [] });
         runs[runs.length - 1].rows.push(index);
         return runs;
@@ -579,7 +579,7 @@
       const stepPositions = new Map();
       const stepHeight = () => 75;
       stepRuns.forEach((run, column) => {
-        let y = 125;
+        let y = 32;
         run.rows.forEach(row => {
           stepPositions.set(row, { column, y, side: run.side });
           y += stepHeight(blocks[0][row]) + 24;
@@ -615,10 +615,9 @@
         const heading = make("div", "flow-lane-heading");
         const promptNumber=shownEntries[index].index+1;
         const request = "Prompt " + promptNumber;
-        const title = make("strong", "", request + (topicNumber ? " · T" + topicNumber : "")); title.style.color = topicAccent; heading.appendChild(title);
         const question = String(prompt.text || prompt.operation || "Question not logged").replace(/\s+/g, " ").slice(0, 120);
-        const caption = make("span", "", question); caption.title = String(prompt.text || prompt.operation || "Question not logged");
-        heading.appendChild(caption); lane.appendChild(heading);
+        const title = make("strong", "", request + ": " + question); title.style.color = topicAccent; title.title = String(prompt.text || prompt.operation || "Question not logged"); heading.appendChild(title);
+        lane.appendChild(heading);
         if(view==="context"&&prompt.flow?.contextReduction){
           const reduction=prompt.flow.contextReduction;
           const questionCharacters=Number.isFinite(reduction.currentPromptCharacters)?reduction.currentPromptCharacters:String(prompt.text||"").length;
@@ -642,18 +641,14 @@
             plane(x+8,excludedStart-8,244,Math.max(0,position-excludedStart-16),color("--vscode-charts-red"),.12);
           }
         }
-        let cursorY = view==="context"?230:view === "step" ? 125 : 76;
-        if (view === "step") stepRuns.forEach((run, column) => {
-          const owner = make("strong", "", run.round != null ? "Round " + run.round : run.side); owner.style.position = "absolute"; owner.style.left = 10 + column * stepWidth + "px";
-          owner.style.top = "96px"; owner.style.color = color(run.isModel ? "--vscode-charts-blue" : run.side === "User" ? "--vscode-charts-orange" : "--vscode-charts-green"); lane.appendChild(owner);
-        });
+        let cursorY = view==="context"?230:view === "step" ? 32 : 76;
         let thinkingGroup = null;
         recordedStages.forEach((node, row) => {
           const topicIndex = Number(String(node.topicId || "").slice(6));
           const topicColor = Number.isFinite(topicIndex) && topicIndex > 0 ? "--vscode-charts-" + ["blue", "green", "orange", "purple", "red", "yellow"][topicIndex % 6] : null;
           if (view === "steps" && node.kind === "tool" && (!thinkingGroup || thinkingGroup.dataset.noteEventIndex !== String(node.noteEventIndex)) && recordedStages[row - 1]?.kind !== "note") cursorY += 32;
           const stepView = view === "step";
-          const y = stepView ? 125 : cursorY, accent = color(node.state === "failed" ? "--vscode-errorForeground" : node.state === "unknown" || node.state === "unverified" ? "--vscode-descriptionForeground" : stepView && node.kind === "request" ? colors.included : (view === "steps" || stepView) && (node.kind === "request" || node.kind === "user" || node.kind === "user_interjection" || node.kind === "model") ? colors.request : (view === "steps" || stepView) && (node.kind === "answer" || node.title === "Response") ? colors.answer : view === "context" && (node.kind === "included" || node.kind === "excluded") ? colors[node.kind] : topicColor || colors[node.kind]);
+          const y = stepView ? stepPositions.get(row).y : cursorY, accent = color(node.state === "failed" ? "--vscode-errorForeground" : node.state === "unknown" || node.state === "unverified" ? "--vscode-descriptionForeground" : stepView && node.kind === "request" ? colors.included : (view === "steps" || stepView) && (node.kind === "request" || node.kind === "user" || node.kind === "user_interjection" || node.kind === "model") ? colors.request : (view === "steps" || stepView) && (node.kind === "answer" || node.title === "Response") ? colors.answer : view === "context" && (node.kind === "included" || node.kind === "excluded") ? colors[node.kind] : topicColor || colors[node.kind]);
           const isPrompt = node.kind === "prompt" && view === "steps";
           const stepPosition = stepView ? stepPositions.get(row) : null;
           const compactRound = stepView && node.kind === "model" && node.toolCount > 0;
@@ -717,7 +712,7 @@
           button.style.height = blockHeight + "px";
           const target = node.prompt || prompt;
           button.classList.toggle("selected", selectedKey === String(target.key || target.time) + ":" + node.kind + ":" + node.title);
-          button.style.top = (thinkingGroup && (node.kind === "tool" || node.kind === "note") ? y - Number.parseFloat(thinkingGroup.style.top) : stepY) + "px"; if (stepView) button.style.left = left + "px"; button.style.setProperty("--flow-accent", accent);
+          button.style.top = (thinkingGroup && (node.kind === "tool" || node.kind === "note") ? y - Number.parseFloat(thinkingGroup.style.top) : stepView ? y : stepY) + "px"; if (stepView) button.style.left = left + "px"; button.style.setProperty("--flow-accent", accent);
           button.setAttribute("aria-label", (stepView ? "Prompt " + promptNumber + ", " : "Prompt " + promptNumber + ": ") + node.title + ", " + node.label);
           button.title = node.title + ": " + node.label;
           if (isPrompt) {
@@ -732,9 +727,16 @@
             button.appendChild(footer);
           } else {
             const sharedCard = view === "steps" || stepView;
-            const cardTitle = compactRound ? modelName(target) + " · processing"
+            let cardTitle = compactRound ? modelName(target) + " · processing"
               : node.kind === "tool" ? node.title + (node.fileName ? " · " + node.fileName : "")
                 : node.kind === "note" ? "Thinking" : node.title;
+            if (stepView && stepPosition && stepRuns[stepPosition.column]?.rows[0] === row) {
+              const run = stepRuns[stepPosition.column];
+              if (run.round != null) cardTitle = "Round " + run.round + ": " + modelName(target);
+              else if (run.side === "Vertex processing") cardTitle = "Vertex processing";
+              else if (run.side === "User") cardTitle = "User: " + cardTitle;
+              else if (run.isModel) cardTitle = modelName(target) + " · processing";
+            }
             button.appendChild(make("strong", "", (sharedCard && node.kind === "tool" && node.toolNumber ? node.toolNumber + ". " : "") + cardTitle));
             if (sharedCard && node.usagePreview?.length) {
               button.appendChild(make("span", "flow-step-preview", node.usagePreview.join("\n")));

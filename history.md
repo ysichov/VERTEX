@@ -1,6 +1,10 @@
-## VSIX 0.9.118
+## VSIX 0.9.119
 
-The VS Code extension version is 0.9.118. The VSIX is built after the version changes are approved.
+The VS Code extension version is 0.9.119. The VSIX is built after the version changes are approved.
+
+## 2026-11-23 — Put Flow process labels on their first cards
+
+AI magic Flow now keeps “Prompt N: question” on one line, removes the separate prompt/question captions, and raises the Step cards to the top of the lane. Round/model and Vertex processing labels are shown in the first card of each process instead of as detached captions.
 
 ## VSIX 0.9.117
 

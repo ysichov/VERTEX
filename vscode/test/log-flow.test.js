@@ -197,7 +197,7 @@ test("Flow preserves the panel model selection while retaining exact response me
   assert.match(steps.find(item => item.kind === "request").title, /^gpt-6\.1-sol request/);
   assert.match(steps.find(item => item.kind === "model").label, /^gpt-6\.1-sol ·/);
   const host = flowHost(), dispose = flow.mount(host.root, session, { state: {} });
-  assert.ok(host.elements.some(node => node.tagName === "STRONG" && node.textContent === "gpt-6.1-sol"));
+  assert.ok(host.elements.some(node => node.tagName === "STRONG" && node.textContent === "gpt-6.1-sol · processing"));
   assert.ok(!host.elements.some(node => /2026-09-29/.test(node.textContent || "")));
   dispose();
   const old = flow.summary({ model: "custom-v2", events: [{ kind: "model" }] });
@@ -220,7 +220,7 @@ test("Flow uses the panel catalog for older selected IDs and preserves recorded 
     const shown = { ...prompts[0], details: [{ type: "tool", name: "Read" }], events: [{ kind: "model" }, { kind: "tool", detail: 0 }] };
     shown.flow = flow.summary(shown);
     const host = flowHost(), close = flow.mount(host.root, { prompts: [shown] }, { state: {} });
-    assert.ok(host.elements.some(node => /GPT-6\.1 Terra · processing$/.test(node.textContent || "")));
+    assert.ok(host.elements.some(node => /Round 1: GPT-6\.1 Terra/.test(node.textContent || "")));
     close();
     logs.setModelCatalog("other-provider", [{ id: "unknown-id", label: "Wrong provider" }]);
     assert.equal(logs.listReport({ sessions: [session] }).sessions[0].prompts[2].displayModel, "unknown-id");
@@ -262,7 +262,7 @@ test("Step draws directional chronological connections in the non-WebGL host", (
   dispose();
 });
 
-test("Step keeps each tool round as a compact VERTEX header above its calls", () => {
+test("Step shows each process in its first card and stacks tool rounds beneath it", () => {
   const prompt = { text: "Fix", displayModel: "panel-model", model: "exact-model-2026", details: [
     ...["a", "b", "c", "d"].map(id => ({ type: "tool", name: "Read", tool_id: id, input: { file_path: id + ".js" } })),
     { type: "tool result", tool_id: "a", text: "read result" }, { type: "answer", text: "Done" }
@@ -284,17 +284,21 @@ test("Step keeps each tool round as a compact VERTEX header above its calls", ()
   assert.ok(cards.filter(card => !card.className.includes("flow-operation")).every(card => !/^\d+\./.test(card.children[0].textContent)));
   assert.ok(cards.every(card => card.style.height === "75px"), "all Step card types use the same half-height");
   assert.deepEqual(rounds.slice(0, 2).map(node => node.style.height), ["75px", "75px"]);
-  assert.match(rounds[0].children[0].textContent, /panel-model · processing$/);
+  assert.equal(rounds[0].children[0].textContent, "Round 1: panel-model");
+  assert.equal(rounds[1].children[0].textContent, "Round 2: panel-model");
+  assert.equal(rounds[2].children[0].textContent, "Round 3: panel-model");
   assert.equal(rounds[0].children[1].textContent, "3 tool calls");
   assert.equal(rounds[1].children[1].textContent, "1 tool call");
   assert.equal(rounds[0].style.left, tools[0].style.left);
   assert.equal(rounds[1].style.left, tools[3].style.left);
   assert.notEqual(rounds[0].style.left, rounds[1].style.left, "each round starts its own VERTEX column");
-  assert.equal(tools[0].style.top, "224px");
-  assert.equal(tools[2].style.top, "422px");
+  assert.equal(rounds[0].style.top, "32px");
+  assert.equal(tools[0].style.top, "131px");
+  assert.equal(tools[2].style.top, "329px");
   assert.equal(rounds[2].style.height, "75px", "text-only rounds are compact too");
-  const owners = host.elements.filter(node => node.tagName === "STRONG" && node.style.top === "96px");
-  assert.deepEqual(owners.map(node => node.textContent), ["User", "Round 1", "Round 2", "Round 3"]);
+  assert.ok(!host.elements.some(node => node.tagName === "STRONG" && /^Round \d+$/.test(node.textContent)), "process captions are integrated into first cards");
+  const promptHeading = host.elements.find(node => node.className === "flow-lane-heading");
+  assert.match(promptHeading.children[0].textContent, /^Prompt 1: Fix/);
   const dialog = host.elements.find(node => node.tagName === "DIALOG");
   dialog.showModal = () => { dialog.open = true; }; dialog.close = () => { dialog.open = false; };
   rounds[0].onclick();

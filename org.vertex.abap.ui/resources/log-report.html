@@ -185,8 +185,10 @@
   .flow-space { position: relative; }
   .flow-world { position: absolute; left: 0; top: 0; transform-origin: top left; }
   .flow-lane { position: absolute; top: 0; height: 656px; }
-  .flow-lane-heading { position: absolute; top: 24px; left: 12px; right: 12px; display: flex; flex-direction: column; gap: 3px; }
+  .flow-lane-heading { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; flex-direction: column; gap: 3px; }
   .flow-lane-heading span { font-size: 1.1em; font-weight: 600; color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .flow-step-lane .flow-lane-heading { top: 12px; }
+  .flow-step-lane .flow-lane-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .flow-stats { display: block; margin: 8px 0 10px; padding: 12px 14px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editorWidget-background); color: var(--vscode-editor-foreground); }
   .flow-stats-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 18px; }
   .flow-stats-saving { font-size: 1.35em; color: var(--vscode-charts-green, var(--vscode-editor-foreground)); }
@@ -232,7 +234,7 @@
   .flow-node span { font-size: .85em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   button.flow-node:hover { background: var(--vscode-list-hoverBackground); }
   button.flow-node:focus-visible, button.flow-node.selected { border-color: var(--vscode-focusBorder); outline: 1px solid var(--vscode-focusBorder); }
-  .flow-step-lane .flow-lane-heading { top: 24px; }
+  .flow-step-lane .flow-lane-heading { top: 12px; }
    .flow-step-lane .flow-node.flow-step-node { width: 260px; box-sizing: border-box; padding: 6px 10px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 42%, var(--vscode-editorWidget-background)); }
    .flow-step-lane .flow-node.flow-step-node > strong { flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .flow-step-lane .flow-node.flow-step-node:focus-visible, .flow-step-lane .flow-node.flow-step-node.selected { border-color: var(--vscode-focusBorder); }
@@ -1012,10 +1014,27 @@ function markdown(text, target) {
       events.forEach(function(event){if(event.kind==="tool_result"){
         var result=p.details[event.detail];if(result&&result.tool_id)results.set(result.tool_id,event);
       }});
-      var answerDetail=p.details.find(function(detail){return detail?.type==="answer";});
+      var groupedTools=new Set(),roundNumber=0;
+       events.forEach(function(event,index){
+         if(event.kind!=="model")return;
+         var number=++roundNumber,end=index+1,calls=[];
+         while(end<events.length&&events[end].kind!=="model"&&events[end].kind!=="request"){
+           var candidate=events[end],detail=p.details[candidate.detail];
+           if(candidate.kind==="tool"&&detail?.type==="tool")calls.push({event:candidate,detail:detail,index:end});
+           end++;
+         }
+         if(!calls.length)return;
+         calls.forEach(function(call){
+           groupedTools.add(call.index);
+           var resultEvent=call.detail.tool_id&&results.get(call.detail.tool_id);
+           if(resultEvent)paired.add(resultEvent.detail);
+         });
+         items.push({time:event.time||p.time||0,order:index,round:{number:number,model:event.model,calls:calls}});
+       });
+       var answerDetail=p.details.find(function(detail){return detail?.type==="answer";});
       var answerShown=false;
       events.forEach(function(event,index){
-        if(duplicates.has(index))return;
+        if(duplicates.has(index)||groupedTools.has(index))return;
         if(event.kind==="model")return;
         if(event.kind==="tool_result"&&paired.has(event.detail))return;
         var detail=p.details[event.detail], resultEvent=event.kind==="tool"&&detail?results.get(detail.tool_id):null;
@@ -1029,7 +1048,25 @@ function markdown(text, target) {
         var prefix=(index+1)+". "+clock+" · ",entry;
         if(item.user){
           entry=item.user;var heading=entry.querySelector("summary");if(heading)heading.textContent=prefix+heading.textContent;
+        } else if(item.round){
+          var round=item.round,model=round.model||{},usage=model.usage||{};
+          entry=section(prefix+"LLM processing · round "+round.number,"model");
+          var metadata=el("div","model-step");
+          metadata.appendChild(el("strong","",p.displayModel||p.model||p.provider||"Model unknown"));
+          metadata.appendChild(document.createTextNode(" · in "+n(usage.input_tokens)+" · out "+n(usage.output_tokens)
+            +" · cache read "+n(usage.cache_read_input_tokens)+" · cache write "+n(usage.cache_creation_input_tokens)));
+          entry.appendChild(metadata);
+          round.calls.forEach(function(call){
+            var resultEvent=call.detail.tool_id&&results.get(call.detail.tool_id),result=resultEvent&&p.details[resultEvent.detail];
+            var tool=section(stepTitle(call.detail),call.detail.failed||result?.failed?"technical tool failed":"technical tool");
+            var toolLoaded=false;
+            tool.addEventListener("toggle",function(){if(!tool.open||toolLoaded)return;toolLoaded=true;
+              appendToolEntry(tool,call.detail,p);if(result)appendToolEntry(tool,result,p);
+            });
+            entry.appendChild(tool);
+          });
         } else if(step){
+
           entry=section(prefix+(step.operation==="Skill match with Jev"?"Skill search":step.operation),/Jev/i.test(step.operation)?"technical jev":/Recovery|Orchestrator/i.test(step.operation)?"technical vertex":"technical tool");
           var serviceLoaded=false;entry.addEventListener("toggle",function(){if(entry.open&&!serviceLoaded){serviceLoaded=true;serviceResult(step,entry);}});
         } else if(event.kind==="user_interjection"){

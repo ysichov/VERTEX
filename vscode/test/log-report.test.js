@@ -365,6 +365,26 @@ test('chronology renders streamed thinking and text between tool steps',()=>{
   assert.match(box.children[2].label,/3\. .*Assistant text/);
 });
 
+test('chronology groups tool calls under the LLM round that issued them',()=>{
+  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+  const element=label=>({label,children:[],open:false,querySelector(){return null;},appendChild(child){this.children.push(child);},addEventListener(type,callback){this[type]=callback;}});
+  const context={section:(label,kind,text)=>({...element(label),kind,text}),el:(tag,kind,text)=>({...element(text),tag,kind}),
+    document:{createTextNode:text=>({text})},Date,Map,Set,n:value=>String(value||0),modelName:()=>"test-model",stepTitle:detail=>detail.name,
+    appendToolEntry:(target,detail)=>target.appendChild(element(detail.type))};
+  vm.createContext(context);
+  vm.runInContext(page.slice(page.indexOf('  function chronology('),page.indexOf('  function conversation(')),context);
+  const prompt={time:1,details:[{type:'tool',name:'Read',tool_id:'read'},{type:'tool result',tool_id:'read',text:'file body'}],events:[
+    {kind:'model',time:2,model:{usage:{input_tokens:20,output_tokens:3}}},
+    {kind:'tool',time:3,detail:0}, {kind:'tool_result',time:4,detail:1}]};
+  const box=context.chronology(prompt,element('User'));box.toggle();
+  const round=box.children.find(entry=>entry.label.includes('LLM processing · round 1'));
+  assert.ok(round);
+  assert.equal(round.children.filter(entry=>entry.label==='Read').length,1);
+  assert.equal(box.children.filter(entry=>entry.label.includes('Read')).length,0,'tool call is not presented as a separate peer step');
+  const call=round.children.find(entry=>entry.label==='Read');call.open=true;call.toggle();
+  assert.deepEqual(Array.from(call.children,child=>child.label),['tool','tool result']);
+});
+
 test('matched skill is labeled Skill search in the recorded chronology',()=>{
  const rows=[{type:'user',message:{content:'собери всикс'}},{type:'vertex_topic_routing',report:{status:'skill',skill:'build-vertex-vsix',beforeMessages:6,afterMessages:0}}];
  const session=report.parseSession(rows.map(row=>JSON.stringify({timestamp:'2026-11-16T18:41:51Z',...row})).join('\n'),'codex_skill.jsonl');

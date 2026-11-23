@@ -298,6 +298,32 @@ test('commands default to the copy, builds default to the real project, and expl
  for(const args of [{target:'unknown'},{target:'directory'},{target:'directory',directory:'relative'},{target:'project',directory:elsewhere},{purpose:'unknown'}])await assert.rejects(agent.call('Bash',{command,...args}),/target|purpose|directory/);
 });
 
+test('Bash log and execution use the resolved working-copy target after review begins',async t=>{
+ const project=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-command-project-'));
+ const copy=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-command-copy-'));
+ t.after(()=>{fs.rmSync(project,{recursive:true,force:true});fs.rmSync(copy,{recursive:true,force:true});});
+ fs.writeFileSync(path.join(project,'source.txt'),'original\n');
+ let prepared=0;
+ const steps=[];
+ const agent=tools.create({workspace:{getConfiguration:()=>({get:(_key,fallback)=>fallback})}},
+  {cwd:project,projectFolder:project,shellWithoutAsking:true,onStep:step=>steps.push(step),prepareEdit:async()=>{
+   prepared++;
+   fs.copyFileSync(path.join(project,'source.txt'),path.join(copy,'source.txt'));
+   return {cwd:copy,pendingChanges:async()=>[]};
+  }});
+ t.after(()=>agent.dispose());
+ await agent.call('Read',{file_path:'source.txt'});
+ await agent.call('Edit',{file_path:'source.txt',old_string:'original',new_string:'review copy'});
+ const command=process.platform==='win32'?'(Get-Location).Path':'pwd';
+ const result=await agent.call('Bash',{command,purpose:'command',target:'working_copy'});
+ const use=steps.filter(step=>step.kind==='use'&&step.name==='Bash').at(-1);
+ assert.equal(result.cwd,fs.realpathSync(copy));
+ assert.equal(use.input.cwd,fs.realpathSync(copy));
+ assert.equal(use.input.target,'working_copy');
+ assert.equal(fs.realpathSync(result.stdout.trim()),fs.realpathSync(copy));
+ assert.equal(prepared,1);
+});
+
 test('a build denied in the real project never executes when autoapproval is off',async t=>{
  const project=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-build-denied-'));
  t.after(()=>fs.rmSync(project,{recursive:true,force:true}));
