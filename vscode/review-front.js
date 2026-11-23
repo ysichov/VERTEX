@@ -424,8 +424,38 @@ async function write(api, resource, body, io, progress, cancelled) {
     // Only the record of earlier saves is kept; the stamp the store compares against is the old one.
     existing = { HISTORY: old.HISTORY, LAST_SAVED_AT: old.LAST_SAVED_AT };
     const live = require("./review-live");
+    const selectedKeys = Array.isArray(cmd.objects) ? cmd.objects.map(k => {
+      const bits = String(k).split("~");
+      return bits[0].toUpperCase() + "~" + bits.slice(1).join("~").trim().toUpperCase();
+    }) : null;
+    if (selectedKeys && !selectedKeys.length) { throw new Error("Select at least one object to rebuild."); }
     built = await live.build(api, trkorr, progress, true, params.get("blame") === "1",
-      params.get("generated") === "1", partialTo(progress, trkorr));
+      params.get("generated") === "1", partialTo(progress, trkorr), selectedKeys);
+    if (selectedKeys) {
+      const selected = new Set(selectedKeys);
+      const objectKey = item => up(item.OBJTYPE).toUpperCase() + "~" + up(item.OBJ_NAME).trim().toUpperCase();
+      const chosenHunk = item => selected.has(objectKey(item));
+      const keepHunk = item => !chosenHunk(item);
+      const oldStates = list(old.USER_STATES).map(u => Object.assign({}, u, {
+        APPROVED: list(u.APPROVED).filter(k => keepHunk({ OBJTYPE: up(k.HUNK_KEY).split("~")[0], OBJ_NAME: up(k.HUNK_KEY).split("~").slice(1, -1).join("~") })),
+        DECLINED: list(u.DECLINED).filter(k => keepHunk({ OBJTYPE: up(k.HUNK_KEY).split("~")[0], OBJ_NAME: up(k.HUNK_KEY).split("~").slice(1, -1).join("~") })),
+        NOTES: list(u.NOTES).filter(k => keepHunk({ OBJTYPE: up(k.HUNK_KEY).split("~")[0], OBJ_NAME: up(k.HUNK_KEY).split("~").slice(1, -1).join("~") }))
+      }));
+      const keepDiff = d => keepHunk({ OBJTYPE: d.KEY && d.KEY.OBJTYPE, OBJ_NAME: d.KEY && d.KEY.OBJNAME });
+      const merged = Object.assign({}, old, built, {
+        OBJ_STATS: list(old.OBJ_STATS).filter(keepHunk).concat(list(built.OBJ_STATS)),
+        HUNKS: list(old.HUNKS).filter(keepHunk).concat(list(built.HUNKS)),
+        DIFF_DATA: list(old.DIFF_DATA).filter(keepDiff).concat(list(built.DIFF_DATA)),
+        HUNK_ACTIONS: list(old.HUNK_ACTIONS).filter(a => {
+          const bits = up(a.HUNK_KEY).split("~");
+          return keepHunk({ OBJTYPE: bits[0], OBJ_NAME: bits.slice(1, -1).join("~") });
+        }).concat(list(built.HUNK_ACTIONS)),
+        THREADS: list(old.THREADS).filter(t => keepHunk(t)).concat(list(built.THREADS)),
+        USER_STATES: oldStates.concat(list(built.USER_STATES)),
+        HISTORY: list(old.HISTORY)
+      });
+      built = merged;
+    }
     current = state.applySaved(live.carryUnread(built, old), who.user);
   } else {
     if (!stored) { throw new Error("No review is saved for " + trkorr + ". Save the review built from ADT first."); }

@@ -117,7 +117,7 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   in this session, lists each step - the parts found, each part's versions and the pair taken - and a SKIP line
   with the reason for every part that gave no block. The
   **Ignore SAP generated** checkbox beside **Build review** and **Rebuild from ADT**, on by default,
-  leaves out the generated code listed above; cleared, it is reviewed like any other. **Rebuild from ADT** builds it again from the request as it is now, and **Save** keeps it. A saved review takes **Approve**,
+  leaves out the generated code listed above; cleared, it is reviewed like any other. **Rebuild from ADT** builds it again from the request as it is now, and **Save** keeps it. In the saved review, tick object rows or group headings and choose **Rebuild selected objects** to recompute only those objects; their old verdicts and comments are removed with their replaced blocks, while other objects and their review state stay. A saved review takes **Approve**,
   **Decline** and comments on each block, the way AVE records them, so AVE and every VERTEX window
   read the same review. Where reviews are kept is `vertex.review.storage`: the `ZAVE_REVIEW` table
   (needs the ABAP backend), files, or both. A review kept both in the table and in a file is

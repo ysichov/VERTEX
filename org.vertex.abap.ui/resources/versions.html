@@ -2860,6 +2860,23 @@ function rebuildBlock() {
       reviewFlags(false));
   };
   box.appendChild(rebuild);
+  var selected = document.createElement("button");
+  selected.textContent = "Rebuild selected objects";
+  selected.className = "rebuild-selected";
+  selected.title = "Rebuild only the ticked objects; other objects and their review state are kept";
+  selected.onclick = function () {
+    var keys = pickedKeys();
+    if (!keys.length) { return; }
+    selected.disabled = true;
+    status("building " + keys.length + " selected object(s) from ADT ...");
+    review_part = null;
+    review_building = objectName().toLowerCase();
+    review_fresh = review_building;
+    reviewStopControl();
+    sdeAct(objectName(), "", "", "", JSON.stringify({ action: "R", saved_at: review_saved_at, objects: keys }), review_blame ? "1" : "", review_from,
+      reviewFlags(false));
+  };
+  box.appendChild(selected);
   var warn = document.createElement("span");
   warn.className = "muted";
   warn.textContent = "  Replaces the saved review; its verdicts and comments are dropped.  ";
@@ -3225,6 +3242,8 @@ function objectGroups(objects) {
     });
     var n = pickedKeys().length;
     counter.textContent = n ? "Selected: " + n + " of " + allKeys.length : "Selected: all " + allKeys.length;
+    var selectedButton = document.querySelector(".rebuild-selected");
+    if (selectedButton) { selectedButton.disabled = n === 0; }
   };
   var pickBox = function (keys, label) {
     var input = document.createElement("input"); input.type = "checkbox"; input.setAttribute("aria-label", label); input.title = label;

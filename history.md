@@ -1,3 +1,9 @@
+## 2026-11-23 — Rebuild selected objects in a transport review
+
+Tick objects in a saved transport review and choose **Rebuild selected objects** to recalculate just those objects. Other review results and decisions remain intact.
+
+The VS Code extension version is 0.9.116. The VSIX is built after the version changes are approved.
+
 ## VSIX 0.9.115
 
 The VS Code extension version is 0.9.115. The VSIX is built after the version changes are approved.

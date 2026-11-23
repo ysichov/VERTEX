@@ -475,12 +475,12 @@ const cache = new WeakMap();
 // BLAME adds who wrote each changed line (AVE's "Who is Blame"); off, every block is the NEW version's author's.
 // KEEP_GENERATED keeps the code SAP generated (AVE's "Ignore SAP generated" off). ON_PART, when given, is handed the
 // payload as it stands after each part is done - the review so far - while the rest is read.
-async function build(api, request, progress, fresh, blame, keepGenerated, onPart) {
-  const key = request + (blame ? "|blame" : "") + (keepGenerated ? "|generated" : "");
+async function build(api, request, progress, fresh, blame, keepGenerated, onPart, selectedKeys) {
+  const key = request + (blame ? "|blame" : "") + (keepGenerated ? "|generated" : "") + (selectedKeys ? "|selected:" + selectedKeys.slice().sort().join(",") : "");
   if (!cache.has(api)) { cache.set(api, new Map()); }
-  const kept = cache.get(api).get(key);
+  const kept = selectedKeys ? null : cache.get(api).get(key);
   if (!fresh && kept && Date.now() - kept.at < 5 * 60 * 1000) { return kept.payload; }
-  const promise = buildNow(api, request, progress || (() => {}), Boolean(blame), Boolean(keepGenerated), onPart || (() => {}));
+  const promise = buildNow(api, request, progress || (() => {}), Boolean(blame), Boolean(keepGenerated), onPart || (() => {}), selectedKeys);
   cache.get(api).set(key, { at: Date.now(), payload: promise });
   promise.catch(() => cache.get(api).delete(key));
   return promise;
@@ -511,7 +511,7 @@ async function requestParts(api, request, log, progress) {
 const labelOf = p => p.ptype === "METH" ? p.object + "->" + p.unit : p.part;
 const versnos = pair => ({ fresh: pair.fresh.id === "00000" ? "99998" : pair.fresh.id, old: pair.old ? pair.old.id : "00000" });
 
-async function buildNow(api, request, progress, withBlame, keepGenerated, onPart) {
+async function buildNow(api, request, progress, withBlame, keepGenerated, onPart, selectedKeys) {
   const skip = keepGenerated ? { object: () => false, pair: () => false, text: () => false, ops: ops => ops } : ignored;
   progress("reading what " + request + " holds ...");
   const payload = { TRKORR: request, OBJ_STATS: [], HUNKS: [], DIFF_DATA: [], HUNK_ACTIONS: [], USER_STATES: [], THREADS: [], HISTORY: [] };
@@ -519,7 +519,9 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
   const diag = [], log = text => diag.push(text);
   lastLogs.set(String(request).toUpperCase(), diag);
   Object.defineProperty(payload, "DIAG", { value: diag, enumerable: false });
-  const { numbers, open, parts, missing } = await requestParts(api, request, log, progress);
+  const { numbers, open, parts: requestPartsList, missing } = await requestParts(api, request, log, progress);
+  const selected = selectedKeys && new Set(selectedKeys.map(k => String(k).toUpperCase()));
+  const parts = selected ? requestPartsList.filter(p => selected.has(p.ptype + "~" + p.part.trim().toUpperCase())) : requestPartsList;
   log("REQUEST " + request + ": " + [...numbers].join(", ") + (open ? ", open" : ", released") + "; " + parts.length + " part(s)");
   // One resolver per object read through, so its tasks and requests are asked once for all its parts.
   const resolvers = new Map();

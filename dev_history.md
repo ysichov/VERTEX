@@ -1,3 +1,11 @@
+## 2026-11-23 — Rebuild selected objects in a transport review
+
+Added a selected-object rebuild action to the shared Versions webview. The client sends selected object keys with action R; the live builder filters request parts, then the writer replaces only those objects' stats, hunks and diffs. Actions, threads and user-state entries for replaced blocks are removed, while unselected review data is retained. Updated the transport review guide. Static checks and focused tests remain to be run.
+
+## Prepare VSIX 0.9.116
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
 ## Prepare VSIX 0.9.115
 
 The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
