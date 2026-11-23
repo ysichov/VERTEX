@@ -1474,7 +1474,68 @@ function likeness(a, b) {
 /* In one run of changes, which removed line became which added one: each removed line takes the most alike added
    line after the one taken before - order kept on both sides - when at least half of it is the same. Answers a map
    from the index of an added line to the index of its removed one. */
+var vertexDiff = true;
+var REVIEW_DIFF_CHOICES = [["Standard diff", "Original line pairing from the saved review"],
+                           ["VERTEX diff", "Order-preserving alignment, including commented ABAP blocks; decisions are unchanged"]];
+
 function pairRun(ops, dels, adds) {
+  if (typeof vertexDiff !== "undefined" && vertexDiff) { return vertexPairRun(ops, dels, adds); }
+  return standardPairRun(ops, dels, adds);
+}
+
+/* Align the whole change run, not a greedy best match that can skip repeated ABAP statements.
+   This changes presentation only: operation indexes, block keys and verdicts stay untouched. */
+function vertexPairRun(ops, dels, adds) {
+  var n = dels.length, m = adds.length;
+  var pairs = {}, i, j;
+  if (!n || !m) { return pairs; }
+  var oldLines = dels.map(function (d) { return String(ops[d].text); });
+  var newLines = adds.map(function (a) { return String(ops[a].text); });
+  // A whole commented/uncommented block has an optimal positional alignment, at any size.
+  // Include unchanged blank/comment lines; never strip indentation or multiple comment markers.
+  if (n === m && oldLines.every(function (text, at) {
+    return text === newLines[at] || newLines[at] === "*" + text || text === "*" + newLines[at];
+  })) {
+    for (i = 0; i < n; i++) { pairs[adds[i]] = dels[i]; }
+    return pairs;
+  }
+  // Bound fuzzy work, not correctness by returning to the greedy Standard algorithm.
+  // Huge mixed rewrites remain separate removals/additions rather than misleading matches.
+  if (n * m > 262144) { return pairs; }
+  var below = new Float64Array(m + 1), row, path = [], cache = new Map();
+  for (i = 0; i < n; i++) { path.push(new Uint8Array(m)); }
+  for (i = n - 1; i >= 0; i--) {
+    row = new Float64Array(m + 1);
+    for (j = m - 1; j >= 0; j--) {
+      var oldText = oldLines[i], newText = newLines[j];
+      // Exactly one column-one ABAP marker includes * -> **, not an indented multiplication sign.
+      var comment = newText === "*" + oldText || oldText === "*" + newText;
+      var similarity = 1;
+      if (!comment && oldText !== newText) {
+        var key = JSON.stringify([oldText, newText]);
+        if (cache.has(key)) { similarity = cache.get(key); }
+        else {
+          similarity = likeness(oldText, newText);
+          if (cache.size < 4096) { cache.set(key, similarity); }
+        }
+      }
+      var match = similarity >= 0.5 ? similarity + below[j + 1] : -1;
+      var drop = below[j], add = row[j + 1];
+      if (match >= drop && match >= add) { row[j] = match; path[i][j] = 1; }
+      else if (drop >= add) { row[j] = drop; path[i][j] = 2; }
+      else { row[j] = add; path[i][j] = 3; }
+    }
+    below = row;
+  }
+  i = 0; j = 0;
+  while (i < n && j < m) {
+    if (path[i][j] === 1) { pairs[adds[j]] = dels[i]; i++; j++; }
+    else if (path[i][j] === 2) { i++; } else { j++; }
+  }
+  return pairs;
+}
+
+function standardPairRun(ops, dels, adds) {
   var pairs = {}, from = 0;
   dels.forEach(function (d) {
     var best = -1, score = 0.5;
@@ -2396,6 +2457,9 @@ function renderReviewClass(data) {
   var del = document.createElement("span"); del.className = "del"; del.textContent = "\u2212" + deleted;
   counts.appendChild(ins); counts.appendChild(document.createTextNode(" ")); counts.appendChild(del);
   bar.appendChild(counts);
+  bar.appendChild(segmented(REVIEW_DIFF_CHOICES, vertexDiff ? 1 : 0, function (index) {
+    vertexDiff = index === 1; renderReviewClass(data);
+  }, true));
   bar.appendChild(segmented(COMPACT_CHOICES, compact ? 0 : 1, function (index) { compact = index === 0; renderReviewClass(data); }));
   bar.appendChild(segmented(SIDE_CHOICES, sideBySide ? 1 : 0, function (index) {
     sideBySide = index === 1; placePanels(); renderReviewClass(data);
@@ -2522,6 +2586,9 @@ function renderReviewPart(data) {
   counts.appendChild(del);
   bar.appendChild(counts);
 
+  bar.appendChild(segmented(REVIEW_DIFF_CHOICES, vertexDiff ? 1 : 0, function (index) {
+    vertexDiff = index === 1; renderReviewPart(data);
+  }, true));
   bar.appendChild(segmented(COMPACT_CHOICES, compact ? 0 : 1, function (index) {
     compact = index === 0;
     renderReviewPart(data);
@@ -3109,6 +3176,9 @@ function drawPersonView() {
     askPerson.title = "Put the blocks matching the current filter on the chat's chip with the chosen prompt";
     askPerson.onclick = askPersonReview; bar.appendChild(askPerson);
   }
+  bar.appendChild(segmented(REVIEW_DIFF_CHOICES, vertexDiff ? 1 : 0, function (index) {
+    vertexDiff = index === 1; drawPersonView();
+  }, true));
   bar.appendChild(blockFilterControl(personView.filter, function (filter) { personView.filter = filter; drawPersonView(); }));
   [["Expand all", true], ["Collapse all", false]].forEach(function (choice) {
     var button = document.createElement("button"); button.textContent = choice[0]; button.onclick = function () {

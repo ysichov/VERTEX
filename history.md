@@ -1,3 +1,7 @@
+## 2026-11-23 — VERTEX diff alignment in transport reviews
+
+Transport review code views offer **Standard diff / VERTEX diff**. VERTEX alignment keeps repeated statements in order when a block is commented or uncommented, instead of greedily matching a later statement. Whole commented blocks no longer revert to Standard pairing above 64 lines. Switching does not rebuild the review or change saved decisions.
+
 ## 2026-11-23 — Rebuild selected objects in a transport review
 
 Tick objects in a saved transport review and choose **Rebuild selected objects** to recalculate just those objects. Other review results and decisions remain intact.

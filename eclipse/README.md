@@ -100,6 +100,8 @@ script, nothing on top. The VS Code extension computes the same kind of diff wit
 implementation, because Eclipse's comparer is under the EPL and cannot be carried into VERTEX's MIT
 code.
 
+In **VERTEX Tools → Transport Request → Review**, open an object, class or **Expand all** and use **Standard diff / VERTEX diff** to switch line alignment. VERTEX diff starts selected and aligns repeated statements in order, including blocks commented with `*`. Developer and reviewer views offer the same switch. It changes only presentation, not saved blocks or decisions; lines omitted by the original comparison cannot be recovered from the saved diff.
+
 **The review of a transport** is built from ADT with **Build review** when none is saved - opening only reads a saved one - every part the request carries - on its own object list or in a task not yet released; an object taken out of the request after its task was released is left out - except code SAP generated (SAP*'s versions, `*_MPC`, `*_MPC_EXT`, `*_DPC`, `SAPL*`, comment-only new objects, empty class sections, includes the table maintenance generator (SE54) writes for SM30, and generator stamp lines) unless **Ignore SAP generated** is cleared,
 the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - each part appears as soon as
 it is read, the status line says which, and a changed line shows what changed inside it. Before it is built, Review

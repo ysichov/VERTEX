@@ -626,6 +626,8 @@ them: save or undo yours first.
 
 ## Code reviewer
 
+For a transport review, open **VERTEX Tools → Transport Request → Review**, then an object, class or **Expand all**. **Standard diff / VERTEX diff** switches line alignment without rebuilding the review or changing decisions. VERTEX diff is selected initially and keeps repeated statements in order when displaying a commented ABAP block, highlighting the added `*` markers. The same switch is available in developer and reviewer views. It uses the saved diff; source lines omitted by its original comparison cannot be recovered by this view.
+
 **ASK Jev** beside ASK AI (when the selected decision model is set up) checks whether the supplied context is enough and estimates the probability of auto-approval from the visible diff and user requests. The percentage runs from red through yellow to green. When a linked user topic is available, it also checks whether the diff implements that request. A whole review assesses each changed file separately. If Jev needs more context for one file, it retries with additional changed files from the same diff. The displayed auto-approval likelihood is the lowest file/part probability, and the result names the counts. It never approves, declines or applies anything.
 
 Edit SAP source in a VERTEX editor tab, then choose **VERTEX: Review & Activate** in the
