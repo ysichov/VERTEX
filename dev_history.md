@@ -7628,3 +7628,15 @@ The latest Session Logs entry showed a request to apply a local project edit thr
 
 The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
 
+## 2026-11-24 — Use requirement and syntax questions for Jev code checks
+
+Changed manual ASK Jev reviews and end-of-turn code verification to send only the linked task and current changed JavaScript, HTML or ABAP source, wrapped in `<requirements>` and `<code>`. Both ask the same two Noul questions: whether the implementation matches a requirement and whether syntax errors are present. Manual multi-file review still assesses files separately; final end-of-turn verification remains one check after all tool rounds and host checks, only following Edit/Write attempts. The optional one-shot recovery remains disabled by default. The orchestrator's separate per-stage completion verification remains stage-specific. Node syntax checks and diff checks pass; tests were not run.
+
+## 2026-11-24 — Render saved Jev inputs and avoid duplicate response bodies
+
+ASK Jev's review panel now parses tagged string state to display requirements and source code; it previously treated that input as an object and showed only the questions. Session Logs render saved context-dedup input as policy, current request and expandable exchange cards, and use the Jev question text instead of internal IDs in the answer table. Chronological response cards now render their body once. JavaScript syntax and diff checks pass; tests and VSIX packaging were not run.
+
+## 2026-11-24 — Keep unrelated source lines out of inline diffs
+
+Review hunks, recorded Edit details and Flow previews previously paired changed lines by position, which made fully replaced lines look like inline edits. They now render a pair only when the lines share at least two non-whitespace characters at the beginning or end; otherwise each line stays a separate removal or insertion. The review summary counts those as removed/added. JavaScript syntax and diff checks pass; tests and packaging were not run.
+

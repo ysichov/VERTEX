@@ -1,6 +1,10 @@
 "use strict";
 // Global task verification; independent of the selected MCP toolset.
 const OPERATION="Change verification with Jev";
+const CODE_QUESTIONS={
+ implementation:{type:"noul",instructions:"Реализация в блоке <code> соответствует одной из задач из блока <requirements>?"},
+ syntax:{type:"noul",instructions:"Есть синтаксические ошибки в блоке <code>?"}
+};
 async function evaluate(vscode, task, stage, report, evidence, options={}) {
  const jev=require("./review-jev"),connection=options.connection || await jev.connection(vscode);
  if(!connection)throw new Error("Configure an enabled Jev decision model and API key for task verification.");
@@ -32,7 +36,7 @@ async function evaluate(vscode, task, stage, report, evidence, options={}) {
 }
 
 async function verifyTask(vscode, task, answer, evidence, options={}) {
- const sourceChanges=(evidence.changes||[]).filter(change=>!change.binary && /\.(?:js|html)$/i.test(change.file)
+ const sourceChanges=(evidence.changes||[]).filter(change=>!change.binary && /\.(?:js|html|abap)$/i.test(change.file)
    && !/(?:^|[/\\])(?:test|tests|__tests__)[/\\]/i.test(change.file));
  const sources=[];
  const limit=180000;
@@ -54,12 +58,36 @@ async function verifyTask(vscode, task, answer, evidence, options={}) {
    const hunks=require("./code-review").hunks(change.before||"",source);
    sources.push({file:change.file,source:source.length>12000?excerpt(source,hunks,"modified").text:source});
  }
- if(!sources.length)return {status:"unverified",checks:[],error:"No changed JavaScript or HTML source is available for Jev to inspect.",scope:"changes"};
- const inputState={original_task:task,source_files:sources};
- const stage={id:1,task,completion_checks:["Based only on the original user request and the provided current JavaScript/HTML source, does the source implement the requested change without a clear defect?"]};
+ if(!sources.length)return {status:"unverified",checks:[],error:"No changed JavaScript, HTML or ABAP source is available for Jev to inspect.",scope:"changes"};
+ const code=sources.map(source=>"File: "+source.file+"\n"+source.source).join("\n\n");
+ const inputState=require("./context-protection").create().text("<requirements>\n"+String(task||"").trim()+"\n</requirements>\n\n<code>\n"+code+"\n</code>");
  let result;
- try {if(JSON.stringify(inputState).length>limit)throw new Error("The requested source excerpts exceed the decision input limit.");result=await evaluate(vscode,task,stage,null,null,{...options,inputState,operation:OPERATION});}
- catch(error){if(options.signal?.aborted)throw error;result={status:"unverified",checks:[],error:error.message};}
+ try {
+   if(inputState.length>limit)throw new Error("The requested source excerpts exceed the decision input limit.");
+   const jev=require("./review-jev"),connection=options.connection||await jev.connection(vscode);
+   if(!connection)throw new Error("Configure an enabled Jev decision model and API key for task verification.");
+   const estimated=jev.estimateTokens(inputState,CODE_QUESTIONS);
+   result=await jev.paced(vscode,connection,estimated,async()=>{
+     const scope={...require("./session-log").independentScope(),...(options.logContext?{context:options.logContext}:{}),...(options.relatedTurnId?{relatedTurnId:options.relatedTurnId}:{})};
+     const audit=require("./ai-accounting").begin(vscode,connection.provider,connection.model,options.operation||OPERATION,scope,task);
+     audit.decision({provider:connection.provider,model:connection.model,state:inputState,questions:CODE_QUESTIONS});
+     try{
+       const answer=await require("./jev").evaluate(connection.provider,connection.key,connection.model,inputState,CODE_QUESTIONS,{...audit.callbacks,signal:options.signal});
+       jev.correct(connection,estimated,answer.usage?.input_tokens);
+       if(options.signal?.aborted)throw new Error("Stage verification stopped.");
+       const requirementProbability=answer.answers.implementation.noul,syntaxErrorProbability=answer.answers.syntax.noul;
+       const classify=probability=>probability>=0.8?"passed":probability<=0.2?"failed":"unverified";
+       const checks=[
+         {check:CODE_QUESTIONS.implementation.instructions,status:classify(requirementProbability),confidence:Math.max(requirementProbability,1-requirementProbability),probabilities:{yes:requirementProbability,no:1-requirementProbability}},
+         {check:CODE_QUESTIONS.syntax.instructions,status:classify(1-syntaxErrorProbability),confidence:Math.max(syntaxErrorProbability,1-syntaxErrorProbability),probabilities:{yes:syntaxErrorProbability,no:1-syntaxErrorProbability}}
+       ];
+       const status=checks.every(check=>check.status==="passed")?"passed":checks.some(check=>check.status==="failed")?"failed":"unverified";
+       const checked={...answer,status,checks,scope:"changes"};
+       audit.finish({...answer,plan:{answer:JSON.stringify({status,checks,answers:answer.answers})}});
+       return checked;
+     }catch(error){audit.fail(error);throw error;}
+   },options);
+ }catch(error){if(options.signal?.aborted)throw error;result={status:"unverified",checks:[],error:error.message,scope:"changes"};}
  if(evidence.hostChecks?.state==="failed") result={...result,jev_status:result.status,host_override:true,status:"failed",checks:[...(result.checks||[]),{check:"Host automatic checks failed",status:"failed"}]};
  if(evidence.pending && result.status==="passed") result={...result,jev_status:result.status,host_override:true,status:"unverified",checks:[...(result.checks||[]),{check:"Host tools are still pending",status:"unverified"}]};
  return {...result,scope:"changes"};
@@ -115,4 +143,4 @@ function createEvidence() {
    }
  },snapshot(){return {started_at:startedAt,tools:tools.slice(),pending:pending.size,total_tools:count,omitted_tools:Math.max(0,count-tools.length),change_attempted:changeAttempted};}};
 }
-module.exports={OPERATION,evaluate,verifyTask,format,createEvidence,canRecover,continuationQuestion,falseLocalConnectionClaim};
+module.exports={OPERATION,CODE_QUESTIONS,evaluate,verifyTask,format,createEvidence,canRecover,continuationQuestion,falseLocalConnectionClaim};

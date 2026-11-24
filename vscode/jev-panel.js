@@ -69,6 +69,19 @@ const buildJevQuestions=${buildQuestions.toString()};
 let decisionRunning=false,jevNextQuestion=1,jevRestoredState=null;
 let jevDrafts=[{id:'question_1',type:'noul',instructions:'Does this request need urgent attention?',criteriaText:''}];
 let jevSubmittedLabels={};
+function invalidateJevResult(){
+  const result=document.getElementById('jev-result');
+  if(!result.children.length)return;
+  result.replaceChildren();
+  document.getElementById('jev-status').textContent='Inputs changed. Select Run Jev to evaluate the current questions.';
+}
+const jevPanel=document.getElementById('jev-panel');
+const invalidateJevDraft=event=>{
+  const target=event.target;
+  if(target?.id==='jev-state'||target?.closest?.('#jev-questions'))invalidateJevResult();
+};
+jevPanel.addEventListener('input',invalidateJevDraft);
+jevPanel.addEventListener('change',invalidateJevDraft);
 function resetJevDraft(){
   jevRestoredState=null;jevSubmittedLabels={};jevNextQuestion=1;
   jevDrafts=[{id:'question_1',type:'noul',instructions:'',criteriaText:''}];
@@ -102,7 +115,7 @@ function renderJevQuestions(){
     const line=document.createElement('div');line.className='line';
     const type=document.createElement('select');type.setAttribute('aria-label','Question '+(index+1)+' type');
     [['noul','Yes / No'],['choice','Choose an option'],['score','Rate on a scale']].forEach(([value,label])=>{const option=document.createElement('option');option.value=value;option.textContent=label;type.appendChild(option);});type.value=draft.type;line.appendChild(type);
-    const remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.textContent='Remove';remove.addEventListener('click',()=>{jevDrafts=jevDrafts.filter(q=>q.id!==draft.id);renderJevQuestions();});line.appendChild(remove);card.appendChild(line);
+    const remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.textContent='Remove';remove.addEventListener('click',()=>{invalidateJevResult();jevDrafts=jevDrafts.filter(q=>q.id!==draft.id);renderJevQuestions();});line.appendChild(remove);card.appendChild(line);
     const question=document.createElement('textarea');question.rows=2;question.value=draft.instructions;question.placeholder='What should Jev decide?';question.setAttribute('aria-label','Question '+(index+1));question.addEventListener('input',()=>{draft.instructions=question.value;});card.appendChild(question);
     const options=document.createElement('div');options.className='jev-options';
     const paint=()=>{
@@ -116,13 +129,13 @@ function renderJevQuestions(){
         field.id='jev-option-'+draft.id+'-'+i;label.htmlFor=field.id;label.textContent=scale?'Level '+i:'Option '+(i+1);field.setAttribute('aria-label','Question '+(index+1)+' '+label.textContent);
         field.addEventListener('input',()=>{draft.criteriaEntries[i]=field.value;});row.append(label,field);
         const actions=row;
-        const action=(text,title,disabled,run)=>{const button=document.createElement('button');button.type='button';button.className='secondary vertex-icon-button';button.innerHTML='<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+text+'"/></svg>';button.title=title;button.setAttribute('aria-label',title);button.disabled=disabled;button.addEventListener('click',()=>{run();paint();});actions.appendChild(button);};
+        const action=(text,title,disabled,run)=>{const button=document.createElement('button');button.type='button';button.className='secondary vertex-icon-button';button.innerHTML='<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+text+'"/></svg>';button.title=title;button.setAttribute('aria-label',title);button.disabled=disabled;button.addEventListener('click',()=>{invalidateJevResult();run();paint();});actions.appendChild(button);};
         action('M8 13V3M4 7l4-4 4 4','Move '+label.textContent+' up',i===0,()=>{[draft.criteriaEntries[i-1],draft.criteriaEntries[i]]=[draft.criteriaEntries[i],draft.criteriaEntries[i-1]];});
         action('M8 3v10M4 9l4 4 4-4','Move '+label.textContent+' down',i===draft.criteriaEntries.length-1,()=>{[draft.criteriaEntries[i+1],draft.criteriaEntries[i]]=[draft.criteriaEntries[i],draft.criteriaEntries[i+1]];});
         action('M4 4l8 8M12 4l-8 8','Remove '+label.textContent,draft.criteriaEntries.length<=2,()=>draft.criteriaEntries.splice(i,1));options.appendChild(row);
       });
       const add=document.createElement('button');add.type='button';add.className='secondary';add.textContent=scale?'Add level':'Add option';add.disabled=draft.criteriaEntries.length>=limit;
-      add.addEventListener('click',()=>{draft.criteriaEntries.push('');paint();const fields=options.querySelectorAll('input');fields[fields.length-1]?.focus();});options.appendChild(add);
+      add.addEventListener('click',()=>{invalidateJevResult();draft.criteriaEntries.push('');paint();const fields=options.querySelectorAll('input');fields[fields.length-1]?.focus();});options.appendChild(add);
     };
     type.addEventListener('change',()=>{draft.type=type.value;paint();});paint();card.appendChild(options);root.appendChild(card);
   });
@@ -138,7 +151,7 @@ function setDecisionRunning(running){
   decisionRunning=running;document.getElementById('jev-run').disabled=running;document.getElementById('jev-stop').hidden=!running;
   document.getElementById('provider-select').disabled=running;document.getElementById('model-select').disabled=running||!modelCatalog.length;document.getElementById('subprovider-select').disabled=running||!modelCatalog.length;
 }
-document.getElementById('jev-add-question').addEventListener('click',()=>{jevDrafts.push({id:'question_'+(++jevNextQuestion),type:'noul',instructions:'',criteriaText:''});renderJevQuestions();});
+document.getElementById('jev-add-question').addEventListener('click',()=>{invalidateJevResult();jevDrafts.push({id:'question_'+(++jevNextQuestion),type:'noul',instructions:'',criteriaText:''});renderJevQuestions();});
 renderJevQuestions();
 document.getElementById('jev-panel').addEventListener('submit',event=>{
   event.preventDefault();if(decisionRunning||chatRunning)return;const status=document.getElementById('jev-status');

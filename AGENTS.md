@@ -2,6 +2,8 @@
 
 - Before creating anything new (a control, an icon or image, a style, an animation, a helper, a module), search the project for an existing solution that already does the job - in both hosts, `vscode/`, `org.vertex.abap.ui/` and its `resources/` - and reuse it. Create something new only when nothing suitable exists, and say what you searched.
 
+- `vscode/resources/` is the generated VSIX copy of the entire `org.vertex.abap.ui/resources/` directory and is ignored by Git. Edit resource files in `org.vertex.abap.ui/resources/`; the VSIX packaging workflow refreshes all copied files from that source.
+
 - Before adding or restyling an interface control, find the same working control already used in the project and reuse its markup, behavior, and theme styling. Do not invent a separate variant for the same action. Check the result in its actual host and theme.
 
 - Keep the current version unless the user requests a version change. Version changes are documented in `vsix-version.md`; build procedures are documented in `vsix.md` and `BUILD.md`. Run the build when the user asks for it.

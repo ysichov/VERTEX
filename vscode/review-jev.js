@@ -9,11 +9,22 @@ async function rememberSuccess(key,model) {
   if(!checks||typeof checks!=="object"||Array.isArray(checks))checks={};
   Object.defineProperty(checks,model,{value:{available:true,reason:"",checkedAt:new Date().toISOString()},enumerable:true,configurable:true,writable:true});await storage.store(scope,JSON.stringify(checks));
 }
+// Keep the general Jev question set stable for other callers (for example Git
+// triage). Code review uses its own two-question contract below.
 const questions = {
   context: {type:"choice",instructions:"Is the supplied before/after diff and adjacent context sufficient to assess the local change? Missing requirements or dependencies can require more context.",criteria:{sufficient:"Enough context for a local assessment",insufficient:"Need more method, dependency or requirement context"}},
   completed: {type:"choice",instructions:"Does this diff implement the latest actionable user request? Read earlier linked requests as intent and constraints, including what a restoration must recover; earlier work already present outside this diff need not appear again. Answer yes when the visible change implements the latest request, partial when only part is implemented, no when it contradicts or omits it, and unclear when the request or supplied context cannot establish completion. If context is insufficient, prefer unclear to an unsupported no. Do not infer test or runtime results.",criteria:{yes:"Да",partial:"Частично",no:"Нет",unclear:"Неясно"}},
   autoapprove: {type:"choice",instructions:"If you were the automated reviewer, would you approve this change based on the supplied user requests and visible diff? Answer yes only when the requested outcome is visibly implemented and there is no visible defect or essential missing evidence. Answer no otherwise. This estimates an approval decision; it does not apply the change.",criteria:{yes:"Yes, auto-approve",no:"No, require human review"}}
 };
+const codeReviewQuestions = {
+  implementation: {type:"noul",instructions:"Реализация в блоке <code> соответствует одной из задач из блока <requirements>?"},
+  syntax: {type:"noul",instructions:"Есть синтаксические ошибки в блоке <code>?"}
+};
+function codePrompt(state) {
+  const requirements=state.task.trim()||"Требования пользователя к этой ревью не связаны.";
+  const code=state.blocks.map(block=>"File: "+(block.file||state.object||"")+"\n"+block.after.join("\n")).join("\n\n");
+  return "<requirements>\n"+requirements+"\n</requirements>\n\n<code>\n"+code+"\n</code>";
+}
 function selection(vscode) {
   const own=vscode.workspace.getConfiguration("vertex.ai").get("decisionModel",null);
   return own && ["typesafe-api","gemini-api","opencode-api"].includes(own.provider) && typeof own.model === "string"
@@ -104,52 +115,33 @@ async function assess(vscode,context,options={}) {
       }
       if(current.length)parts.push({file,blocks:current});
     }
-    const results=[];let expanded=0;
+    const results=[];
     for(const part of parts){
       if(options.signal?.aborted)throw new Error("Decision stopped.");
       let result=await assess(vscode,{...context,scope:"file",object:part.file,blocks:part.blocks},options);
-      if(/Need more/i.test(result.rows.find(row=>row.label==="Context")?.answer||"")){
-        const extra=state.blocks.filter(block=>block.file!==part.file).sort((a,b)=>{
-          const path=require("path");return Number(path.dirname(b.file)===path.dirname(part.file))-Number(path.dirname(a.file)===path.dirname(part.file));
-        });
-        const combined=[...part.blocks];
-        for(const block of extra){if(JSON.stringify({...state,blocks:[...combined,block]}).length>80000)continue;combined.push(block);}
-        if(combined.length>part.blocks.length){
-          result=await assess(vscode,{...context,scope:"file",object:part.file,primaryFile:part.file,blocks:combined},{...options,single:true});
-          expanded++;
-        }
-      }
-      results.push(result);
+      results.push({file:part.file,result});
     }
-    const likelihood=Math.min(...results.map(result=>result.rows.find(row=>row.label==="Auto-approve likelihood").likelihood));
-    const completionRows=results.map(result=>result.rows.find(row=>row.label==="Задача выполнена?"));
-    const completion=completionRows.some(row=>row?.answer==="Нет")?"Нет":completionRows.some(row=>row?.answer==="Частично")?"Частично":completionRows.some(row=>row?.answer==="Неясно")?"Неясно":"Да";
-    const contextRows=results.map(result=>result.rows.find(row=>row.label==="Context"));
-    const contextInsufficient=contextRows.some(row=>/Need more/i.test(row?.answer||""));
-    return {model:results[0].model,elapsedMs:results.reduce((sum,result)=>sum+result.elapsedMs,0),usage:results.reduce((sum,result)=>({input_tokens:sum.input_tokens+(result.usage?.input_tokens||0),output_tokens:sum.output_tokens+(result.usage?.output_tokens||0)}),{input_tokens:0,output_tokens:0}),scope:state.scope,taskProvided:Boolean(state.task),
-      rows:[{label:"Context",answer:contextInsufficient?"More context needed in at least one file":"Enough context in every file"},{label:"Задача выполнена?",answer:completion},{label:"Auto-approve likelihood",answer:Math.round(likelihood*100)+"%",likelihood}],parts:parts.length,files:files.length,expanded};
+    const grouped=new Map();
+    for(const item of results){if(!grouped.has(item.file))grouped.set(item.file,[]);grouped.get(item.file).push(item.result);}
+    const rows=[];
+    for(const [file,fileResults] of grouped)for(const id of Object.keys(codeReviewQuestions)){
+      const values=fileResults.map(result=>result.answers[id].noul);
+      const probability=id==="implementation"?Math.min(...values):Math.max(...values);
+      rows.push({label:file+" · "+codeReviewQuestions[id].instructions,answer:probability>=0.5?"Yes":"No",probability:Math.max(probability,1-probability)});
+    }
+    return {model:results[0].result.model,elapsedMs:results.reduce((sum,item)=>sum+item.result.elapsedMs,0),usage:results.reduce((sum,item)=>({input_tokens:sum.input_tokens+(item.result.usage?.input_tokens||0),output_tokens:sum.output_tokens+(item.result.usage?.output_tokens||0)}),{input_tokens:0,output_tokens:0}),scope:state.scope,taskProvided:Boolean(state.task),rows,parts:parts.length,files:files.length};
   }
   const connected=await connection(vscode);
   if(!connected)throw new Error("Configure the selected decision provider and its active API key in LLM Providers first.");
-  const scopeQuestions=state.scope==="block"?questions:{
-    context:{...questions.context,instructions:state.primary_file?"Is the primary file sufficiently supported by its own diff and the supplemental changed files to assess its requested change?":"Are all supplied before/after blocks and the user requests sufficient to assess the visible change? Missing dependencies can require more context."},
-    completed:{...questions.completed,instructions:(state.primary_file?"Does primary_file fulfill its part of the latest actionable request, using supplemental changed files only as context?":"Does this file or review fulfill its part of the latest actionable request?")+" Earlier linked requests supply intent and constraints; do not require already implemented work to reappear in this diff. If context is insufficient to decide, choose unclear rather than no."},
-    autoapprove:{...questions.autoapprove,instructions:state.primary_file?"Would you auto-approve the change in primary_file based on its diff, user requests and supplemental changed files? Judge the primary file; other files are context. Answer no if essential evidence is still missing.":"If you were the automated reviewer, would you approve all these changes based on the supplied user requests and visible diff? Answer yes only when the requested outcome is visibly implemented across the changes and there is no visible defect or essential missing evidence. Answer no otherwise. This estimates an approval decision; it does not apply the change."}
-  };
-  const reviewQuestions={...scopeQuestions,completed:{...scopeQuestions.completed,instructions:scopeQuestions.completed.instructions+(state.task?" Read the linked requests in chronological order; later requests refine or restore earlier work. Judge the current diff against the latest requested change.":" No user request is linked, so choose unclear.")}};
+  const promptState=codePrompt(state);
   const audit=require("./ai-accounting").begin(vscode,connected.provider || "typesafe-api",connected.model,"Review "+state.scope+" with Jev");
-  audit.decision?.({provider:connected.provider || "typesafe-api",model:connected.model,state,questions:reviewQuestions});
-  options.onPrompt?.({provider:connected.provider || "typesafe-api",model:connected.model,state,questions:reviewQuestions});
+  audit.decision?.({provider:connected.provider || "typesafe-api",model:connected.model,state:promptState,questions:codeReviewQuestions});
+  options.onPrompt?.({provider:connected.provider || "typesafe-api",model:connected.model,state:promptState,questions:codeReviewQuestions});
   try{
-    const result=await require("./jev").evaluate(connected.provider || "typesafe-api",connected.key,connected.model,state,reviewQuestions,{...audit.callbacks,signal:options.signal});
+    const result=await require("./jev").evaluate(connected.provider || "typesafe-api",connected.key,connected.model,promptState,codeReviewQuestions,{...audit.callbacks,signal:options.signal});
     audit.finish(result);
-    const titles={context:"Context",completed:"Задача выполнена?",autoapprove:"Auto-approve likelihood"};
-    const approveAnswer=result.answers.autoapprove;
-    const approveLikelihood=approveAnswer.probabilities?.yes??(typeof approveAnswer.probabilities?.no==="number"?1-approveAnswer.probabilities.no:approveAnswer.choice==="yes"?1:0);
-    return {model:result.model,elapsedMs:result.elapsedMs,usage:result.usage,scope:state.scope,taskProvided:Boolean(state.task),
-      rows:Object.entries(reviewQuestions).map(([id,q])=>id==="autoapprove"
-        ? {label:titles[id],answer:""+Math.round(100*approveLikelihood)+"%",likelihood:approveLikelihood}
-        : {label:titles[id],answer:q.criteria[result.answers[id].choice],probability:result.answers[id].probabilities?.[result.answers[id].choice]})};
+    return {model:result.model,elapsedMs:result.elapsedMs,usage:result.usage,scope:state.scope,taskProvided:Boolean(state.task),answers:result.answers,
+      rows:Object.entries(codeReviewQuestions).map(([id,q])=>({label:q.instructions,answer:result.answers[id].noul>=0.5?"Yes":"No",probability:Math.max(result.answers[id].noul,1-result.answers[id].noul)}))};
   }catch(error){audit.fail(error);throw error;}
 }
 function bind(vscode,panel,resolve) {
@@ -202,4 +194,4 @@ function bridge(host) {
     callback(update);if(!update.status)pending.delete(update.id);
   });
 }
-module.exports={selection,substitutable,retryDelay,budget,callBudget,estimateTokens,correct,paced,selectedProvider,enabled,configure,connection,rememberSuccess,questions,assess,bind,bridge};
+module.exports={selection,substitutable,retryDelay,budget,callBudget,estimateTokens,correct,paced,selectedProvider,enabled,configure,connection,rememberSuccess,questions,codeReviewQuestions,assess,bind,bridge};

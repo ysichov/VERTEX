@@ -305,10 +305,10 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           const requestId = Number(message.requestId) || 0;
           try {
             const logs = require("./log-report");
-            const report = logs.readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
             // The chat continues its own work: only the conversations held where it is working now. Session
             // Logs is the place to see every folder and system.
             const place = logs.currentPlace(vscode);
+            const report = logs.readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""), { place, listOnly: true });
             const items = logs.conversationList(report, place);
             await view.webview.postMessage({ conversationHistory: { requestId, items,
               message: report.configured ? (items.length || !report.sessions.length ? "" : "No conversation of this folder or system yet. Session Logs shows every one.")

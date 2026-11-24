@@ -2,6 +2,14 @@
 
 The VS Code extension version is 0.9.120. The VSIX is built after the version changes are approved.
 
+## 2026-11-24 — Focus Jev code review on requirements and syntax
+
+ASK Jev in code reviews now receives the linked requirements and current code in tagged blocks, and asks whether the code implements a requirement and whether it has syntax errors. Multi-file reviews keep their per-file assessments.
+
+ASK Jev results now show saved requirements and code in the review prompt disclosure. Session Logs show Jev's actual question text and render context-optimization inputs as policy, current request and expandable prior exchanges.
+
+Diffs no longer pair unrelated lines just because they occupy the same position. Inline replacements require at least two shared non-whitespace characters at the start or end; otherwise removal and insertion are shown separately.
+
 ## 2026-11-23 — Space and distinguish the prompt heading in AI magic Flow
 
 AI magic Flow now adds a small inset above the prompt heading and colors the “Prompt N:” label separately from the question text.

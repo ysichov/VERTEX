@@ -186,9 +186,14 @@
               while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) prefix++;
               while (suffix < before.length - prefix && suffix < after.length - prefix
                 && before[before.length - suffix - 1] === after[after.length - suffix - 1]) suffix++;
+              const overlap = Math.max(before.slice(0, prefix).trim().length, suffix ? before.slice(before.length - suffix).trim().length : 0);
+              if (overlap < 2) return [
+                { prefix: "", removed: before, added: "", suffix: "" },
+                { prefix: "", removed: "", added: after, suffix: "" }
+              ];
               return { prefix: before.slice(0, prefix), removed: before.slice(prefix, before.length - suffix),
                 added: after.slice(prefix, after.length - suffix), suffix: suffix ? before.slice(-suffix) : "" };
-            }) };
+            }).flatMap(change => Array.isArray(change) ? change : [change]) };
         } else {
           let answer = result?.text || "";
           let data = answer;
@@ -566,18 +571,102 @@
           revealTimers.add(timer);
         }
       }
-      const stepRuns = view === "step" ? (blocks[0] || []).reduce((runs, node, index) => {
-        const isUser = node.kind === "user" || node.kind === "user_interjection" || node.kind === "screenshot";
-        const toolRound = node.kind === "model" && node.toolCount > 0;
-        const isModel = !toolRound && (node.kind === "note" || node.kind === "answer" || node.kind === "request" || node.kind === "model"
-          || node.title === "Response" || /^Thinking(?: ·|$)/i.test(node.title || ""));
-        const side = isUser ? "User" : isModel ? modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}) : "Vertex processing";
-        if (!runs.length || runs[runs.length - 1].side !== side || toolRound) runs.push({ side, isModel, round: node.kind === "model" ? node.round : null, rows: [] });
-        runs[runs.length - 1].rows.push(index);
-        return runs;
-      }, []) : [];
+      const stepNodes = blocks[0] || [];
+      const hiddenRoundRows = new Set(), noteRounds = [], noteRunByRow = new Map(), detailRounds = new Map();
+      const stepRuns = [], roundSources = [], thinkingParagraphs = new Map();
+      if (view === "step") {
+        stepNodes.forEach((node, index) => {
+          if (node.kind === "note") {
+            const run = { side: modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}), isModel: true,
+              noteEventIndex: node.noteEventIndex, startRow: index, rows: [index] };
+            roundSources.push({ row: index, run });
+            noteRounds.push({ row: index, eventOrder: node.order, run });
+            noteRunByRow.set(index, run);
+          }
+        });
+        stepNodes.forEach((node, index) => {
+          if (node.kind !== "model") return;
+          const relatedRounds = noteRounds.filter(note => (node.noteEventIndices || []).includes(note.eventOrder)).map(note => note.run);
+          if (!relatedRounds.length) {
+            const previousThinking = noteRounds.filter(note => note.row < index).at(-1);
+            if (previousThinking) relatedRounds.push(previousThinking.run);
+          }
+          if (relatedRounds.length) {
+            // A response record closes the preceding thinking round; it is not another visible round.
+            hiddenRoundRows.add(index);
+            const run = relatedRounds[relatedRounds.length - 1];
+            (node.detailIndices || []).forEach(detailIndex => detailRounds.set(detailIndex, run));
+          } else {
+            const run = { side: modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}), isModel: true,
+              startRow: index, rows: [index] };
+            roundSources.push({ row: index, run });
+            (node.detailIndices || []).forEach(detailIndex => detailRounds.set(detailIndex, run));
+          }
+        });
+        roundSources.sort((a, b) => a.row - b.row).forEach((source, index) => {
+          source.run.round = index + 1;
+          stepRuns.push(source.run);
+        });
+        let activeThinkingRound = null;
+        stepNodes.forEach((node, index) => {
+          if (node.kind === "tool") {
+            const operation = String(node.title || "");
+            if (/^verification$/i.test(operation)) {
+              stepRuns.push({ side: "VERTEX", isModel: false, startRow: index, rows: [index] });
+              return;
+            }
+            if (/^review$/i.test(operation)) {
+              stepRuns.push({ side: "User", isModel: false, startRow: index, rows: [index] });
+              return;
+            }
+            const run = activeThinkingRound || detailRounds.get(node.detailIndex);
+            if (run) run.rows.push(index);
+            else stepRuns.push({ side: node.title || "Operation", isModel: false, startRow: index, rows: [index] });
+          } else if (node.kind === "note") {
+            activeThinkingRound = noteRunByRow.get(index) || null;
+          } else if (node.kind === "model") {
+            activeThinkingRound = hiddenRoundRows.has(index)
+              ? noteRounds.filter(note => note.row < index).at(-1)?.run || activeThinkingRound
+              : roundSources.find(source => source.row === index)?.run || null;
+          } else if (node.kind === "request" || node.kind === "user_interjection") {
+            activeThinkingRound = null;
+            const isUser = node.kind === "user_interjection";
+            stepRuns.push({ side: isUser ? "User" : modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}),
+              isModel: !isUser, startRow: index, rows: [index] });
+          } else if (node.kind === "answer" || node.title === "Response") {
+            const run = detailRounds.get(node.detailIndex) || activeThinkingRound;
+            if (run) run.rows.push(index);
+            else stepRuns.push({ side: modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}),
+              isModel: true, startRow: index, rows: [index] });
+          } else if (node.kind !== "note") {
+            const isUser = node.kind === "user" || node.kind === "user_interjection" || node.kind === "screenshot";
+            const isModel = node.kind === "answer" || node.title === "Response";
+            stepRuns.push({ side: isUser ? "User" : isModel ? modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}) : node.title || "Operation",
+              isModel, startRow: index, rows: [index] });
+          }
+        });
+        stepRuns.sort((a, b) => a.startRow - b.startRow);
+        for (let index = 0; index < stepRuns.length - 1;) {
+          const run = stepRuns[index], next = stepRuns[index + 1];
+          const row = run.rows[0], nextRow = next.rows[0];
+          if ((run.rows.length === 1 || next.rows.length === 1) && stepNodes[row]?.kind === "note"
+            && stepNodes[nextRow]?.kind === "note" && run.side === next.side) {
+            const paragraphs = [...(thinkingParagraphs.get(row) || [stepNodes[row].preview]),
+              ...(thinkingParagraphs.get(nextRow) || [stepNodes[nextRow].preview])].filter(Boolean);
+            thinkingParagraphs.set(row, paragraphs);
+            hiddenRoundRows.add(nextRow);
+            run.rows.push(...next.rows.slice(1));
+            stepRuns.splice(index + 1, 1);
+          } else index++;
+        }
+        let visibleRound = 0;
+        stepRuns.forEach(run => { if (run.round != null) run.round = ++visibleRound; });
+      }
       const stepPositions = new Map();
-      const stepHeight = () => 75;
+      const stepHeight = node => {
+        const row = stepNodes.indexOf(node), paragraphs = thinkingParagraphs.get(row);
+        return paragraphs ? Math.max(75, 34 + paragraphs.reduce((height, text) => height + 14 * Math.ceil(text.length / 42) + 8, 0)) : 75;
+      };
       stepRuns.forEach((run, column) => {
         let y = 52;
         run.rows.forEach(row => {
@@ -644,7 +733,9 @@
         }
         let cursorY = view==="context"?230:view === "step" ? 32 : 76;
         let thinkingGroup = null;
+        const visibleStepRows = view === "step" ? stepRuns.flatMap(run => run.rows) : [];
         recordedStages.forEach((node, row) => {
+          if (view === "step" && hiddenRoundRows.has(row)) return;
           const topicIndex = Number(String(node.topicId || "").slice(6));
           const topicColor = Number.isFinite(topicIndex) && topicIndex > 0 ? "--vscode-charts-" + ["blue", "green", "orange", "purple", "red", "yellow"][topicIndex % 6] : null;
           if (view === "steps" && node.kind === "tool" && (!thinkingGroup || thinkingGroup.dataset.noteEventIndex !== String(node.noteEventIndex)) && recordedStages[row - 1]?.kind !== "note") cursorY += 32;
@@ -680,11 +771,13 @@
             lane.appendChild(section);
             return;
           }
-          if (row < recordedStages.length - 1) {
+          const visibleIndex = stepView ? visibleStepRows.indexOf(row) : row;
+          const nextRow = stepView ? visibleStepRows[visibleIndex + 1] : row + 1;
+          if (nextRow != null && nextRow < recordedStages.length) {
             if (stepView) {
-              const nextPosition = stepPositions.get(row + 1);
+              const nextPosition = stepPositions.get(nextRow);
               const nextLeft = 10 + nextPosition.column * stepWidth, nextY = nextPosition.y;
-              const nextHeight = stepHeight(recordedStages[row + 1]);
+              const nextHeight = stepHeight(recordedStages[nextRow]);
               // DOM connectors survive the accessible/WebGL fallback and follow the world zoom.
               const connection = make("div", "flow-connection");
               connection.setAttribute("aria-hidden", "true");
@@ -734,16 +827,20 @@
             if (stepView && stepPosition && stepRuns[stepPosition.column]?.rows[0] === row) {
               const run = stepRuns[stepPosition.column];
               if (run.round != null) cardTitle = "Round " + run.round + ": " + modelName(target);
-              else if (run.side === "Vertex processing") cardTitle = "Vertex processing";
+              else if (run.side === "VERTEX") cardTitle = "VERTEX: " + cardTitle;
               else if (run.side === "User") cardTitle = "User: " + cardTitle;
-              else if (run.isModel) cardTitle = modelName(target) + " · processing";
+              else if (run.isModel) cardTitle = node.kind === "request"
+                ? "VERTEX → " + modelName(target) : (node.kind === "answer" || node.title === "Response")
+                  ? modelName(target) + " · Response" : modelName(target) + " · processing";
             }
             button.appendChild(make("strong", "", (sharedCard && node.kind === "tool" && node.toolNumber ? node.toolNumber + ". " : "") + cardTitle));
             if (sharedCard && node.usagePreview?.length) {
               button.appendChild(make("span", "flow-step-preview", node.usagePreview.join("\n")));
             }
             if (sharedCard && !compactRound && (node.kind === "model" || node.kind === "note") && node.preview) {
-              button.appendChild(make("span", "flow-step-preview", node.preview));
+              const paragraphs = stepView && thinkingParagraphs.get(row);
+              if (paragraphs) paragraphs.forEach(text => button.appendChild(make("span", "flow-step-preview", text)));
+              else button.appendChild(make("span", "flow-step-preview", node.preview));
               button.title += "\n" + node.preview;
             }
             if ((stepView || view === "steps") && node.kind === "tool" && node.operationDiff) {

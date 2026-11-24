@@ -131,7 +131,7 @@ function bareModel(value, provider) {
   return model.replace(MODEL_VENDORS, "") || model;
 }
 
-function parseSession(text, file) {
+function parseSession(text, file, listOnly = false) {
   // The file's name without folder or extension, read as text: Eclipse parses logs in its browser, without Node's path.
   const name = String(file).replace(/^.*[\\/]/, "").replace(/\.jsonl$/, "");
   const provider = name.replace(/_\d{8}_\d{6}(?:_[0-9a-f]+)?$/, "");
@@ -141,6 +141,7 @@ function parseSession(text, file) {
   const nativeCosts = new Map(), reportedCosts = new Set();
   let current;
   for (const line of text.split(/\r?\n/)) {
+    if(listOnly&&!/"type"\s*:\s*"user"/.test(line))continue;
     if (!line.trim()) continue;
     let record;
     try { record = JSON.parse(line); } catch { continue; }
@@ -394,11 +395,22 @@ function readSessions(root, filter = {}) {
     placeCounts.get(key).conversations.add(conversation);
     const requestedPlace=typeof filter.placeKey==="string"?filter.placeKey:"";
     if(requestedPlace&&(requestedPlace==="none"?!!key:key!==requestedPlace)){cached.set(entry.name,item);continue;}
-    if(!item.session){
-      item.session=parseSession(fs.readFileSync(file,"utf8"),entry.name);
+    if(filter.place){
+      const place=filter.place;
+      const matches=place.mode==="both"
+        ? context&&(context.mode==="both"&&context.folder===place.folder&&context.system===place.system&&(context.client||"")===(place.client||"")
+          ||context.mode==="folder"&&context.folder===place.folder
+          ||context.mode==="sap"&&context.system===place.system&&(context.client||"")===(place.client||""))
+        : key===placeKey(place);
+      if(!matches){cached.set(entry.name,item);continue;}
+    }
+    const sessionField=filter.listOnly?"listSession":"session";
+    if(!item[sessionField]){
+      item[sessionField]=parseSession(fs.readFileSync(file,"utf8"),entry.name,!!filter.listOnly);
       cached.set(entry.name,item);
     }
-    if (item.session) sessions.push({ ...item.session, current: currentNames.has(entry.name), prompts: item.session.prompts.map(prompt => ({ ...prompt })) });
+    const selectedSession=item[sessionField];
+    if (selectedSession) sessions.push({ ...selectedSession, current: currentNames.has(entry.name), prompts: selectedSession.prompts.map(prompt => ({ ...prompt })) });
   }
   for (const name of cached.keys()) if (!liveFiles.has(name)) cached.delete(name);
   sessionFileCache.set(cacheKey, cached);
@@ -411,7 +423,7 @@ function readSessions(root, filter = {}) {
     const tags = tagged.get(session.conversation);
     for (const prompt of session.prompts) if (!prompt.topic && tags[prompt.key]) prompt.topic = tags[prompt.key];
   }
-  restoreContextSelections(sessions);
+  if(!filter.listOnly)restoreContextSelections(sessions);
   const places=[...placeCounts.values()].map(({conversations,...place})=>({...place,count:conversations.size}));
   return { configured: true, folder, sessions, places };
 }

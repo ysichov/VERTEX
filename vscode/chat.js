@@ -1543,9 +1543,13 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
   ask.chooseContextFolder=async()=>{
     if(activeRequest)throw new Error("Wait for the current request before switching folders.");
     if(vscode.workspace.isTrusted===false)throw new Error("Trust this workspace before selecting a project folder.");
-    const current=workingFolder(vscode),currentMode=ask.state().contextMode,key=folderSelectionKey(vscode),recentKey=key+":recent";
+    const current=workingFolder(vscode),currentMode=ask.state().contextMode,key=folderSelectionKey(vscode),recentKey="vertex.ai.recentProjectFolders",legacyRecentKey=key+":recent";
     const nextMode=currentMode==="both"?"both":"folder";
-    const recent=Array.isArray(memory?.get?.(recentKey,[]))?memory.get(recentKey,[]):[];
+    const savedRecent=memory?.get?.(recentKey,[]),legacyRecent=memory?.get?.(legacyRecentKey,[]);
+    const recent=[];
+    for(const folder of [...(Array.isArray(savedRecent)?savedRecent:[]),...(Array.isArray(legacyRecent)?legacyRecent:[])])
+      if(typeof folder==="string"&&!recent.some(item=>sameProjectFolder(item,folder)))recent.push(folder);
+    if(legacyRecent?.length)await memory?.update?.(recentKey,recent.slice(0,8));
     const workspaceFolders=(vscode.workspace.workspaceFolders||[]).filter(item=>item.uri.scheme==="file").map(item=>item.uri.fsPath);
     const known=[...new Set([...workspaceFolders,...recent,selectedFolders.get(vscode)].filter(Boolean))].filter(folder=>{try{return require("fs").statSync(folder).isDirectory();}catch(_){return false;}});
     let folder;

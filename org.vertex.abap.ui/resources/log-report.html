@@ -91,6 +91,18 @@
   .technical .detail { background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background)); font-family: var(--vscode-editor-font-family); font-size: 0.9em; }
   .entry-body { padding: 0 8px 4px; }
   .jev-log-actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 8px; }
+  .jev-saved-prompt { margin: 6px 8px; border-top: 1px solid var(--vscode-panel-border); padding-top: 5px; }
+  .jev-saved-prompt > summary { cursor: pointer; color: var(--vscode-textLink-foreground); }
+  .jev-saved-prompt-body { padding: 6px 8px; }
+  .jev-input-section { margin: 7px 0; padding: 7px 9px; border-left: 3px solid var(--vscode-focusBorder); background: var(--vscode-editorWidget-background); }
+  .jev-input-section > strong { display: block; margin-bottom: 4px; color: var(--vscode-textLink-foreground); }
+  .jev-input-code { max-height: 320px; overflow: auto; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 0.92em/1.45 var(--vscode-editor-font-family, monospace); }
+  .jev-input-questions { margin-top: 8px; }
+  .jev-input-question { margin: 6px 0; padding: 7px 9px; border-left: 2px solid var(--vscode-panel-border); background: var(--vscode-editor-background); }
+  .jev-input-question strong, .jev-input-question small { display: block; white-space: pre-wrap; }
+  .jev-input-question small { margin-top: 3px; color: var(--vscode-descriptionForeground); }
+  .jev-input-exchange { margin: 6px 0; border: 1px solid var(--vscode-panel-border); padding: 5px 8px; }
+  .jev-input-exchange > summary { cursor: pointer; color: var(--vscode-textLink-foreground); }
   .jev-rerun-output { margin: 6px 8px; }
   .kind { padding: 4px 8px; color: var(--entry-color); font-size: 0.9em; }
   .table-scroll { overflow-x: auto; }
@@ -591,7 +603,7 @@ function markdown(text, target) {
       var key = keys[Number(m[1]) - 1] || "";
       var tr = el("tr");
       var number = el("td", "num", m[1]); number.title = m[2]; tr.appendChild(number);
-      var about = el("td", "jev-about", subject(key) || key); about.title = m[2]; tr.appendChild(about);
+      var about = el("td", "jev-about", subject(key) || m[2] || key); about.title = m[2]; tr.appendChild(about);
       tr.appendChild(el("td", "jev-answer", m[3]));
       tr.appendChild(el("td", "num", m[4]));
       var odds = el("td", "jev-odds");
@@ -612,6 +624,78 @@ function markdown(text, target) {
 
   var decisionRunSerial = 0, pendingDecisionRuns = Object.create(null);
   function isJevPrompt(p) { return /Jev|decision/i.test(String(p && p.operation || "")) || !!(p && p.decision); }
+  function jevInputDisclosure(decision) {
+    if (!decision || !decision.state) return null;
+    var disclosure = el("details", "jev-saved-prompt"), heading = "Jev input";
+    if (decision.provider || decision.model) heading += " · " + [decision.provider, decision.model].filter(Boolean).join(" · ");
+    disclosure.appendChild(el("summary", "", heading));
+    var body = el("div", "jev-saved-prompt-body"), state = decision.state, hasContent = false;
+    function section(label, text, code) {
+      if (text === undefined || text === null || String(text).trim() === "") return;
+      var card = el("div", "jev-input-section");
+      card.appendChild(el("strong", "", label));
+      card.appendChild(code ? el("pre", "jev-input-code", String(text)) : el("div", "detail", String(text)));
+      body.appendChild(card); hasContent = true;
+    }
+    function addQuestions() {
+      var questions = Object.entries(decision.questions || {});
+      if (!questions.length) return;
+      var list = el("div", "jev-input-questions");
+      list.appendChild(el("strong", "", "Questions sent to Jev"));
+      questions.forEach(function (item, index) {
+        var key = item[0], question = item[1] || {}, card = el("div", "jev-input-question");
+        card.appendChild(el("strong", "", (index + 1) + ". " + (question.label || question.question || key)));
+        if (question.instructions) card.appendChild(el("small", "", question.instructions));
+        if (question.criteria && typeof question.criteria === "object") {
+          var criteria = Object.entries(question.criteria).map(function (entry) { return entry[0] + " — " + entry[1]; }).join(" · ");
+          if (criteria) card.appendChild(el("small", "", "Choices: " + criteria));
+        }
+        list.appendChild(card);
+      });
+      body.appendChild(list);
+    }
+    if (typeof state === "string") {
+      var requirements = /<requirements>\s*([\s\S]*?)\s*<\/requirements>/i.exec(state);
+      var code = /<code>\s*([\s\S]*?)\s*<\/code>/i.exec(state);
+      if (requirements || code) {
+        if (requirements) section("Requirements", requirements[1], false);
+        if (code) section("Code", code[1], true);
+        if (!hasContent) section("State", state, true);
+      } else section("State", state, true);
+    } else if (state && typeof state === "object") {
+      section("Requirements", state.requirements || state.original_task || state.task, false);
+      section("Policy", state.policy, false);
+      section("Current request", state.currentQuestion, false);
+      if (Array.isArray(state.source_files)) state.source_files.forEach(function (file) {
+        section("Code · " + (file.file || "source"), file.source, true);
+      });
+      if (Array.isArray(state.blocks)) state.blocks.forEach(function (block, index) {
+        section("Code · " + (block.file || "block " + (index + 1)), Array.isArray(block.after) ? block.after.join("\n") : block.after, true);
+      });
+      if (Array.isArray(state.exchanges)) {
+        var exchanges = el("div", "jev-input-questions");
+        exchanges.appendChild(el("strong", "", "Previous conversation exchanges · " + state.exchanges.length));
+        state.exchanges.forEach(function (exchange, index) {
+          var item = el("details", "jev-input-exchange"), label = "Exchange " + (exchange.id || index + 1);
+          if (exchange.topicId) label += " · " + exchange.topicId;
+          label += exchange.complete ? " · answer recorded" : " · no answer";
+          if (Number.isSafeInteger(exchange.iterations)) label += " · " + exchange.iterations + " steps";
+          item.appendChild(el("summary", "", label));
+          var body = el("div", "jev-saved-prompt-body");
+          [["Question", exchange.question], ["Answer", exchange.answer]].forEach(function (entry) {
+            if (entry[1]) { var field = el("div", "jev-input-section");field.appendChild(el("strong", "", entry[0]));field.appendChild(el("div", "detail", String(entry[1])));body.appendChild(field); }
+          });
+          if (exchange.truncated) body.appendChild(el("p", "muted", "Exchange text was truncated before it was sent to Jev."));
+          item.appendChild(body);exchanges.appendChild(item);
+        });
+        body.appendChild(exchanges);hasContent = true;
+      }
+      if (!hasContent) section("State", JSON.stringify(state, null, 2), true);
+    } else section("State", String(state), true);
+    addQuestions();
+    disclosure.appendChild(body);
+    return disclosure;
+  }
   function jevLogActions(p, target) {
     if (!isJevPrompt(p)) return;
     var row = el("div", "jev-log-actions"), rerun = el("button", "", "Rerun"), test = el("button", "", "Test in Jev chat");
@@ -633,6 +717,8 @@ function markdown(text, target) {
       };
     }
     row.appendChild(rerun); row.appendChild(test); target.appendChild(row);
+    var input = jevInputDisclosure(decision);
+    if (input) target.appendChild(input);
   }
 
   function verificationTable(report) {
@@ -733,14 +819,14 @@ function markdown(text, target) {
     return holder;
   }
 
-  function section(label, cls, text) {
+  function section(label, cls, text, renderText) {
     var box = el("details", "entry " + cls);
     var firstLine = text === undefined ? "" : String(text).split(/\r?\n/).find(function (line) { return line.trim(); });
     var summary = el("summary", "");
     summary.appendChild(document.createTextNode(label));
     if (firstLine) summary.appendChild(el("span", "entry-preview", "· " + firstLine.trim()));
     box.appendChild(summary);
-    if (text !== undefined) {
+    if (text !== undefined && renderText !== false) {
       var loaded = false;
       box.addEventListener("toggle", function () {
         if (!box.open || loaded) return;
@@ -854,6 +940,12 @@ function markdown(text, target) {
         while (start < oldLine.length && start < newLine.length && oldLine[start] === newLine[start]) start++;
         while (end < oldLine.length - start && end < newLine.length - start
           && oldLine[oldLine.length - end - 1] === newLine[newLine.length - end - 1]) end++;
+        var overlap = Math.max(oldLine.slice(0, start).trim().length, end ? oldLine.slice(oldLine.length - end).trim().length : 0);
+        if (overlap < 2) {
+          var removedRow = el("span", "change"); removedRow.appendChild(el("del", "del", oldLine)); box.appendChild(removedRow);
+          var addedRow = el("span", "change"); addedRow.appendChild(el("ins", "add", newLine)); box.appendChild(addedRow);
+          continue;
+        }
         if (start) row.appendChild(document.createTextNode(oldLine.slice(0, start)));
         var deleted = oldLine.slice(start, oldLine.length - end), inserted = newLine.slice(start, newLine.length - end);
         if (deleted) row.appendChild(el("del", "del", deleted));
@@ -1081,13 +1173,13 @@ function markdown(text, target) {
           (event.details||[]).forEach(function(i){var part=detailSection(p.details[i],p,"");if(part)entry.appendChild(part);});
         } else if(detail?.type==="answer"){
           answerShown=true;
-          entry=section(prefix+"Response","model",detail.text);markdown(detail.text,entry);objectLinks(entry,detail.objects);
+          entry=section(prefix+"Response","model",detail.text,false);markdown(detail.text,entry);objectLinks(entry,detail.objects);
           if(p.decision)jevLogActions(p,entry);
         } else if(detail) entry=detailSection(detail,p,prefix);
         if(entry)box.appendChild(entry);
       });
       if(answerDetail&&!answerShown){
-        var answer=section((items.length+1)+". "+new Date(answerDetail.time||p.time||0).toLocaleTimeString()+" · Response","model",answerDetail.text);
+        var answer=section((items.length+1)+". "+new Date(answerDetail.time||p.time||0).toLocaleTimeString()+" · Response","model",answerDetail.text,false);
         markdown(answerDetail.text,answer);objectLinks(answer,answerDetail.objects);if(p.decision)jevLogActions(p,answer);
         box.appendChild(answer);
       }
