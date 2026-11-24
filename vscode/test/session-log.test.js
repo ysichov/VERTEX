@@ -6,7 +6,25 @@ const os = require("node:os");
 const path = require("node:path");
 const sessionLog = require("../session-log");
 
-test('large serialized table results are logged as valid JSON with complete rows and redacted source',()=>{
+test('request logs retain protected historical tool transcripts',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-history-log-'));
+ try{
+  const log=sessionLog.create(root,'test','history',{request:true});
+  const history=[{role:'assistant',content:'Answer',tool_history:[{tool:'Read',arguments:{file_path:'sample',api_key:'PRIVATE_SECRET'},result:{text:'PRIVATE_READ_RESULT',source:'REPORT z_sample. WRITE x.'}}]}];
+  const prompt='Previous conversation:\n'+JSON.stringify(history,null,2)+'\n\nRequest:\nContinue';
+  log.request({instructions:'',prompt,tools:[],schema:null});
+  log.apiRequest({provider:'test',request:{messages:[{role:'user',content:prompt}]}});
+  const rows=fs.readFileSync(log.file,'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(rows.length,2);
+  for(const row of rows){
+   const raw=JSON.stringify(row);
+   assert.match(raw,/PRIVATE_READ_RESULT/);assert.match(raw,/REPORT z_sample/);
+   assert.match(raw,/sample/);assert.doesNotMatch(raw,/PRIVATE_SECRET|omitted from log/);
+  }
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('large serialized table results are logged completely as valid JSON with redacted source',()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-query-log-'));
  try{
   const log=sessionLog.create(root,'test','large',{questions:true,tools:true,toolResults:true});log.user('Query');
@@ -14,7 +32,7 @@ test('large serialized table results are logged as valid JSON with complete rows
   const data={totalRows:1502,columns:['ID','TEXT'],rows:Array.from({length:500},(_,ID)=>({ID,TEXT:'x'.repeat(150),source:'REPORT secret.\nWRITE SECRET.'}))};
   log.toolResult(id,{content:[{type:'text',text:JSON.stringify(JSON.stringify(data))}]});
   const raw=fs.readFileSync(log.file,'utf8').trim().split('\n').map(JSON.parse),text=raw.at(-1).message.content[0].content,result=JSON.parse(text);
-  assert.ok(text.length<=20000);assert.ok(result.rows.length>0&&result.rows.length<500);assert.equal(result.log_truncated.rowsOmitted+result.rows.length,500);assert.doesNotMatch(text,/WRITE SECRET/);assert.equal(result.totalRows,1502);
+  assert.ok(text.length>20000);assert.equal(result.rows.length,500);assert.equal(result.log_truncated,undefined);assert.doesNotMatch(text,/WRITE SECRET/);assert.equal(result.totalRows,1502);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 

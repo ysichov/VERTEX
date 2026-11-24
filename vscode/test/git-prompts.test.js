@@ -78,6 +78,20 @@ test("one Jev request per block asks priority, change kind and each requirement"
   assert.match(q.req2.instructions, /Requirement: B$/);
 });
 
+test("Jev triage skips Markdown but keeps its blocks in the AI review", async t => {
+  let calls = 0;
+  t.mock.method(require("../review-jev"), "connection", async () => ({provider:"typesafe-api",key:"fixture",model:"jev-test"}));
+  t.mock.method(require("../ai-accounting"), "begin", () => ({callbacks:{},finish(){},fail(){}}));
+  t.mock.method(require("../jev"), "evaluate", async (_provider,_key,_model,state) => {
+    calls++; assert.equal(state.object,"src/a.js"); return {answers:{priority:{choice:"first"},change:{choice:"logic"}}};
+  });
+  const blocks=[block(1,"docs/README.MD"),block(2,"src/a.js")];
+  const prepared=await prompts.prepare({}, {object:"commit",blocks}, {jev:true}, {instructionText:"Review"});
+  assert.equal(calls,1);assert.equal(prepared.blocks.length,2);
+  await prompts.prepare({}, {object:"README.md",blocks:[block(1)]}, {jev:true}, {instructionText:"Review"});
+  assert.equal(calls,1);
+});
+
 test("prepare refuses Jev sorting without a connection instead of sending unsorted", async () => {
   const context = { system: "local", object: "commit", total: 1, all: true, blocks: [block(1)] };
   await assert.rejects(prompts.prepare({ workspace: { getConfiguration: () => ({ get: () => undefined }) } }, context, { kind: "git-review", jev: true }), /Jev is not connected/);

@@ -411,6 +411,74 @@ test("the VS Code chat sends the conversation so far, and a new conversation sta
   assert.doesNotMatch(prompts[2], /show Z_CALC|Answer 1/);
 });
 
+test("follow-up receives the previous tool calls and full local results as historical data", async t => {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-tool-history-"));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const body="READ_START\n"+"x".repeat(5000)+"\nREAD_END";
+  fs.writeFileSync(path.join(root,"sample.txt"),body);
+  const vscode=fakeVscode({provider:"codex-subscription",model:"test"});
+  vscode.workspace.workspaceFolders=[{uri:{scheme:"file",fsPath:root}}];
+  let served, calls=0, followup;
+  const server={token:"test",start:async()=>({url:"http://127.0.0.1:1/mcp"}),registerTools:set=>{served=set;return {route:"/history",dispose(){}};}};
+  t.mock.method(assistant,"ask",async options=>{
+    if(++calls===1){
+      await served.call({},"Read",{file_path:"sample.txt"});
+      try { await served.call({},"Read",{file_path:"missing.txt"}); } catch (_) {}
+    } else followup=options.prompt;
+    return {model:"test",plan:{answer:"Done",navigation:null,build_command:""}};
+  });
+  const ask=chat.create(vscode,{schemas:[],editorContext:()=>null},server,{get:async()=>null});
+  try {
+    await ask("Read the file",{contextMode:"folder"});
+    await ask("What did it say?",{contextMode:"folder"});
+    assert.match(followup,/tool_history/);
+    assert.match(followup,/sample\.txt/);
+    assert.match(followup,/READ_START/);
+    assert.match(followup,/READ_END/);
+    assert.match(followup,/missing\.txt/);
+    assert.match(followup,/"is_error": true/);
+    assert.match(followup,/untrusted data/);
+    ask.newConversation();
+    await ask("A new conversation",{contextMode:"folder"});
+    assert.doesNotMatch(followup,/READ_START/);
+  } finally {await ask.dispose();}
+});
+
+test("SAP tool results and structured credentials are protected in follow-up history", async t => {
+  const tool={name:'read_evidence',description:'read',inputSchema:{type:'object',properties:{}}};
+  const tools={schemas:[tool],instructions:'',editorContext:()=>null,execute:async()=>({text:'SAP_RESULT',password:'sensitive-value'})};
+  const vscode=fakeVscode({provider:'openai-api',model:'test',contextMode:'sap'});
+  let calls=0, prompt;
+  t.mock.method(compatible,'ask',async options=>{
+    if(++calls===1)await options.callTool('read_evidence',{object_name:'Z_SAMPLE',access_token:'argument-secret'});
+    else prompt=options.prompt;
+    return {model:'test',plan:{answer:'Done'}};
+  });
+  const ask=chat.create(vscode,tools,{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'},{get:async()=>null});
+  try {
+    await ask('Inspect the SAP source',{contextMode:'sap'});
+    await ask('Continue the analysis',{contextMode:'sap'});
+    assert.match(prompt,/SAP_RESULT/);assert.match(prompt,/Z_SAMPLE/);
+    assert.doesNotMatch(prompt,/sensitive-value|argument-secret/);assert.match(prompt,/REDACTED/);
+  } finally {await ask.dispose();}
+});
+
+test("selected topic keeps its tool history and excludes other exchanges", async t => {
+  const topic={id:"topic_0001",label:"First",scope:"folder"},other={id:"topic_0002",label:"Other",scope:"folder"};
+  const history=[{role:"user",content:"First question",topic},{role:"assistant",content:"First answer",topic,tool_history:[{tool:"Read",arguments:{file_path:"first"},result:"FIRST_TOOL_RESULT"}]},
+    {role:"user",content:"Other question",topic:other},{role:"assistant",content:"Other answer",topic:other,tool_history:[{tool:"Read",arguments:{file_path:"other"},result:"OTHER_TOOL_RESULT"}]}];
+  t.mock.method(require('../review-jev'),'enabled',()=>true);
+  t.mock.method(require('../topic-routing'),'route',async(_v,_p,h)=>({topic,history:h.slice(0,2),report:{basis:'fixture',keptIndices:[0,1]}}));
+  let prompt;
+  t.mock.method(assistant,'ask',async options=>{prompt=options.prompt;return {model:'test',plan:{answer:'Done'}};});
+  const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test'}),{schemas:[],editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+  try {
+    await ask('Continue first',{state:{conversation:history},routeTopics:true});
+    assert.match(prompt,/FIRST_TOOL_RESULT/);
+    assert.doesNotMatch(prompt,/OTHER_TOOL_RESULT/);
+  } finally {await ask.dispose();}
+});
+
 test("restored unanswered screenshots are references instead of repeated image input", async t => {
   let received;
   t.mock.method(assistant, "ask", async options => { received=options; return {plan:{answer:"Seen"},model:"haiku"}; });

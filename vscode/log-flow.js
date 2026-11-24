@@ -55,6 +55,19 @@
     catch { return value; }
   }
 
+  function shellQuote(value) {
+    return "'" + String(value).replace(/'/g, "'\\''") + "'";
+  }
+
+  function shellEquivalent(name, input) {
+    if (name === "Grep") {
+      const flags = "-REn" + (input.ignore_case ? "i" : "") + (input.glob ? " --include=" + shellQuote(input.glob) : "");
+      return "grep " + flags + " -- " + shellQuote(input.pattern || "") + " " + shellQuote(input.path || ".");
+    }
+    if (name === "Glob") return "find " + shellQuote(input.path || ".") + " -type f -name " + shellQuote(input.pattern || "*");
+    return "";
+  }
+
   function summary(prompt) {
     const details = prompt.details || [], timeline = prompt.timeline || [];
     const calls = details.filter(d => d.type === "tool");
@@ -148,13 +161,18 @@
         : toolName === "Glob" && input.pattern ? "Pattern: " + input.pattern + (input.path ? " · in " + input.path : "")
         : toolName === "Grep" && input.pattern ? "Pattern: " + input.pattern + (input.path ? " · in " + input.path : "")
         : input.file_path || input.path || input.pattern || input.action || "";
-      const title = event.kind === "request" ? "LLM request with system prompt and tools" : event.kind === "tool_result" ? (event.tool || "Tool") + " result"
+      const toolCommand = event.kind === "tool" && detail && (toolName === "Bash" && input.command
+        ? "Command: $ " + String(input.command).slice(0, 500)
+        : (toolName === "Grep" || toolName === "Glob")
+          ? "Original LLM call: " + toolName + "(" + JSON.stringify(input) + ")\nApproximate shell equivalent: $ " + shellEquivalent(toolName, input)
+          : "");
+      const title = event.kind === "request" ? event.apiRequest ? String(event.provider || "API") + " HTTP request" : "LLM request with system prompt and tools" : event.kind === "tool_result" ? (event.tool || "Tool") + " result"
         : event.kind === "tool" ? toolName
         : detail?.routing?.kind === "context_selection" ? "Context selection · Full history"
         : detail?.routing?.status === "skill" ? "Skill search"
         : detail?.type === "answer" ? "Response" : detail?.type || "Recorded step";
       const preview = event.kind === "request"
-        ? String(prompt.text || "").replace(/\s+/g, " ").slice(0, 180)
+        ? event.apiRequest ? "Serialized request body · complete Read results omitted from saved details" : String(prompt.text || "").replace(/\s+/g, " ").slice(0, 180)
         : detail?.type === "answer"
           ? (prompt.operation === "Screenshot recognition" ? recognitionText(detail.text) : String(detail.text || "")).replace(/\s+/g, " ").slice(0, 180)
           : detail?.type === "thinking"
@@ -223,11 +241,12 @@
           + (Number.isSafeInteger(change.addedBytes) && Number.isSafeInteger(change.removedBytes)
             ? " · +" + change.addedBytes.toLocaleString() + " / −" + change.removedBytes.toLocaleString() + " B" : ""));
       }
-      const requestSize = event.contextSize || prompt.contextSize;
-      if (event.kind === "request" && Number.isSafeInteger(requestSize?.bytes)) metrics.push("Prepared C: " + requestSize.bytes.toLocaleString() + " B");
+      const requestSize = event.apiRequest ? null : event.contextSize || prompt.contextSize;
+      if (event.kind === "request" && Number.isSafeInteger(requestSize?.bytes)) metrics.push((event.apiRequest ? "API body C: " : "Prepared C: ") + requestSize.bytes.toLocaleString() + " B");
+      if (event.apiRequest && Number.isSafeInteger(event.requestSize?.bytes)) metrics.push("HTTP body: " + event.requestSize.bytes.toLocaleString() + " B");
       return { kind: event.kind, title: String(title).replace(/\s+/g," ").slice(0,110), time: event.time || prompt.time || 0, order,
         ...(usagePreview.length ? { usagePreview: usagePreview.slice(0, 4) } : {}), ...(metrics.length ? { metrics: metrics.join(" · ") } : {}),
-        ...(preview ? { preview } : {}), ...(operationPreview ? { operationPreview } : {}), ...(operationDiff ? { operationDiff } : {}), detailIndex: event.detail, detailIndices: event.kind === "request" ? event.details : undefined,
+        ...(preview ? { preview } : {}), ...(toolCommand ? { toolCommand } : {}), ...(operationPreview ? { operationPreview } : {}), ...(operationDiff ? { operationDiff } : {}), detailIndex: event.detail, detailIndices: event.kind === "request" ? event.details : undefined,
         skillName: detail?.routing?.skill || detail?.routing?.candidate, skillStatus: detail?.routing?.status,
         skillProbability: detail?.routing?.probability,
         ...(event.kind === "tool" && toolExplanation ? { explanation: String(toolExplanation).replace(/\s+/g," ").slice(0,160) } : {}),
@@ -565,6 +584,16 @@
           const timeline = chronologicalStages(prompt,group.children);
           if (view === "step") {
             const flow = prompt.flow || summary(prompt), lastAnswer = (prompt.details || []).filter(detail => detail.type === "answer" && detail.text).pop();
+            // CLI logs can start with tools and only record Thinking later; no response
+            // metadata identifies that initial model turn. Keep those calls together,
+            // without inventing a separate model turn for each tool.
+            const firstRound = timeline.findIndex(node => node.kind === "note" || node.kind === "model");
+            const firstTool = timeline.findIndex(node => node.kind === "tool" && !/^(?:verification|review)$/i.test(node.title || ""));
+            if (firstTool >= 0 && firstRound >= 0 && firstTool < firstRound && timeline[firstRound].kind === "note") {
+              timeline.splice(firstTool, 0, { kind: "model", title: "Inferred model processing",
+                label: "Inferred from tool calls · response metadata not recorded", time: timeline[firstTool].time,
+                detailIndices: [], noteEventIndices: [], state: "unknown" });
+            }
             const answerPreview = lastAnswer?.text || flow.answerPreview;
             if (answerPreview && !timeline.some(node => node.detailIndex === (prompt.details || []).lastIndexOf(lastAnswer) || node.title === "Response")) timeline.push({ kind: "answer", title: prompt.operation === "Screenshot recognition" ? "Image recognition result" : "LLM response",
               label: (prompt.operation === "Screenshot recognition" ? recognitionText(answerPreview) : String(answerPreview)).replace(/\s+/g," ").slice(0,180), ...(lastAnswer ? { detailIndex: (prompt.details || []).lastIndexOf(lastAnswer) } : {}),
@@ -598,7 +627,7 @@
       }
       const stepNodes = blocks[0] || [];
       const hiddenRoundRows = new Set(), noteRounds = [], noteRunByRow = new Map(), modelRunByRow = new Map(), detailRounds = new Map();
-      const stepRuns = [], roundSources = [], thinkingParagraphs = new Map(), preparationRows = new Set();
+      const stepRuns = [], roundSources = [], thinkingParagraphs = new Map(), preparationRows = new Set(), leadingRoundToolRows = new Set();
       if (view === "step") {
         const requestRow = stepNodes.findIndex(node => node.kind === "request");
         const firstRoundRow = stepNodes.findIndex(node => node.kind === "model" || node.kind === "note" || node.kind === "tool");
@@ -635,14 +664,33 @@
             roundSources.push({ row: index, run });
             (node.detailIndices || []).forEach(detailIndex => detailRounds.set(detailIndex, run));
           }
+          // Some providers log response metadata only after their tool calls complete.
+          // Attach first-round tools from this request to that round card so they render below it.
+          if (!relatedRounds.length && !stepNodes.slice(0, index).some(item => item.kind === "model" || item.kind === "note")) {
+            let requestBoundary = -1;
+            for (let row = index - 1; row >= 0; row--) {
+              if (stepNodes[row].kind === "request" || stepNodes[row].kind === "user_interjection") { requestBoundary = row; break; }
+            }
+            const precedingTools = [];
+            for (let row = requestBoundary + 1; row < index; row++) {
+              if (stepNodes[row].kind === "tool" && !preparationRows.has(row)) precedingTools.push(row);
+            }
+            if (precedingTools.length) {
+              const run = modelRunByRow.get(index);
+              run.startRow = precedingTools[0];
+              run.rows.push(...precedingTools);
+              precedingTools.forEach(row => leadingRoundToolRows.add(row));
+              precedingTools.forEach(row => detailRounds.set(stepNodes[row].detailIndex, run));
+            }
+          }
         });
         roundSources.sort((a, b) => a.row - b.row).forEach((source, index) => {
-          source.run.round = index + 1;
+          source.run.round = index;
           stepRuns.push(source.run);
         });
         let activeThinkingRound = null, closingRun = null;
         stepNodes.forEach((node, index) => {
-          if (preparationRows.has(index)) return;
+          if (preparationRows.has(index) || leadingRoundToolRows.has(index)) return;
           const closingStage = /^Provider usage \(cli_run\)$/.test(node.title || "")
             || node.kind === "tool" && /^verification$/i.test(node.title || "")
             || /^Change verification (?:with Jev|\(Jev\))$/i.test(node.title || "");
@@ -694,7 +742,8 @@
           const run = stepRuns[index], next = stepRuns[index + 1];
           const row = run.rows[0], nextRow = next.rows[0];
           if ((run.rows.length === 1 || next.rows.length === 1) && stepNodes[row]?.kind === "note"
-            && stepNodes[nextRow]?.kind === "note" && run.side === next.side) {
+            && stepNodes[nextRow]?.kind === "note" && run.side === next.side
+            && stepNodes.slice(row + 1, nextRow).every(node => node.kind === "note")) {
             const paragraphs = [...(thinkingParagraphs.get(row) || [stepNodes[row].preview]),
               ...(thinkingParagraphs.get(nextRow) || [stepNodes[nextRow].preview])].filter(Boolean);
             thinkingParagraphs.set(row, paragraphs);
@@ -703,13 +752,36 @@
             stepRuns.splice(index + 1, 1);
           } else index++;
         }
-        let visibleRound = 0;
-        stepRuns.forEach(run => { if (run.round != null) run.round = ++visibleRound; });
+        let visibleRound = 1;
+        stepRuns.forEach(run => { if (run.round != null) run.round = visibleRound++; });
+        // This is a visual group, not evidence that the provider made a single request.
+        // Keep boundaries at every Thinking, response, non-Edit operation or other stage.
+        const editRun = run => {
+          const header = stepNodes[run.rows[0]];
+          return !!run.editRounds || run.round != null && header?.kind === "model" && !(header.noteEventIndices || []).length
+            && !(header.detailIndices || []).some(index => shown[0]?.prompt.details?.[index]?.type === "answer")
+            && run.rows.length > 1 && run.rows.every((row, index) => row === run.rows[0] + index
+              && (index === 0 || stepNodes[row]?.kind === "tool" && stepNodes[row].title === "Edit"));
+        };
+        for (let index = 0; index < stepRuns.length - 1;) {
+          const run = stepRuns[index], next = stepRuns[index + 1];
+          if (!editRun(run) || !editRun(next) || run.side !== next.side
+            || next.rows[0] !== run.rows[run.rows.length - 1] + 1) { index++; continue; }
+          const header = stepNodes[run.rows[0]], nextHeader = stepNodes[next.rows[0]];
+          if (!run.editRounds) run.editRounds = [{ round: run.round, metadata: header.model }];
+          run.editRounds.push({ round: next.round, metadata: nextHeader.model });
+          run.editDetailIndices = [...(run.editDetailIndices || header.detailIndices || []), ...(nextHeader.detailIndices || [])];
+          hiddenRoundRows.add(next.rows[0]);
+          run.rows.push(...next.rows.slice(1));
+          stepRuns.splice(index + 1, 1);
+        }
       }
       const stepPositions = new Map();
       const stepHeight = node => {
         const row = stepNodes.indexOf(node), paragraphs = thinkingParagraphs.get(row);
-        return paragraphs ? Math.max(75, 34 + paragraphs.reduce((height, text) => height + 14 * Math.ceil(text.length / 42) + 8, 0)) : node.metrics ? 100 : 75;
+        if (paragraphs) return Math.max(75, 34 + paragraphs.reduce((height, text) => height + 14 * Math.ceil(text.length / 42) + 8, 0));
+        if (node.toolCommand) return Math.max(124, 44 + node.toolCommand.split("\\n").reduce((height, line) => height + 14 * Math.ceil(line.length / 34), 0));
+        return node.metrics ? 100 : 75;
       };
       stepRuns.forEach((run, column) => {
         let y = run.vertexRound === 0 ? 151 : 52;
@@ -728,7 +800,7 @@
         : view === "steps" && node.usagePreview?.length ? Math.min(150, 50 + node.usagePreview.length * 22)
           : view === "steps" && node.kind === "note" ? 150
           : view === "steps" && node.kind === "prompt" ? 92
-            : view === "steps" && node.kind === "tool" ? (node.operationDiff ? 92 : node.operationPreview ? 88 : 60) + (node.metrics ? 24 : 0)
+            : view === "steps" && node.kind === "tool" ? (node.operationDiff ? 92 : node.toolCommand ? Math.max(124, 44 + node.toolCommand.split("\\n").reduce((height, line) => height + 14 * Math.ceil(line.length / 34), 0)) : node.operationPreview ? 88 : 60) + (node.metrics ? 24 : 0)
               : view === "steps" && node.kind === "model" ? 132
                 : view === "steps" && (node.kind === "screenshot" || node.preview && (node.kind === "request" || node.kind === "user" || node.kind === "user_interjection" || node.title === "Response")) ? 92 : 72;
       const height = view === "step" ? Math.max(340, stepBottom + 30) : Math.max(672, ...blocks.map(items => (view==="context"?242:88) + items.reduce((sum, node, row) => sum + nodeHeight(node) + 24 + (view === "steps" && node.kind === "tool" && items[row - 1]?.kind !== "note" && (items[row - 1]?.kind !== "tool" || items[row - 1]?.noteEventIndex !== node.noteEventIndex) ? 32 : 0), 0)));
@@ -806,7 +878,11 @@
           const y = stepView ? stepPositions.get(row).y : cursorY, accent = color(node.state === "failed" ? "--vscode-errorForeground" : node.state === "unknown" || node.state === "unverified" ? "--vscode-descriptionForeground" : stepView && node.kind === "request" ? colors.included : (view === "steps" || stepView) && (node.kind === "request" || node.kind === "user" || node.kind === "user_interjection" || node.kind === "model") ? colors.request : (view === "steps" || stepView) && (node.kind === "answer" || node.title === "Response") ? colors.answer : view === "context" && (node.kind === "included" || node.kind === "excluded") ? colors[node.kind] : topicColor || colors[node.kind]);
           const isPrompt = node.kind === "prompt" && view === "steps";
           const stepPosition = stepView ? stepPositions.get(row) : null;
-          const compactRound = stepView && node.kind === "model" && node.toolCount > 0;
+          const roundRun = stepView && stepPosition ? stepRuns[stepPosition.column] : null;
+          const effectiveToolCount = roundRun?.editRounds && row === roundRun.rows[0]
+            ? roundRun.rows.filter(toolRow => stepNodes[toolRow]?.kind === "tool").length
+            : node.toolCount || (row === roundRun?.rows[0] ? roundRun.rows.filter(toolRow => stepNodes[toolRow]?.kind === "tool").length : 0);
+          const compactRound = stepView && node.kind === "model" && effectiveToolCount > 0;
           const blockWidth = stepView ? 260 : 236, left = stepView ? 10 + stepPosition.column * stepWidth : 12, blockHeight = stepView ? stepHeight(node) : nodeHeight(node);
           const stepY = stepView ? stepPosition.y : y;
           if (!stepView) cursorY += blockHeight + (view === "steps" && node.kind === "note" ? 8 : 24);
@@ -871,8 +947,10 @@
           const target = node.prompt || prompt;
           button.classList.toggle("selected", selectedKey === String(target.key || target.time) + ":" + node.kind + ":" + node.title);
           button.style.top = (thinkingGroup && (node.kind === "tool" || node.kind === "note") ? y - Number.parseFloat(thinkingGroup.style.top) : stepView ? y : stepY) + "px"; if (stepView) button.style.left = left + "px"; button.style.setProperty("--flow-accent", accent);
-          button.setAttribute("aria-label", (stepView ? "Prompt " + promptNumber + ", " : "Prompt " + promptNumber + ": ") + node.title + ", " + node.label);
-          button.title = node.title + ": " + node.label;
+          const editGroupHeader = roundRun?.editRounds && row === roundRun.rows[0];
+          button.setAttribute("aria-label", (stepView ? "Prompt " + promptNumber + ", " : "Prompt " + promptNumber + ": ")
+            + (editGroupHeader ? "Edit group, " + effectiveToolCount + " tool calls" : node.title + ", " + node.label));
+          button.title = editGroupHeader ? "Edit group · visual grouping of recorded rounds" : node.title + ": " + node.label;
           if (isPrompt) {
             button.appendChild(make("span", "flow-model", modelName(prompt)));
             const promptText = make("span", "flow-prompt-text", node.label); button.appendChild(promptText);
@@ -891,7 +969,8 @@
                   : node.kind === "note" ? "Thinking" : node.title;
             if (stepView && stepPosition && stepRuns[stepPosition.column]?.rows[0] === row && stepRuns[stepPosition.column]?.vertexRound !== 0) {
               const run = stepRuns[stepPosition.column];
-              if (run.round != null) cardTitle = "Round " + run.round + ": " + modelName(target);
+              if (run.editRounds) cardTitle = "Edit group · " + modelName(target);
+              else if (run.round != null) cardTitle = "Round " + run.round + ": " + modelName(target);
               else if (run.side === "VERTEX") cardTitle = "VERTEX: " + cardTitle;
               else if (run.side === "User") cardTitle = "User: " + cardTitle;
               else if (run.isModel) cardTitle = node.kind === "request"
@@ -925,7 +1004,10 @@
               });
               if (!node.operationDiff.removed.length && !node.operationDiff.added.length) diff.appendChild(make("span", "flow-diff-empty", "Edit applied"));
               button.appendChild(diff);
-            } else if (sharedCard && node.kind === "tool" && node.operationPreview) button.appendChild(make("span", "flow-step-preview", node.operationPreview));
+            } else if (sharedCard && node.kind === "tool") {
+              if (node.toolCommand) button.appendChild(make("span", "flow-step-preview flow-step-command", node.toolCommand));
+              if (node.operationPreview) button.appendChild(make("span", "flow-step-preview", node.operationPreview));
+            }
             else if ((stepView || view === "steps") && node.preview && (node.kind === "request" || node.kind === "user" || node.kind === "user_interjection" || node.title === "Response"))
               button.appendChild(make("span", "flow-step-preview " + (node.title === "Response" ? "flow-step-answer" : "flow-step-user-prompt"), node.preview));
             if (sharedCard && node.kind === "screenshot") {
@@ -939,7 +1021,7 @@
               && !(sharedCard && node.preview && (node.kind === "request" || node.kind === "user" || node.kind === "user_interjection" || node.title === "Response"))
               && !(sharedCard && node.kind === "screenshot")) {
               if (node.label) button.appendChild(make("span", "", compactRound
-                  ? node.toolCount + (node.toolCount === 1 ? " tool call" : " tool calls") : node.label));
+                  ? effectiveToolCount + (effectiveToolCount === 1 ? " tool call" : " tool calls") : node.label));
             } else if (node.kind === "tool" && node.explanation && !node.operationPreview && !node.operationDiff) button.appendChild(make("span", "", node.explanation));
             if (node.prompt && node.prompt !== prompt && node.prompt.usage) {
               const own = groupUsage({ prompt: node.prompt }, node.prompt.costKind === "jev" ? "jev" : "model");
@@ -950,7 +1032,9 @@
               }
             }
           }
-          button.onclick = () => choose(target, node, button); (thinkingGroup && (node.kind === "tool" || node.kind === "note") ? thinkingGroup : lane).appendChild(button); nodes.push({ node, button });
+          const detailNode = roundRun?.editRounds && row === roundRun.rows[0]
+            ? { ...node, title: "Edit group", detailIndices: roundRun.editDetailIndices, model: undefined, editRounds: roundRun.editRounds } : node;
+          button.onclick = () => choose(target, detailNode, button); (thinkingGroup && (node.kind === "tool" || node.kind === "note") ? thinkingGroup : lane).appendChild(button); nodes.push({ node, button });
         });
         world.appendChild(lane);
         if (index) plane(x - 20, 38, 20, 2, border, 1);

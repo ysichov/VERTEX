@@ -1,6 +1,70 @@
+## 2026-11-25 — Open Bash output from Flow
+
+Bash result details now offer a link to open the recorded stdout and stderr, or the saved full output file for large commands. Partial recordings are identified.
+
+## 2026-11-24 — Inspect follow-up tool history and avoid a false error
+
+With request logging enabled, follow-up request logs now retain historical tool calls and results, including source; protect these logs as sensitive data. An explanation of application connection errors no longer triggers the local-tool error correction just because it mentions local servers in another sentence.
+
+## 2026-11-24 — Carry tool results into follow-up questions
+
+The active chat now includes recorded tool calls, arguments and results with selected earlier exchanges, so follow-up questions can reuse prior findings. Topic selection and context optimization still determine which exchanges are sent.
+
+## 2026-11-24 — Move Stop to the left of the action row
+
+While a response is running, **Stop** appears at the left of the chat action row.
+
+## 2026-11-24 — Group consecutive Edit rounds in Flow
+
+Flow's Step view groups consecutive Edit-only rounds without recorded Thinking into one visual Edit group, while keeping individual edits and original round details available.
+
+## 2026-11-24 — Exclude Markdown from Jev code review
+
+ASK Jev and Jev block sorting skip Markdown files. They remain available for human review and ASK AI. Automatic code-change verification does not send Markdown either.
+
+## 2026-11-24 — Keep Jev review prompts beside their answers
+
+ASK Jev now places each review decision next to the prompt that produced it. When a file is split into several decisions, the combined file result remains visible as well.
+
+## 2026-11-24 — Number Flow model rounds after VERTEX preparation
+
+Flow reserves Round 0 for VERTEX preparation and numbers model rounds from 1 onward, avoiding duplicate Round 0 cards.
+
+## 2026-11-24 — Keep Context prompt headings in their columns
+
+Long prompt headings in Flow's Context view are now truncated within their own columns instead of overlapping adjacent prompts. The full prompt remains available on hover.
+
+## 2026-11-24 — Group initial Flow tools into a model round
+
+When a CLI log starts with tool calls before its first Thinking entry, Flow groups those calls beneath an inferred initial model round instead of displaying them as separate horizontal cards. Later rounds keep their sequence.
+
+## 2026-11-24 — Keep delayed Flow metadata from merging tool rounds
+
+Flow now keeps tool and Thinking sequences in their own rounds when a provider records response metadata only after the tools finish.
+
+## 2026-11-24 — Keep separate Thinking rounds in Flow
+
+Flow keeps separate model rounds when tool calls occur between their Thinking notes, matching the chronological log.
+
+## 2026-11-24 — Move AI magic beside Stop
+
+The chat keeps **AI magic** in the action row below the message field, beside **Stop** while a response is running.
+
+## 2026-11-24 — Show original Grep and Glob calls in Flow cards
+
+Grep and Glob cards show the original LLM tool call with its arguments and an approximate shell equivalent inside the card, alongside the VERTEX tool result. Model rounds start at 0.
+
+## 2026-11-24 — Keep first-round tools beneath their LLM card
+
+Flow now places first-round tool calls below the matching LLM round when a provider records response metadata after the tools finish.
+
+## 2026-11-24 — Save every tool result in session logs
+
+Session logs now retain complete tool results by default, including Read output, with program source sanitized. Tool calls are recorded with source-free arguments so each result can be paired in Flow. Turn off `vertex.ai.log.toolResults` to keep result summaries only.
+
 ## 2026-11-24 — Measure local tool results and code changes in Flow
 
-New folder logs show measured local-result bytes on tool cards, prepared-context bytes on the request card and recorded code-change counts in characters and UTF-8 bytes on Edit/Write cards and the user card. The request details also show sizes of supplied project-rule files and named editor source or selected fragments, including partial texts. Read content remains omitted from the log; full other local results are optional. Measurements describe VERTEX's boundary, not a CLI's complete model request.
+New folder logs show measured local-result bytes on tool cards, prepared-context bytes on the request card and recorded code-change counts in characters and UTF-8 bytes on Edit/Write cards and the user card. The request details also show sizes of supplied project-rule files and named editor source or selected fragments, including partial texts. With `vertex.ai.log.request`, direct API sessions also retain each serialized outgoing request body and its exact UTF-8 byte size; complete Read results are omitted and counted. Program source and secrets are sanitized. Read content remains omitted from other logs; full other local results are optional. Measurements describe VERTEX's boundary; subscription CLI and Copilot request bodies are not exposed to VERTEX.
 
 ## 2026-11-24 — Show VERTEX Round 0 as its own Flow card
 

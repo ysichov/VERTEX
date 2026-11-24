@@ -106,6 +106,39 @@ test("ASK Jev prevents duplicate block requests, rejects stale results and cance
  const job2=receive({action:"askJev",id:"three",file:"file",hunk:0});await ready2;dispose();assert.equal(signal.aborted,true);await job2;
 });
 
+test('multi-file and split-file reviews retain each prompt and its own answers in order',async t=>{
+ const env=await setup(),prompts=[];let call=0;
+ t.mock.method(require('../ai-accounting'),'begin',()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+ t.mock.method(require('../jev'),'evaluate',async(_provider,_key,_model,state)=>{
+  const values=[[0.9,0.1],[0.2,0.8],[0.7,0.3]][call++];
+  return {model:'jev-test',elapsedMs:1,usage:{},answers:{implementation:{noul:values[0]},syntax:{noul:values[1]}}};
+ });
+ const block=context().blocks[0],input={...context(),scope:'review',task:'Change files',blocks:[
+  {...block,file:'a.js',after:['A'.repeat(45000)]},{...block,file:'a.js',after:['B'.repeat(45000)]},{...block,file:'b.js',after:['C']}
+ ]};
+ const result=await service.assess(env.vscode,input,{onPrompt:prompt=>prompts.push(prompt)});
+ assert.equal(prompts.length,3);assert.deepEqual(result.decisions.map(d=>d.file),['a.js','a.js','b.js']);
+ assert.deepEqual(result.decisions.map(d=>d.rows.map(r=>r.answer)),[['Yes','No'],['No','Yes'],['Yes','No']]);
+ assert.match(prompts[0].state,/A{10}/);assert.match(prompts[1].state,/B{10}/);assert.match(prompts[2].state,/File: b.js/);
+ assert.deepEqual(result.rows.map(r=>r.answer),['No','Yes','Yes','No']);
+});
+
+test('ASK Jev excludes Markdown files at review, file and block scope',async t=>{
+ const env=await setup(),prompts=[];
+ t.mock.method(require('../ai-accounting'),'begin',()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+ t.mock.method(require('../jev'),'evaluate',async(_provider,_key,_model,state)=>{
+  prompts.push(state);return {model:'jev-test',elapsedMs:1,usage:{},answers:{implementation:{noul:0.9},syntax:{noul:0.1}}};
+ });
+ const block=context().blocks[0];
+ const mixed={...context(),scope:'review',blocks:[{...block,file:'docs/README.MD',after:['SECRET DOCUMENT']},{...block,file:'src/app.js',after:['const x = 1;']}]};
+ const answer=await service.assess(env.vscode,mixed);
+ assert.equal(prompts.length,1);assert.match(prompts[0],/src\/app\.js/);assert.doesNotMatch(prompts[0],/SECRET DOCUMENT|README\.MD/);
+ assert.equal(answer.rows.length,2);
+ await assert.rejects(service.assess(env.vscode,{...context(),object:'docs/README.md',scope:'file'}),/Markdown files are excluded/);
+ await assert.rejects(service.assess(env.vscode,{...context(),object:'docs/README.md'}),/Markdown files are excluded/);
+ assert.equal(prompts.length,1);
+});
+
 test('the selected Gemini decision provider reuses its own key independently of the chat provider',async()=>{
  const env=await setup();env.values.decisionModel={provider:'gemini-api',model:'gemini-decision-1'};await profiles.save(env.secrets,'gemini-api','GEMINI','gemini-fixture');
  const c=await service.connection(env.vscode);assert.equal(c.provider,'gemini-api');assert.equal(c.model,'gemini-decision-1');assert.equal(c.key,'gemini-fixture');

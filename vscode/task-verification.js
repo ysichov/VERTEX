@@ -122,8 +122,11 @@ function falseLocalConnectionClaim(answer, evidence) {
  const tools=evidence?.tools||[];
  if(!tools.length || evidence.omitted_tools || evidence.pending || tools.some(tool=>tool.error))return false;
  if(!tools.some(tool=>/^(Read|Grep|Glob)$/.test(tool.tool)))return false;
- return /(?:ошибк[^.!?\n]{0,100}соединени|соединени[^.!?\n]{0,100}ошибк|connection[^.!?\n]{0,100}(?:error|fail)|(?:error|fail)[^.!?\n]{0,100}connection)/i.test(String(answer||""))
-   && /(?:локальн|local)/i.test(String(answer||""));
+ // Require a local file-tool reference in the same sentence as the alleged
+ // error; a discussion of local servers does not describe a tool failure.
+ return String(answer||"").split(/[.!?\n]+/).some(sentence =>
+   /(?:ошибк[^.!?\n]{0,100}соединени|соединени[^.!?\n]{0,100}ошибк|connection[^.!?\n]{0,100}(?:error|fail)|(?:error|fail)[^.!?\n]{0,100}connection)/i.test(sentence)
+   && /(?:локальн[^.!?\n]{0,60}(?:инструмент|тул)|(?:инструмент|тул)[^.!?\n]{0,60}локальн|local[^.!?\n]{0,60}(?:tool|file)|(?:tool|file)[^.!?\n]{0,60}local)/i.test(sentence));
 }
 function createEvidence() {
  const tools=[],pending=new Map(),startedAt=new Date().toISOString();let count=0,changeAttempted=false;

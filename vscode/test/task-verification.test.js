@@ -4,6 +4,9 @@ test('successful local reads disprove a claimed connection error',()=>{
  const evidence={tools:[{tool:'Read',arguments:{file_path:'vscode/log-flow.js'},result:{text:'source'}}],omitted_tools:0,pending:0};
  assert.equal(checks.falseLocalConnectionClaim('Чтение завершилось ошибкой соединения с локальным инструментом VERTEX.',evidence),true);
  assert.equal(checks.falseLocalConnectionClaim('Чтение завершилось ошибкой соединения с локальным инструментом VERTEX.',{...evidence,tools:[{...evidence.tools[0],error:true}]}),false);
+ assert.equal(checks.falseLocalConnectionClaim('Для локальных серверов прокси отключается. Ошибки соединения и некорректный JSON превращаются в сообщение о недоступном сервере.',evidence),false);
+ assert.equal(checks.falseLocalConnectionClaim('For local servers the proxy is disabled. Connection errors become a message.',evidence),false);
+ assert.equal(checks.falseLocalConnectionClaim('The local file tool failed with a connection error.',evidence),true);
 });
 const connection={provider:'typesafe-api',model:'jev-latest',key:'test'};
 test('recovery is bounded by an actionable decision, completed tools and existing user approval',()=>{
@@ -81,6 +84,20 @@ test('Jev cannot override failed host checks and cancellation does not become a 
  const pending=await checks.verifyTask({},'Build','Done',{pending:1},{connection});assert.equal(pending.status,'unverified');assert.equal(pending.host_override,true);
  const controller=new AbortController();controller.abort();await assert.rejects(checks.verifyTask({},'Build','Done',{}, {connection,signal:controller.signal}),/stopped|cancel/i);
 });
+test('change verification never sends Markdown and skips a Markdown-only change',async t=>{
+ const inputs=[];
+ t.mock.method(require('../ai-accounting'),'begin',()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+ t.mock.method(require('../jev'),'evaluate',async(_provider,_key,_model,state)=>{
+  inputs.push(state);return {model:'jev-test',usage:{},answers:{implementation:{noul:0.9},syntax:{noul:0.1}}};
+ });
+ const markdown={file:'docs/README.MD',before:'old',after:'SECRET DOCUMENT'};
+ const code={file:'src/app.js',before:'old',after:'const x = 1;'};
+ const mixed=await checks.verifyTask({},'Fix code','Done',{changes:[markdown,code]},{connection});
+ assert.equal(mixed.status,'passed');assert.equal(inputs.length,1);assert.match(inputs[0],/src\/app\.js/);assert.doesNotMatch(inputs[0],/SECRET DOCUMENT|README\.MD/);
+ const only=await checks.verifyTask({},'Edit docs','Done',{changes:[markdown]},{connection});
+ assert.equal(only.status,'unverified');assert.equal(inputs.length,1);
+});
+
 test('evidence preserves exit status and persistent log paths without forwarding full command output',()=>{
  const evidence=checks.createEvidence();evidence.step({kind:'use',id:'x',name:'Bash',input:{command:'build'}});
  assert.equal(evidence.snapshot().pending,1);

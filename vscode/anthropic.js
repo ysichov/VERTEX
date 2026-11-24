@@ -34,7 +34,7 @@ function models(apiKey) {
   });
 }
 
-function request(apiKey, body, maxBytes = 64000, signal) {
+function request(apiKey, body, maxBytes = 64000, signal, onApiRequest) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
     // Enforce at the transport boundary, including history, schemas and tool
@@ -43,6 +43,7 @@ function request(apiKey, body, maxBytes = 64000, signal) {
       reject(new Error("VERTEX: request exceeds " + (maxBytes === 64000 ? "64 KB" : (maxBytes / 1024) + " KiB") + "; nothing was sent to Anthropic. Start a new conversation or narrow the context."));
       return;
     }
+    try { onApiRequest?.({ provider: "anthropic-api", request: body, bytes: Buffer.byteLength(payload, "utf8"), characters: payload.length }); } catch (_) { /* Logging must not block the API call. */ }
     const req = https.request({ hostname: "api.anthropic.com", path: "/v1/messages", signal, method: "POST", headers: {
       "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json",
       "content-length": Buffer.byteLength(payload) } }, res => {
@@ -94,7 +95,7 @@ async function ask(options) {
     const response = await request(options.apiKey, { model: options.model, max_tokens: options.maxOutputTokens || 16000,
       system: options.instructions, messages, ...(options.structuredResult?{tool_choice:{type:"tool",name:"submit_vertex_answer"}}:{}), ...(apiTools.length ? {tools:apiTools} : {}) },
       // The limit is on the conversation and its context; the tool definitions come on top of it.
-      (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 128000)) + imageBytes + (apiTools.length ? Buffer.byteLength(JSON.stringify(apiTools), "utf8") : 0), options.signal);
+      (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 128000)) + imageBytes + (apiTools.length ? Buffer.byteLength(JSON.stringify(apiTools), "utf8") : 0), options.signal, options.onApiRequest);
     let answer;
     try { answer = JSON.parse(response.text); } catch (_) { answer = null; }
     if (answer && options.onProviderResponse) options.onProviderResponse({

@@ -100,6 +100,11 @@ function validateContext(context,allowLarge=false) {
   return state;
 }
 async function assess(vscode,context,options={}) {
+  if (Array.isArray(context?.blocks)) {
+    const blocks=context.blocks.filter(block=>!/\.md$/i.test(String(block.file||context.object||"")));
+    if (!blocks.length && context.blocks.length) throw new Error("Markdown files are excluded from ASK Jev review.");
+    context={...context,blocks};
+  }
   const state=validateContext(context,true);
   const files=[...new Set(state.blocks.map(block=>block.file))];
   if(!options.single&&(JSON.stringify(state).length>90000||state.scope==="review"&&files.length>1)){
@@ -129,7 +134,7 @@ async function assess(vscode,context,options={}) {
       const probability=id==="implementation"?Math.min(...values):Math.max(...values);
       rows.push({label:file+" · "+codeReviewQuestions[id].instructions,answer:probability>=0.5?"Yes":"No",probability:Math.max(probability,1-probability)});
     }
-    return {model:results[0].result.model,elapsedMs:results.reduce((sum,item)=>sum+item.result.elapsedMs,0),usage:results.reduce((sum,item)=>({input_tokens:sum.input_tokens+(item.result.usage?.input_tokens||0),output_tokens:sum.output_tokens+(item.result.usage?.output_tokens||0)}),{input_tokens:0,output_tokens:0}),scope:state.scope,taskProvided:Boolean(state.task),rows,parts:parts.length,files:files.length};
+    return {model:results[0].result.model,elapsedMs:results.reduce((sum,item)=>sum+item.result.elapsedMs,0),usage:results.reduce((sum,item)=>({input_tokens:sum.input_tokens+(item.result.usage?.input_tokens||0),output_tokens:sum.output_tokens+(item.result.usage?.output_tokens||0)}),{input_tokens:0,output_tokens:0}),scope:state.scope,taskProvided:Boolean(state.task),rows,decisions:results.map(item=>({file:item.file,rows:item.result.rows})),parts:parts.length,files:files.length};
   }
   const connected=await connection(vscode);
   if(!connected)throw new Error("Configure the selected decision provider and its active API key in LLM Providers first.");

@@ -2,6 +2,42 @@
 const test = require('node:test'), assert = require('node:assert/strict'), vm = require('node:vm');
 const { reviewHtml } = require('../code-review');
 
+test('Jev review places each decision beside its own prompt, including split files',()=>{
+ const source=require('node:fs').readFileSync(require.resolve('../code-review'),'utf8');
+ const ui=source.slice(source.indexOf('function reviewJevUi(api)'),source.indexOf('const JEV_REVIEW_CSS'));
+ function run(result,prompts){
+  class Element{
+   constructor(tag){this.tag=tag;this.children=[];this.style={};this.dataset={};this.classList={add(){}};this.isConnected=true;}
+   appendChild(child){this.children.push(child);return child;}
+   append(...children){children.forEach(child=>this.appendChild(child));}
+   replaceChildren(){this.children=[];}
+   setAttribute(){} scrollIntoView(){} after(child){output=child;}
+  }
+  let click,receive,output;const sent=[],root=new Element('section'),button=new Element('button');
+  root.dataset.hunk='0';root.querySelector=()=>null;
+  button.dataset.jevScope='block';button.closest=selector=>selector==='.ask-jev'?button:selector==='.hunk'?root:null;
+  const document={body:{},querySelectorAll:()=>[],createElement:tag=>new Element(tag),createTextNode:text=>({textContent:text}),addEventListener:(_,fn)=>click=fn};
+  const window={addEventListener:(_,fn)=>receive=fn},api={postMessage:message=>sent.push(message)};
+  vm.runInNewContext(ui+'\nreviewJevUi(api);',{document,window,api,MutationObserver:class{observe(){}}});
+  receive({data:{jevAvailability:true}});click({target:button,preventDefault(){},stopImmediatePropagation(){}});
+  const id=sent.find(message=>message.action==='askJev').id;
+  receive({data:{jevReview:{id,result,prompts}}});
+  return {output,sent,id};
+ }
+ const prompt=state=>({state,questions:{check:{instructions:'Question'}}});
+ const rows=answer=>[{label:'Question',answer}];
+ const decisions=[{file:'a.js',rows:rows('Yes')},{file:'a.js',rows:rows('No')},{file:'b.js',rows:rows('Yes')}];
+ const {output,sent,id}=run({decisions,rows:rows('combined'),scope:'review',model:'jev',elapsedMs:1,parts:3,files:2,taskProvided:true},[prompt('A'),prompt('B'),prompt('C')]);
+ assert.deepEqual(output.children.map(node=>node.tag),['div','strong','table','strong','table','details','strong','table','details','strong','table','details','p']);
+ assert.equal(output.children[3].textContent,'Jev result 1 · a.js');assert.equal(output.children[5].children[0].textContent,'Jev Prompt 1 · a.js');
+ assert.equal(output.children[6].textContent,'Jev result 2 · a.js');assert.equal(output.children[8].children[0].textContent,'Jev Prompt 2 · a.js');
+ assert.equal(output.children[9].textContent,'Jev result 3 · b.js');
+ assert.equal(output.children[4].children[0].children[1].textContent,'Yes');assert.equal(output.children[7].children[0].children[1].textContent,'No');
+ output.children[8].children[1].children.at(-1).onclick();assert.equal(sent.at(-1).action,'testJevPrompt');assert.equal(sent.at(-1).id,id);assert.equal(sent.at(-1).index,1);
+ const single=run({rows:rows('No'),scope:'block',model:'jev',elapsedMs:1,taskProvided:true},[prompt('single')]).output;
+ assert.deepEqual(single.children.map(node=>node.tag),['div','strong','table','details','p']);
+});
+
 test('editor-only new files retain review actions but do not embed source or mode toggles',()=>{
  const r=require('../code-review'),file={id:'new',label:'large.json',path:'large.json',kind:'new',openInEditor:true,before:'',after:'PRIVATE_NEW_FILE',parts:r.hunks('','PRIVATE_NEW_FILE')};
  const html=r.filesReviewHtml([file],{readonly:{title:'Changes'}});

@@ -201,7 +201,7 @@
   .flow-lane-heading { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; flex-direction: column; gap: 3px; }
   .flow-lane-heading span { font-size: 1.1em; font-weight: 600; color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .flow-step-lane .flow-lane-heading { top: 12px; }
-  .flow-step-lane .flow-lane-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .flow-lane-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .flow-stats { display: block; margin: 8px 0 10px; padding: 12px 14px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editorWidget-background); color: var(--vscode-editor-foreground); }
   .flow-stats-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 18px; }
   .flow-stats-saving { font-size: 1.35em; color: var(--vscode-charts-green, var(--vscode-editor-foreground)); }
@@ -256,6 +256,7 @@
     .flow-step-lane .flow-node.flow-step-node:focus-visible, .flow-step-lane .flow-node.flow-step-node.selected { border-color: var(--vscode-focusBorder); }
    .flow-step-lane .flow-node.flow-step-node span { overflow-wrap: anywhere; }
    .flow-node .flow-step-preview { display: -webkit-box; min-width: 0; color: var(--vscode-descriptionForeground); font-size: .72em; line-height: 1.25; white-space: pre-line; overflow-wrap: anywhere; -webkit-line-clamp: 5; -webkit-box-orient: vertical; }
+    .flow-node .flow-step-command { display: block; overflow: visible; -webkit-line-clamp: initial; -webkit-box-orient: initial; }
     .flow-node.flow-thinking-note .flow-step-preview { -webkit-line-clamp: 10; color: var(--vscode-charts-purple, var(--vscode-descriptionForeground)); }
     .flow-node.model .flow-step-preview { -webkit-line-clamp: 7; }
     .flow-step-screenshot-tiles { display: flex !important; flex-direction: row; gap: 4px; min-width: 0; max-height: 42px; }
@@ -1082,6 +1083,18 @@ function markdown(text, target) {
           target.appendChild(link);
         }
         var text = d.type === "tool" ? d.text.slice(d.text.indexOf("\n") + 1) : d.text;
+        if (window.vertexCanOpenBashOutput && d.type === "tool result" && d.tool_id &&
+            (p.details || []).some(function (call) { return call.type === "tool" && call.name === "Bash" && call.tool_id === d.tool_id; })) {
+          var result;
+          try { result = JSON.parse(text); } catch (e) { /* older or clipped logs */ }
+          if (result && typeof result === "object" && (typeof result.stdout === "string" || typeof result.stderr === "string" || typeof result.output_file === "string")) {
+            var output = el("button", "recording-link", result.output_file && !result.log_error ? "Open full command output file" : result.output_truncated || result.log_error ? "Open recorded Bash output (partial)" : "Open recorded Bash output");
+            output.type = "button";
+            output.title = result.output_file && !result.log_error ? "Open the command's saved output file" : "Open stdout and stderr from the session log; logging may mask or omit content";
+            output.onclick = function () { vscode.postMessage({ action: "openBashOutput", key: p.key, toolId: d.tool_id }); };
+            target.appendChild(output);
+          }
+        }
         // Fields as lines where the text is a JSON object; anything else as it is.
         if (!fields(target, text, p.key, d.tool_id)) target.appendChild(el("div", "detail", text));
         objectLinks(target, d.objects);
@@ -1460,6 +1473,13 @@ function markdown(text, target) {
         return;
       }
       if(node.kind==="model"){
+        if(node.editRounds){
+          inspector.appendChild(el("p","muted","Visual group of recorded model rounds, not necessarily one model request."));
+          node.editRounds.forEach(function(round){
+            inspector.appendChild(el("h3","","Round " + round.round));
+            if(round.metadata){var entry=detailSection({type:"Provider response metadata",text:JSON.stringify(round.metadata,null,2)},prompt,"");if(entry)inspector.appendChild(entry);}
+          });
+        }
         var hasBody=false;
         (node.noteEventIndices||[]).forEach(function(index){
           var note=(prompt.events||[])[index]?.model;

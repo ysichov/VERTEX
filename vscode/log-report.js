@@ -247,6 +247,17 @@ function parseSession(text, file, listOnly = false) {
       }
       if (record.type === "vertex_context_size") continue;
     }
+    if (record.type === "vertex_api_request") {
+      if (current && record.request) {
+        const readResults = Array.isArray(record.readResults) ? record.readResults : [];
+        current.details.push({ type: String(record.provider || "API") + " HTTP request",
+          text: prettyJson({ requestSize: record.requestSize, readResults, request: record.request }),
+          requestSize: record.requestSize || null, apiProvider: String(record.provider || "API") });
+        for (const snapshot of record.vertex_snapshots || []) current.details.push({ type: "snapshot", snapshot });
+        if (record.vertex_objects?.length) current.details.push({ type: "Referenced objects", objects: record.vertex_objects });
+      }
+      continue;
+    }
     if (record.type === "vertex_request") {
       if (current && record.request) {
         current.details.push({ type: "VERTEX instructions", text: String(record.request.instructions || "") });
@@ -333,7 +344,8 @@ function parseSession(text, file, listOnly = false) {
           : record.type==='vertex_topic_routing' && record.report?.kind==='context_selection' ? 'VERTEX'
           : /vertex_task_verification|vertex_topic_routing|vertex_context_optimization/.test(record.type) ? 'Jev' : 'LLM';
         for(const item of current.timeline.slice(same?timelineStart:0))if(item.kind==='model'||item.kind==='note')events.push({kind:item.kind,actor:'LLM',time:Number.isFinite(time)?time:null,model:item});
-        if((record.type==='vertex_request' || record.type==='vertex_context_size') && fresh.length) events.push({kind:'request',actor:'LLM',time:Number.isFinite(time)?time:null,contextSize:record.contextSize,details:fresh.map((_,i)=>current.details.length-fresh.length+i)});
+        if(record.type==='vertex_api_request' && fresh.length) events.push({kind:'request',actor:'LLM',time:Number.isFinite(time)?time:null,apiRequest:true,provider:record.provider,requestSize:record.requestSize,details:fresh.map((_,i)=>current.details.length-fresh.length+i)});
+        else if((record.type==='vertex_request' || record.type==='vertex_context_size') && fresh.length) events.push({kind:'request',actor:'LLM',time:Number.isFinite(time)?time:null,contextSize:record.contextSize,details:fresh.map((_,i)=>current.details.length-fresh.length+i)});
         else fresh.forEach((detail,i)=>{
           const tool=detail.type==='tool'?detail:detail.type==='tool result'?toolCalls.get(detail.tool_id):null;
           const who=tool?(tool.name==='Verification'?'Checks':'Tools'):actor;
@@ -693,7 +705,7 @@ function open(vscode, options = {}, context) {
   const pageHtml = () => { const nonce = crypto.randomBytes(16).toString("hex"); return fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
     .replace("</head>", () => '<script nonce="' + nonce + '">' + fs.readFileSync(path.join(__dirname, "resources", "three.min.js"), "utf8").replace(/<\/script/gi, "<\\/script") + '</script><script nonce="' + nonce + '">' + fs.readFileSync(path.join(__dirname, "log-flow.js"), "utf8").replace(/<\/script/gi, "<\\/script") + '</script></head>')
     .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
-    .replace("</head>", () => '<script nonce="' + nonce + '">' + require("./usage-report").browserEngine() + 'window.vertexCanContinue = true;window.vertexCanReadVersions = ' + Boolean(options.readVersion) + ';window.vertexCanTagTopics = ' + require("./review-jev").enabled(vscode) + ';</script></head>')
+    .replace("</head>", () => '<script nonce="' + nonce + '">' + require("./usage-report").browserEngine() + 'window.vertexCanContinue = true;window.vertexCanOpenBashOutput = true;window.vertexCanReadVersions = ' + Boolean(options.readVersion) + ';window.vertexCanTagTopics = ' + require("./review-jev").enabled(vscode) + ';</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
     .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>"); };
   panel.webview.html = pageHtml();
@@ -854,6 +866,35 @@ function open(vscode, options = {}, context) {
           throw new Error("That screenshot is not in the log folder.");
         }
         await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(file), { viewColumn: vscode.ViewColumn.Beside });
+      } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }
+    if (message?.action === "openBashOutput") {
+      try {
+        const prompt = promptIndex.get(String(message.key || ""));
+        const toolId = String(message.toolId || "");
+        const call = prompt?.details.find(detail => detail.type === "tool" && detail.name === "Bash" && detail.tool_id === toolId);
+        const detail = call && prompt.details.find(item => item.type === "tool result" && item.tool_id === toolId);
+        let data;
+        try { data = detail && JSON.parse(prettyJson(detail.text)); } catch (_) { /* old or clipped log */ }
+        if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("This Bash result is not available in the session log.");
+        let document;
+        if (typeof data.output_file === "string" && !data.log_error) {
+          const configured = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
+          const base = require("./session-log").resolveRoot(configured);
+          if (!base) throw new Error("No log folder is configured.");
+          const root = fs.realpathSync(path.join(base, "command-output"));
+          const file = path.resolve(data.output_file);
+          const folder = path.dirname(file);
+          if (path.basename(file) !== "output.log" || !/^[a-f0-9-]{36}$/i.test(path.basename(folder)) ||
+              fs.lstatSync(folder).isSymbolicLink() || fs.lstatSync(file).isSymbolicLink() ||
+              fs.realpathSync(file) !== path.join(root, path.basename(folder), "output.log")) throw new Error("That command output file is not in the configured log folder.");
+          document = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+        } else {
+          if (typeof data.stdout !== "string" && typeof data.stderr !== "string") throw new Error("No Bash output was saved in this session log.");
+          const note = data.output_truncated || data.log_error ? "Recorded output is partial.\n\n" : "Recorded output may be sanitized or limited by logging settings.\n\n";
+          document = await vscode.workspace.openTextDocument({ language: "plaintext", content: note + "stdout:\n" + (data.stdout || "") + "\n\nstderr:\n" + (data.stderr || "") });
+        }
+        await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside });
       } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }
     if (message?.action === "openObject") {

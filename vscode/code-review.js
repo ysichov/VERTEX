@@ -77,10 +77,11 @@ function reviewJevUi(api) {
     const toolbar=document.createElement('div');toolbar.className='jev-review-toolbar';
     toolbar.append(rerun,close);entry.output.appendChild(toolbar);
     if(update.error){const error=document.createElement('p');error.textContent='ASK Jev: '+update.error;entry.output.appendChild(error);return;}
-    if(update.result?.rows?.length){
-      const heading=document.createElement('strong');heading.textContent='Jev result';heading.style.display='block';heading.style.margin='4px 0';entry.output.appendChild(heading);
+    const showRows=(rows,title)=>{
+      if(!rows?.length)return;
+      const heading=document.createElement('strong');heading.textContent=title;heading.style.display='block';heading.style.margin='4px 0';entry.output.appendChild(heading);
       const table=document.createElement('table');table.style.width='100%';table.style.borderCollapse='collapse';table.style.margin='4px 0 10px';
-      for(const row of update.result.rows){const tr=document.createElement('tr'),label=document.createElement('td'),answer=document.createElement('td');
+      for(const row of rows){const tr=document.createElement('tr'),label=document.createElement('td'),answer=document.createElement('td');
         label.textContent=row.label+':';label.style.width='30%';label.style.color='var(--vscode-descriptionForeground)';
         answer.textContent=row.answer;answer.style.fontWeight='600';
         if(typeof row.likelihood==='number'){const likelihood=Math.max(0,Math.min(1,row.likelihood));answer.style.color='hsl('+Math.round(likelihood*120)+' 75% 42%)';answer.title=Math.round(likelihood*100)+'% estimated probability';}
@@ -89,14 +90,19 @@ function reviewJevUi(api) {
         tr.append(label,answer);table.appendChild(tr);
       }
       entry.output.appendChild(table);
-    }
+    };
+    const decisions=update.result?.decisions;
+    if(!decisions?.length)showRows(update.result?.rows,'Jev result');
+    else if(decisions.length>new Set(decisions.map(decision=>decision.file)).size)showRows(update.result.rows,'Jev result · combined by file');
     for(const [index,prompt] of (update.prompts||[]).entries()){
+      const decision=decisions?.[index];
+      if(decision)showRows(decision.rows,'Jev result '+(index+1)+' · '+decision.file);
       const details=document.createElement('details');
       details.className='jev-prompt';
       const summary=document.createElement('summary');
       const stateValue=prompt.state;
       const state=stateValue&&typeof stateValue==='object'?stateValue:{};
-      summary.textContent=update.prompts.length===1?'Jev Prompt':'Jev Prompt '+(index+1)+(state.object?' · '+state.object:'');
+      summary.textContent=update.prompts.length===1?'Jev Prompt':'Jev Prompt '+(index+1)+((decision?.file||state.object)?' · '+(decision?.file||state.object):'');
       const content=document.createElement('div');content.className='jev-prompt-body';
       const meta=[prompt.provider,prompt.model].filter(Boolean).join(' · ');
       if(meta)content.appendChild(document.createElement('small')).textContent=meta;
@@ -133,7 +139,7 @@ function reviewJevUi(api) {
       details.append(summary,content);
       entry.output.appendChild(details);
     }
-    const note=document.createElement('p');note.className='muted';note.textContent='Advisory assessment of '+(update.result.scope||'this change')+(update.result.parts?' · '+update.result.files+' files, '+update.result.parts+' decisions; probability is the lowest decision'+(update.result.expanded?'; '+update.result.expanded+' rechecked with more changed files':''):'')+(update.result.taskProvided?'':' · no linked user request')+' · '+update.result.model+' · '+update.result.elapsedMs+' ms. Approve / Decline remains your decision.';entry.output.appendChild(note);
+    const note=document.createElement('p');note.className='muted';note.textContent='Advisory assessment of '+(update.result.scope||'this change')+(update.result.parts?' · '+update.result.files+' files, '+update.result.parts+' decisions'+(update.result.expanded?'; '+update.result.expanded+' rechecked with more changed files':''):'')+(update.result.taskProvided?'':' · no linked user request')+' · '+update.result.model+' · '+update.result.elapsedMs+' ms. Approve / Decline remains your decision.';entry.output.appendChild(note);
   });
   api.postMessage({action:'jevReady'});
 }

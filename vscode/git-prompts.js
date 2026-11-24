@@ -47,6 +47,8 @@ function triageQuestions(requirements) {
   return questions;
 }
 async function triage(vscode, blocks, requirements, options = {}) {
+  blocks = blocks.filter(block => !/\.md$/i.test(String(block.file || options.object || "")));
+  if (!blocks.length) return [];
   const jev = require("./review-jev"), connected = await jev.connection(vscode);
   if (!connected) throw new Error("Jev is not connected: configure the selected decision provider and its active key in LLM Providers.");
   const questions = triageQuestions(requirements), results = [];
@@ -108,7 +110,7 @@ async function prepare(vscode, context, message, options = {}) {
   const requirements = requirementList(message?.requirements);
   let triageResults = null, blocks = context.blocks;
   if (message?.jev === true && blocks.length) {
-    triageResults = await triage(vscode, blocks, kind === "git-business" ? requirements : [], options);
+    triageResults = await triage(vscode, blocks, kind === "git-business" ? requirements : [], { ...options, object: context.object });
     blocks = sortBlocks(blocks, triageResults);
   }
   const labels = { "git-review": "Technical review", "git-business": "Business review", "git-docs": "Documentation", "git-tests": "Test plan", "git-release": "Release notes" };

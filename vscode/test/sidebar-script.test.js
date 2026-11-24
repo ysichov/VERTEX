@@ -105,6 +105,25 @@ test('AI magic stays available before the log session is ready', () => {
   context.setRunning(false);assert.equal(get('new-conversation').textContent,'New conversation');
 });
 
+test('Stop stays at the left of the action row and retains its running state and action', () => {
+  const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};
+  vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.render=html;',sandbox);
+  const markup=sandbox.module.exports.render('stop-test');
+  assert.match(markup, /#chat #chat-stop\{gap:6px;margin-right:auto\}/);
+  assert.match(markup, /<div class="chat-actions"><button type="button" id="chat-stop"[^>]* hidden>[\s\S]*?<\/button><button type="button" class="secondary" data-action="newConversation"/);
+  assert.equal((markup.match(/id="chat-stop"/g)||[]).length,1);
+  const script=markup.match(/<script nonce="stop-test">([\s\S]*?)<\/script>/)[1];
+  const nodes=new Map(),posted=[];
+  const get=id=>{if(!nodes.has(id))nodes.set(id,{dataset:{},setAttribute(){},addEventListener(name,fn){this[name]=fn;}});return nodes.get(id);};
+  const context={document:{getElementById:get},api:{postMessage:message=>posted.push(message)},renderHistory(){}};
+  const start=script.indexOf('let chatRunning = false');
+  const end=script.indexOf('\n',script.indexOf("stopChat.addEventListener",start));
+  vm.runInNewContext(script.slice(start,end)+'\nthis.setRunning=setChatRunning;',context);
+  const stop=get('chat-stop');context.setRunning(true);assert.equal(stop.hidden,false);assert.equal(stop.disabled,false);
+  stop.click();assert.equal(stop.disabled,true);assert.equal(posted[0].action,'stopChat');
+  context.setRunning(false);assert.equal(stop.hidden,true);
+});
+
 test("sidebar HTML contains an executable chat script", () => {
   const folder = path.join(__dirname, "..");
   const source = fs.readFileSync(path.join(folder, "sidebar.js"), "utf8");

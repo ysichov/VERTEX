@@ -51,13 +51,16 @@ function baseUrl(id) {
 
 function secretKey(id) { return "vertex.provider." + id + ".apiKey"; }
 
-function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs, signal) {
+function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs, signal, onApiRequest) {
   const provider = PROVIDERS[id];
   if (!provider) { return Promise.reject(new Error("Unknown API provider: " + id)); }
   if (!apiKey && !provider.local) { return Promise.reject(new Error("No " + provider.label + " API key is configured. Enter it in LLM Providers.")); }
   const payload = body == null ? null : JSON.stringify(body);
   if (payload && Buffer.byteLength(payload, "utf8") > maxBytes) {
     return Promise.reject(new Error("VERTEX: request exceeds " + (maxBytes === 64000 ? "64 KB" : (maxBytes / 1024) + " KiB") + "; narrow the context or start a new conversation."));
+  }
+  if (payload && route === "/chat/completions") {
+    try { onApiRequest?.({ provider: id, request: body, bytes: Buffer.byteLength(payload, "utf8"), characters: payload.length }); } catch (_) { /* Logging must not block the API call. */ }
   }
   const base = baseUrl(id);
   const geminiDecision = id === "gemini-api" && route === "/decisions";
@@ -302,7 +305,7 @@ async function ask(options) {
   const id = options.assistant;
   // MF0 is temporarily disabled: its API cannot receive/execute VERTEX tools.
   if (id === "gemini-api" && String(options.model).replace(/^models\//, "") === "gemini-decision-1" || PROVIDERS[id]?.decisionOnly || id === "opencode-api" && require("./opencode-models").isDecision(options.model)) throw new Error("Jev is a decision model. Use Check models in LLM Providers to test its Decision API; choose a language model for chat.");
-  const request = (id,key,route,body,maxBytes,timeout) => (options.request || requestJson)(id,key,route,body,maxBytes,timeout,options.signal);
+  const request = (id,key,route,body,maxBytes,timeout) => (options.request || requestJson)(id,key,route,body,maxBytes,timeout,options.signal,options.onApiRequest);
   if (options.images?.length && options.capabilities?.vision === false) throw new Error("This model does not accept screenshots. Choose a Vision model or remove the images.");
   if(options.webSearch && id!=="vercel-api")throw new Error("Web mode currently requires Vercel AI Gateway.");
   if(options.webSearch && (options.capabilities?.tools===false || toolSupport.rejection(id,options.apiKey,options.model)))throw new Error("This model cannot use Gateway search tools. Choose another Vercel model for Web mode.");

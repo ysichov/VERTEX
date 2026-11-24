@@ -377,7 +377,7 @@ function create(vscode, options) {
           changeCounts = null;
           const result = await execute(name, args);
           if (name === "Bash") { completed.push({ command: args.command, result }); if (completed.length > 8) completed.shift(); }
-          if (options.onStep) options.onStep({ kind: "result", id, name, content: name === "Read" ? result.text : JSON.stringify(result), is_error: name === "Bash" && result.code !== 0, provider: "local", resultBytes: Buffer.byteLength(JSON.stringify(result), "utf8"), ...(changeCounts ? { changeCounts } : {}) });
+          if (options.onStep) options.onStep({ kind: "result", id, name, content: name === "Read" ? result.text : JSON.stringify(result), historyResult: result, is_error: name === "Bash" && result.code !== 0, provider: "local", resultBytes: Buffer.byteLength(JSON.stringify(result), "utf8"), ...(changeCounts ? { changeCounts } : {}) });
           return result;
         } catch (error) {
           if (options.onStep) options.onStep({ kind: "result", id, name, content: error.message, is_error: true, provider: "local" });

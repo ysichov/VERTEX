@@ -244,6 +244,18 @@ test("Thinking cards use their available body for multiline previews, not a trun
   assert.match(page, /\.flow-node\.flow-thinking-note \.flow-step-preview \{ -webkit-line-clamp: 10; color: var\(--vscode-charts-purple/);
 });
 
+test("Context keeps long prompt headings within their own lanes", () => {
+  const prompts = ["First " + "a".repeat(200), "Second " + "b".repeat(200)]
+    .map((text, index) => ({ key: String(index), time: index + 1, operation: "Chat", text }));
+  const host = flowHost(), dispose = flow.mount(host.root, { prompts }, { state: { view: "context" } });
+  const lanes = host.elements.filter(node => node.className === "flow-lane" && node.parent);
+  assert.deepEqual(lanes.map(lane => [lane.style.left, lane.style.width]), [["16px", "260px"], ["296px", "260px"]]);
+  assert.deepEqual(lanes.map(lane => lane.children[0].children[0].title), prompts.map(prompt => prompt.text));
+  dispose();
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  assert.match(page, /\.flow-lane-heading strong \{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/);
+});
+
 test("Step draws directional chronological connections in the non-WebGL host", () => {
   const host = flowHost(), prompt = { text: "Fix", model: "gpt", details: [
     { type: "tool", name: "Read", input: { file_path: "a.js" } }
@@ -298,6 +310,27 @@ test("Step groups the VERTEX setup stages and request as Round 0", () => {
   assert.equal(cards.length, 8, "each stage renders once, plus the separate Round 0 card");
   assert.equal(host.elements.filter(node => node.className === "flow-connection").length, 7);
   dispose();
+});
+
+test("Step numbers model rounds from 1 with or without VERTEX preparation", () => {
+  for (const preparation of [false, true]) {
+    const prompt = { text: "Fix", model: "Sol", details: [
+      { type: "Skill search", routing: { status: "none" } },
+      { type: "tool", name: "Read", tool_id: "a" },
+      { type: "tool", name: "Read", tool_id: "b" }
+    ], events: [
+      ...(preparation ? [{ kind: "detail", detail: 0 }] : []),
+      { kind: "request" }, { kind: "model" }, { kind: "tool", detail: 1 },
+      { kind: "model" }, { kind: "tool", detail: 2 }, { kind: "model" }
+    ] };
+    prompt.flow = flow.summary(prompt);
+    const host = flowHost(), dispose = flow.mount(host.root, { prompts: [prompt] }, { state: {} });
+    const cards = host.elements.filter(node => node.className?.includes("flow-step-node"));
+    assert.equal(cards.some(card => card.children[0]?.textContent === "VERTEX · Round 0"), preparation);
+    assert.deepEqual(cards.filter(card => /^Round \d+:/.test(card.children[0]?.textContent))
+      .map(card => card.children[0].textContent), ["Round 1: Sol", "Round 2: Sol", "Round 3: Sol"]);
+    dispose();
+  }
 });
 
 test("live Step groups preparation before the model request arrives and keeps its position", () => {
@@ -422,6 +455,65 @@ test("Step shows each process in its first card and stacks tool rounds beneath i
   close();
 });
 
+test("Step visually groups consecutive Edit-only rounds without Thinking and preserves their details", () => {
+  const prompt = { text: "Fix", model: "Sol", details: [
+    ...["a", "b", "c", "d"].map(id => ({ type: "tool", name: "Edit", tool_id: id, input: { file_path: id + ".js" } })),
+    { type: "tool", name: "Read", tool_id: "r", input: { file_path: "r.js" } },
+    { type: "answer", text: "Done" }
+  ], events: [
+    { kind: "model", model: { id: "one" } }, { kind: "tool", detail: 0 },
+    { kind: "model", model: { id: "two" } }, { kind: "tool", detail: 1 },
+    { kind: "model", model: { id: "three" } }, { kind: "tool", detail: 2 },
+    { kind: "model" }, { kind: "tool", detail: 4 },
+    { kind: "note", model: { text: "Think again" } }, { kind: "model" }, { kind: "tool", detail: 3 },
+    { kind: "model" }, { kind: "detail", detail: 5 }
+  ] };
+  prompt.flow = flow.summary(prompt);
+  const original = JSON.stringify(prompt), host = flowHost(), selected = [];
+  const dispose = flow.mount(host.root, { prompts: [prompt] }, { state: {}, details: (...args) => selected.push(args) });
+  const cards = host.elements.filter(node => node.className?.includes("flow-step-node"));
+  const group = cards.find(card => card.children[0]?.textContent === "Edit group · Sol");
+  const tools = cards.filter(card => card.className.includes("flow-operation"));
+  assert.ok(group);
+  assert.equal(group.children[1].textContent, "3 tool calls");
+  assert.deepEqual(tools.slice(0, 3).map(card => card.style.left), [group.style.left, group.style.left, group.style.left]);
+  assert.deepEqual(tools.map(card => card.children[0].textContent), ["1. Edit · a.js", "2. Edit · b.js", "3. Edit · c.js", "4. Read · r.js", "5. Edit · d.js"]);
+  assert.notEqual(tools[3].style.left, group.style.left);
+  assert.notEqual(tools[4].style.left, group.style.left);
+  const dialog = host.elements.find(node => node.tagName === "DIALOG");
+  dialog.showModal = () => { dialog.open = true; }; dialog.close = () => { dialog.open = false; };
+  group.onclick();
+  assert.deepEqual(selected[0][1].detailIndices, [0, 1, 2]);
+  assert.deepEqual(selected[0][1].editRounds.map(round => [round.round, round.metadata.id]), [[1, "one"], [2, "two"], [3, "three"]]);
+  assert.equal(JSON.stringify(prompt), original);
+  dispose();
+});
+
+test("Step does not group Edit rounds across an interjection or a mixed tool round", () => {
+  const prompt = { text: "Fix", model: "Sol", details: [
+    ...["a", "b", "c", "d"].map(id => ({ type: "tool", name: "Edit", tool_id: id })),
+    { type: "tool", name: "Read", tool_id: "r" }
+  ], events: [
+    { kind: "model" }, { kind: "tool", detail: 0 },
+    { kind: "user_interjection", text: "Wait" },
+    { kind: "model" }, { kind: "tool", detail: 1 }, { kind: "tool", detail: 4 },
+    { kind: "model" }, { kind: "tool", detail: 2 },
+    { kind: "model" }, { kind: "tool", detail: 3 }
+  ] };
+  prompt.flow = flow.summary(prompt);
+  const host = flowHost(), dispose = flow.mount(host.root, { prompts: [prompt] }, { state: {} });
+  const cards = host.elements.filter(node => node.className?.includes("flow-step-node"));
+  const tools = cards.filter(card => card.className.includes("flow-operation"));
+  const group = cards.find(card => card.children[0]?.textContent === "Edit group · Sol");
+  assert.ok(group);
+  assert.notEqual(tools[0].style.left, tools[1].style.left);
+  assert.notEqual(tools[1].style.left, group.style.left);
+  assert.equal(tools[2].style.left, tools[1].style.left);
+  assert.equal(tools[3].style.left, group.style.left);
+  assert.equal(tools[4].style.left, group.style.left);
+  dispose();
+});
+
 test("Step keeps model rounds without new Thinking separate from an earlier Thinking", () => {
   for (const noteBeforeMetadata of [true, false]) {
     const note = { kind: "note", model: { text: "First round reasoning" } };
@@ -447,6 +539,48 @@ test("Step keeps model rounds without new Thinking separate from an earlier Thin
     assert.deepEqual(tools.map(card => card.style.top), ["151px", "250px", "151px", "250px", "151px"]);
     dispose();
   }
+});
+
+test("Step keeps Thinking notes in separate rounds when tool calls occur between them", () => {
+  const prompt = { text: "Fix", model: "Sol", details: [
+    { type: "tool", name: "Read", tool_id: "a", input: { file_path: "a.js" } },
+    { type: "tool", name: "Read", tool_id: "b", input: { file_path: "b.js" } }
+  ], events: [
+    { kind: "note", model: { text: "First round thinking" } }, { kind: "tool", detail: 0 },
+    { kind: "note", model: { text: "Second round thinking" } }, { kind: "tool", detail: 1 },
+    { kind: "model" }
+  ] };
+  prompt.flow = flow.summary(prompt);
+  const host = flowHost(), dispose = flow.mount(host.root, { prompts: [prompt] }, { state: {} });
+  const cards = host.elements.filter(node => node.className?.includes("flow-step-node"));
+  const rounds = cards.filter(node => /^Round \d+:/.test(node.children[0].textContent));
+  const tools = cards.filter(node => node.className.includes("flow-operation"));
+  assert.deepEqual(rounds.map(card => card.children[0].textContent), ["Round 1: Sol", "Round 2: Sol", "Round 3: Sol"]);
+  assert.equal(rounds[0].children.at(-1).textContent, "First round thinking");
+  assert.equal(rounds[1].children.at(-1).textContent, "Second round thinking");
+  assert.notEqual(rounds[0].style.left, rounds[1].style.left);
+  assert.deepEqual(tools.map(card => card.style.left), [rounds[0].style.left, rounds[1].style.left]);
+  dispose();
+});
+
+test("Step groups tools before the first Thinking in an inferred initial round", () => {
+  const prompt = { text: "Fix", model: "Sol", details: [
+    ...["a", "b", "c"].map(id => ({ type: "tool", name: "Read", tool_id: id, input: { file_path: id + ".js" } }))
+  ], events: [
+    { kind: "request" }, { kind: "tool", detail: 0 }, { kind: "tool", detail: 1 },
+    { kind: "note", model: { text: "Filtering parsed log output" } }, { kind: "tool", detail: 2 },
+    { kind: "note", model: { text: "Final thought" } }, { kind: "model" }
+  ] };
+  prompt.flow = flow.summary(prompt);
+  const host = flowHost(), dispose = flow.mount(host.root, { prompts: [prompt] }, { state: {} });
+  const cards = host.elements.filter(node => node.className?.includes("flow-step-node"));
+  const rounds = cards.filter(node => /^Round \d+:/.test(node.children[0].textContent));
+  const tools = cards.filter(node => node.className.includes("flow-operation"));
+  assert.deepEqual(rounds.map(card => card.children[0].textContent), ["Round 1: Sol", "Round 2: Sol", "Round 3: Sol"]);
+  assert.equal(tools.length, 3, "each recorded call appears once");
+  assert.deepEqual(tools.map(card => card.style.left), [rounds[0].style.left, rounds[0].style.left, rounds[1].style.left]);
+  assert.ok(Number(tools[0].style.top.replace("px", "")) > Number(rounds[0].style.top.replace("px", "")));
+  dispose();
 });
 
 test("tool numbering restarts per request and ignores non-tool events", () => {

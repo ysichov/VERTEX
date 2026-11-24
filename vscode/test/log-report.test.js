@@ -534,6 +534,65 @@ test('tabular tool results render ordered text-only cells and retain metadata',(
  const empty=el('div');context.fields(empty,{columns:['NAME'],rows:[]});assert.equal(empty.children[1].children[0].children[1].children.length,0);
 });
 
+test("Bash result links open only the associated recorded output", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-bash-output-"));
+  const folder = path.join(root, "claude_compatible"), outputDir = path.join(root, "command-output", "12345678-1234-1234-1234-123456789abc");
+  fs.mkdirSync(folder); fs.mkdirSync(outputDir, { recursive: true });
+  const outputFile = path.join(outputDir, "output.log"); fs.writeFileSync(outputFile, "full output\n");
+  const records = [{ type: "user", message: { content: "Run" } }];
+  for (const [id, content] of [["short", { stdout: "hello\nworld", stderr: "warning", output_truncated: false }],
+    ["large", { stdout: "tail", output_truncated: true, output_file: outputFile }],
+    ["partial", { stdout: "tail", output_truncated: true }],
+    ["unsafe", { output_file: path.join(root, "outside.log") }]]) {
+    records.push({ type: "assistant", vertex_step: "local", message: { id, content: [{ type: "tool_use", id, name: "Bash", input: { command: "echo" } }] } });
+    records.push({ type: "user", vertex_step: "local", message: { content: [{ type: "tool_result", tool_use_id: id, content: JSON.stringify(content) }] } });
+  }
+  fs.writeFileSync(path.join(folder, "codex_test.jsonl"), records.map(r => JSON.stringify({ timestamp: new Date().toISOString(), ...r })).join("\n"));
+  const realRequire = require("node:module").createRequire(path.join(__dirname, "../log-report.js"));
+  const fakeFs = { ...fs, readFileSync(file, ...args) {
+    const relative = path.relative(path.join(__dirname, "../resources"), String(file));
+    return fs.readFileSync(!relative.startsWith("..") && !path.isAbsolute(relative) ? path.join(__dirname, "../../org.vertex.abap.ui/resources", relative) : file, ...args);
+  } };
+  let receive, dispose; const opened = [], errors = [], posted = [];
+  const panel = { webview: { postMessage: async m => { posted.push(m); return true; }, onDidReceiveMessage: fn => { receive = fn; } }, onDidDispose: fn => { dispose = fn; } };
+  const vscode = { ViewColumn: { Beside: 2 }, Uri: { file: file => ({ file }) }, workspace: {
+    getConfiguration: () => ({ get: (key, fallback) => key === "logPath" ? root : fallback }),
+    openTextDocument: async input => { opened.push(input); return input; }
+  }, window: { createWebviewPanel: () => panel, showTextDocument: async () => {}, showErrorMessage: message => errors.push(message) } };
+  const sandbox = { module: { exports: {} }, __dirname: path.join(__dirname, ".."), require: name => name === "fs" ? fakeFs :
+    name === "./usage-report" ? { ...realRequire(name), browserEngine: () => "" } : name === "./review-jev" ? { enabled: () => false } : realRequire(name),
+    setInterval: () => 1, clearInterval() {} };
+  vm.createContext(sandbox); vm.runInContext(fs.readFileSync(path.join(__dirname, "../log-report.js"), "utf8"), sandbox);
+  try {
+    sandbox.module.exports.open(vscode); await receive({ action: "ready" });
+    const key = posted.at(-1).report.sessions[0].prompts[0].key;
+    await receive({ action: "openBashOutput", key, toolId: "short" });
+    assert.match(opened[0].content, /hello\nworld\n\nstderr:\nwarning/);
+    await receive({ action: "openBashOutput", key, toolId: "large" }); assert.equal(opened[1].file, outputFile);
+    await receive({ action: "openBashOutput", key, toolId: "partial" }); assert.match(opened[2].content, /partial/);
+    await receive({ action: "openBashOutput", key, toolId: "unsafe" });
+    await receive({ action: "openBashOutput", key, toolId: "missing" });
+    assert.equal(opened.length, 3); assert.equal(errors.length, 2);
+  } finally { dispose(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("Bash result card offers the output link only for a recorded Bash result", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const el = (tag, cls = "", text = "") => ({ tag, cls, text, children: [], appendChild(child) { this.children.push(child); return child; } });
+  const messages = [], context = { el, window: { vertexCanOpenBashOutput: true }, vscode: { postMessage: m => messages.push(m) },
+    fields: () => true, objectLinks() {} }; vm.createContext(context);
+  vm.runInContext(page.slice(page.indexOf("  function appendToolEntry("), page.indexOf("  // The rows of a conversation")), context);
+  const p = { key: "p:1", details: [{ type: "tool", name: "Bash", tool_id: "b" }] }, target = el("div");
+  context.appendToolEntry(target, { type: "tool result", tool_id: "b", text: JSON.stringify({ stdout: "hello" }) }, p);
+  const link = target.children.find(child => child.tag === "button"); assert.equal(link.cls, "recording-link"); link.onclick();
+  assert.equal(messages[0].action, "openBashOutput"); assert.equal(messages[0].key, "p:1"); assert.equal(messages[0].toolId, "b");
+  const other = el("div"); context.appendToolEntry(other, { type: "tool result", tool_id: "other", text: JSON.stringify({ stdout: "hello" }) }, p);
+  assert.equal(other.children.some(child => child.tag === "button"), false);
+  context.window.vertexCanOpenBashOutput = false; const eclipse = el("div");
+  context.appendToolEntry(eclipse, { type: "tool result", tool_id: "b", text: JSON.stringify({ stdout: "hello" }) }, p);
+  assert.equal(eclipse.children.some(child => child.tag === "button"), false);
+});
+
 test("session report reads provider logs without treating tool results as prompts", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-log-report-"));
   try {

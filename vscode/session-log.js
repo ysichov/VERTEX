@@ -46,7 +46,7 @@ function options(include) {
   return { questions: given.questions === true, answers: given.answers === true,
     tools: given.tools === true,
     // What each tool returned, not only its size; source still becomes object references.
-    toolResults: given.toolResults === true,
+    toolResults: given.toolResults !== false,
     request: given.request === true,
     // The text of Claude Code's changes to local project files (Edit, Write). Program source from SAP stays out.
     localCode: given.localCode === true };
@@ -216,6 +216,36 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       }
       write({ type: "vertex_provider_response", provider, scope, response: metadata });
     },
+    apiRequest(event) {
+      if (!on.request || !event || !event.request || typeof event.request !== "object") return;
+      let request;
+      try { request = JSON.parse(JSON.stringify(event.request)); } catch (_) { return; }
+      const readIds = new Set();
+      for (const message of request.messages || []) {
+        for (const block of Array.isArray(message?.content) ? message.content : [])
+          if (block?.type === "tool_use" && /^(?:mcp__vertex__)?Read$/i.test(String(block.name || ""))) readIds.add(String(block.id));
+        for (const call of message?.tool_calls || [])
+          if (/^(?:mcp__vertex__)?Read$/i.test(String(call.function?.name || ""))) readIds.add(String(call.id));
+      }
+      const readResults = [];
+      const omitRead = (id, content, replace) => {
+        if (!readIds.has(String(id))) return content;
+        const bytes = Buffer.byteLength(typeof content === "string" ? content : JSON.stringify(content ?? ""), "utf8");
+        readResults.push({ id: String(id), bytes });
+        return replace(bytes);
+      };
+      for (const message of request.messages || []) {
+        if (Array.isArray(message?.content)) message.content = message.content.map(block => block?.type === "tool_result"
+          ? { ...block, content: omitRead(block.tool_use_id, block.content, bytes => "[Read result omitted; " + bytes + " UTF-8 bytes]") } : block);
+        if (message?.role === "tool" && readIds.has(String(message.tool_call_id)))
+          message.content = omitRead(message.tool_call_id, message.content, bytes => "[Read result omitted; " + bytes + " UTF-8 bytes]");
+      }
+      const objects = [], snapshots = [];
+      request = sanitize(request, objects, {}, "", snapshots);
+      write({ type: "vertex_api_request", provider: String(event.provider || ""),
+        requestSize: { characters: Number(event.characters) || 0, bytes: Number(event.bytes) || 0, scope: "serialized_http_body" },
+        readResults, request, vertex_objects: objects, vertex_snapshots: snapshots });
+    },
     assistant({ model, usage, text, reasoning }) {
       ({ text, reasoning } = protection.protect({ text, reasoning }));
       // A model's own reasoning (reasoning_content), kept with the answers option as a thinking note.
@@ -236,7 +266,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       }, content: [{ type: "text", text: answer }] } });
     },
     toolUse(name, args) {
-      if (!on.tools) { return null; }
+      if (!on.tools && !on.toolResults) { return null; }
       args = protection.protect(args);
       const toolId = id("tool");
       const objects = [];
@@ -288,7 +318,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
         name: "Review", input: { folder: outcome.folder || "", files }, vertex_objects: objects }] } });
     },
     toolResult(toolId, result) {
-      if (!on.tools || !toolId) { return; }
+      if ((!on.tools && !on.toolResults) || !toolId) { return; }
       result = protection.protect(result);
       const objects = [];
       try { sanitize(JSON.parse(text(result)), objects); } catch (_) { /* a text result */ }
@@ -335,7 +365,7 @@ function stepResult(name, content, error, objects, fullResults) {
     let result; try { result = JSON.parse(text); } catch (_) {}
     if (typeof result?.output_file === "string") addReference(objects, { path: result.output_file, kind: "file" });
   }
-  if (name === "Read" && !error) return "[" + lineCount(text) + " lines read, not logged]";
+  if (name === "Read" && !error && !fullResults) return "[" + lineCount(text) + " lines read, not logged]";
   const safe = sanitizeText(text, objects);
   return fullResults ? safe : clip(safe);
 }
@@ -381,6 +411,12 @@ function sanitize(value, objects, inherited = {}, parentKey = "", snapshots = []
   addReference(objects, reference);
   const result = {};
   for (const [key, item] of Object.entries(value)) {
+    // Preserve the protected historical transcript in request logs so the
+    // context actually sent on follow-up turns can be inspected.
+    if (key === "tool_history" && Array.isArray(item)) {
+      result[key] = require("./context-protection").protect(item);
+      continue;
+    }
     const source = /^(?:source|sources|source_text|abap_source|code|old_source|new_source|old_text|new_text|replacement|patch|source_before|source_after)$/i.test(key)
       && !(key === "source" && "target" in value); // UML relationship endpoints are names, not code.
     // A text that is code: a selected fragment, or a review block - its diff with the lines of the object it names.
@@ -458,9 +494,7 @@ function summarize(result) {
   return JSON.stringify(Object.assign(keep, { result_characters: body.length, content: "not logged" }));
 }
 
-/* A tool's result as it went to the model, with the toolResults option: program source replaced by object
-   references as in every other log entry, and cut at RESULT_TEXT characters with the count of what was left out. */
-const RESULT_TEXT = 20000;
+/* A tool's complete result as it went to the model, with program source replaced by object references. */
 function resultContent(result, objects) {
   const body = text(result);
   let data = body;
@@ -468,16 +502,7 @@ function resultContent(result, objects) {
     try { data = JSON.parse(data); } catch (_) { break; }
   }
   data = sanitize(data, objects);
-  let shown = typeof data === "string" ? data : JSON.stringify(data);
-  if (shown.length > RESULT_TEXT && data && typeof data === "object" && Array.isArray(data.rows) && data.columns) {
-    const rows = data.rows;
-    let low = 0, high = rows.length;
-    const limited = count => JSON.stringify({ ...data, rows: rows.slice(0, count), log_truncated: { rowsLogged: count, rowsOmitted: rows.length - count } });
-    while (low < high) { const middle = Math.ceil((low + high) / 2); if (limited(middle).length <= RESULT_TEXT) low = middle; else high = middle - 1; }
-    shown = limited(low);
-    if (shown.length <= RESULT_TEXT) return shown;
-  }
-  return shown.length > RESULT_TEXT ? shown.slice(0, RESULT_TEXT) + "\n[" + (shown.length - RESULT_TEXT) + " more characters not logged]" : shown;
+  return typeof data === "string" ? data : JSON.stringify(data);
 }
 
 /** Wraps a tool dispatcher so every call and its outcome is logged. */
@@ -549,7 +574,7 @@ function discardFiles(files) {
 /** The log choices from the VS Code settings section vertex.ai. */
 function fromConfig(config) {
   return { questions: config.get("log.questions", false), answers: config.get("log.answers", false),
-    tools: config.get("log.tools", false), toolResults: config.get("log.toolResults", false),
+    tools: config.get("log.tools", false), toolResults: config.get("log.toolResults", true),
     request: config.get("log.request", false),
     localCode: config.get("log.localCode", true) };
 }

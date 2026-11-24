@@ -1045,8 +1045,8 @@
         },
         "vertex.ai.log.toolResults": {
           "type": "boolean",
-          "default": false,
-          "markdownDescription": "With **Log tools**: also log what each VERTEX or MCP tool returned to the model - rows, search hits, messages - instead of only its size. Program source is replaced with object references; a result longer than 20,000 characters is cut, with the count of what was left out."
+          "default": true,
+          "markdownDescription": "Log each tool's result (including Read) in session logs. Tool calls are recorded with source-free arguments so results can be paired in Flow. Program source is replaced with object references; a result longer than 20,000 characters is cut, with the count of what was left out."
         },
         "vertex.ai.log.localCode": {
           "type": "boolean",
@@ -1056,7 +1056,7 @@
         "vertex.ai.log.request": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Log VERTEX instructions, model context, UML and metrics snapshots, tool definitions and answer schema. Program source is replaced with object references. May contain conversation history and local paths. Applies only to new requests; provider-internal instructions are not available to VERTEX."
+          "markdownDescription": "Log VERTEX instructions, model context, UML and metrics snapshots, tool definitions and answer schema. For direct API providers, also log each serialized chat request body and its exact UTF-8 byte size; complete Read tool results are omitted and counted. Program source is replaced with object references. May contain conversation history, screenshots and local paths. CLI subscription and Copilot request bodies are not exposed by their host APIs. Applies only to new requests."
         },
         "vertex.ai.personalInstructions": {
           "type": "boolean",

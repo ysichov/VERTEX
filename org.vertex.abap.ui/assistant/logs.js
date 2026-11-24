@@ -232,7 +232,7 @@ function options(include) {
   return { questions: given.questions === true, answers: given.answers === true,
     tools: given.tools === true,
     // What each tool returned, not only its size; source still becomes object references.
-    toolResults: given.toolResults === true,
+    toolResults: given.toolResults !== false,
     request: given.request === true,
     // The text of Claude Code's changes to local project files (Edit, Write). Program source from SAP stays out.
     localCode: given.localCode === true };
@@ -361,7 +361,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       }, content: [{ type: "text", text: answer }] } });
     },
     toolUse(name, args) {
-      if (!on.tools) { return null; }
+      if (!on.tools && !on.toolResults) { return null; }
       args = protection.protect(args);
       const toolId = id("tool");
       const objects = [];
@@ -389,7 +389,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
           name: String(step.name || ""), input: stepInput(step.name, step.input || {}, objects, on.localCode), vertex_objects: objects }] } });
       } else if (step.kind === "result") {
         write({ type: "user", vertex_step: step.provider || "claude", message: { role: "user", content: [{ type: "tool_result", tool_use_id: step.id,
-          is_error: step.is_error === true, content: stepResult(step.name, step.content, step.is_error === true, objects), vertex_objects: objects }] } });
+          is_error: step.is_error === true, content: stepResult(step.name, step.content, step.is_error === true, objects, on.toolResults), vertex_objects: objects }] } });
       }
     },
     /* The user's review of Claude Code's working copy: each file's decision, with a link to the file in the folder. */
@@ -411,7 +411,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
         name: "Review", input: { folder: outcome.folder || "", files }, vertex_objects: objects }] } });
     },
     toolResult(toolId, result) {
-      if (!on.tools || !toolId) { return; }
+      if ((!on.tools && !on.toolResults) || !toolId) { return; }
       result = protection.protect(result);
       const objects = [];
       try { sanitize(JSON.parse(text(result)), objects); } catch (_) { /* a text result */ }
@@ -452,13 +452,13 @@ function stepInput(name, input, objects, localCode) {
   return sanitize(input, objects);
 }
 /* What came back: a command's output, a search's matches, an error or a refusal in words; a file's text only counted. */
-function stepResult(name, content, error, objects) {
+function stepResult(name, content, error, objects, fullResults) {
   const text = resultText(content);
   if (name === "Bash") {
     let result; try { result = JSON.parse(text); } catch (_) {}
     if (typeof result?.output_file === "string") addReference(objects, { path: result.output_file, kind: "file" });
   }
-  if (name === "Read" && !error) return "[" + lineCount(text) + " lines read, not logged]";
+  if (name === "Read" && !error && !fullResults) return "[" + lineCount(text) + " lines read, not logged]";
   return clip(sanitizeText(text, objects));
 }
 
@@ -664,7 +664,7 @@ function discardFiles(files) {
 /** The log choices from the VS Code settings section vertex.ai. */
 function fromConfig(config) {
   return { questions: config.get("log.questions", false), answers: config.get("log.answers", false),
-    tools: config.get("log.tools", false), toolResults: config.get("log.toolResults", false),
+    tools: config.get("log.tools", false), toolResults: config.get("log.toolResults", true),
     request: config.get("log.request", false),
     localCode: config.get("log.localCode", true) };
 }

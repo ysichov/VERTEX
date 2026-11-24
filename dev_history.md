@@ -1,6 +1,70 @@
+## 2026-11-25 — Open recorded Bash output
+
+Searched VS Code session logs, command-output handling, shared report links and Eclipse's generated log host; reused the report's existing link style and VS Code's text editor. Bash results open saved inline stdout/stderr as an unsaved document or their existing large-output file after validating its location under the configured log folder. The link is VS Code-only; sanitized or clipped historical data cannot be recovered. Two new focused regressions passed. The report test baseline had 13 failures; in the working copy those same failures remain plus one test that cannot find the generated, Git-ignored `vscode/resources/log-report.html`. Actual host/theme rendering and packaging were not checked.
+
+## 2026-11-24 — Preserve historical transcripts in request logs and narrow error detection
+
+The compared follow-up answered about local servers and application connection errors in separate sentences; the local-tool error guard matched both words anywhere in the answer and replaced the valid response after a retry. Require a local file-tool reference and connection-error claim in the same sentence. This conservative heuristic may miss differently worded claims. Request logging now retains protected historical `tool_history` arguments and results, including source, rather than placeholders; ordinary source sanitization remains for other request fields. Structured credential protection is not a guarantee for secrets embedded in plain text. Older logs cannot recover omitted content. Added targeted regression tests; host/provider behavior and packaging remain unverified.
+
+## 2026-11-24 — Carry tool transcripts across chat turns
+
+Searched VS Code chat, provider steps, folder tools, session logs and task evidence, plus Eclipse and shared resources. Reused the host step stream and SAP execution path rather than the deliberately bounded verification evidence. Recorded calls and results stay attached to their exchange in memory and follow existing topic selection; structured credential protection applies. Request logs omit transcript arguments and results to preserve source-logging policy. Older sessions restored from logs cannot reconstruct this data; CLI-native steps depend on provider reporting, and provider input limits still apply. Four focused transcript, topic and logging tests passed. Routing/dedup tests: 23/27 passed, with the same four failures in the unchanged project. Actual host/provider behavior and packaging were not checked.
+
+## 2026-11-24 — Place chat Stop at the left of its action row
+
+Moved the existing Stop button to the start of the chat action row and kept AI magic on the right. Its styling, running-state visibility and stop handler are unchanged. Searched VS Code chat and review controls, Eclipse UI and shared resources; reused the existing Stop control. Added a focused layout and action regression. Actual VS Code theme rendering and packaging were not checked.
+
+## 2026-11-24 — Group consecutive Edit rounds in Flow
+
+Searched VS Code Flow layout and tests, Eclipse Flow, and the shared log report. Reused the existing Step column and inspector to visually group adjacent Edit-only model rounds with no recorded Thinking; other stages and mixed tool rounds remain boundaries. The group retains per-round response metadata and individual edit details without changing log data or claiming one model request. Focused Flow tests: baseline 36/41 passed; after 38/43 passed, with the same five failing names. Both new grouping regressions passed. Actual VS Code rendering and packaging were not checked.
+
+## 2026-11-24 — Exclude Markdown from Jev review
+
+Searched VS Code ASK Jev, Git triage and automatic change verification, as well as the Eclipse review renderer and shared resources. Filter `.md` paths case-insensitively before ASK Jev batching and Git triage; a Markdown-only ASK Jev reports the exclusion without a model call. Human review and ASK AI keep those blocks. Automatic change verification already selects only JavaScript, HTML and ABAP source; added regression coverage for mixed and Markdown-only changes. Focused tests: 22/35 passed, with the same 13 failing names as the baseline (no new failures); all three new regressions passed. Git whitespace and JavaScript syntax checks passed. Actual host rendering and packaging were not checked.
+
+## 2026-11-24 — Pair Jev review decisions and prompts
+
+Searched VS Code review and Jev assessment, Eclipse's review renderer and shared resources. Reused the existing result table and prompt disclosure. Multi-part assessments now retain each decision's rows in prompt order, including repeated file names when a large file is split; the combined per-file table is retained for split files. Single decisions and prompt testing retain their existing behavior. Focused review tests: baseline 13/20 passed; after 15/22 passed, with the same seven failing test names. Actual host rendering and packaging remain unverified.
+
+## 2026-11-24 — Number Flow model rounds after preparation
+
+Step's final visible-run renumbering started at zero independently of the VERTEX preparation card. It now starts model runs at one, including when preparation is absent; merged runs remain consecutive. Updated note and inferred-round assertions and added coverage with and without preparation. Focused Flow baseline: 31/40 passed, nine failures; after: 36/41 passed, five failures, all present in the baseline. JavaScript syntax and whitespace checks passed. Actual host rendering and packaging were not verified.
+
+## 2026-11-24 — Bound Flow lane headings
+
+Context columns use the same heading markup as Step, but only Step constrained its long heading, allowing text to overflow into neighboring columns. Reused the Step ellipsis rule for all lane headings in the shared report resource; the full prompt remains in the title. Inspected VS Code and Eclipse Flow and shared resource styles. Added a Context lane and CSS regression. Focused Flow tests: baseline 30/39 passed; after 31/40 passed, with the same nine failing test names. Actual host rendering and packaging were not verified.
+
+## 2026-11-24 — Group initial Flow tools into a model round
+
+The saved `делай` prompt in the 22:10 Codex session records four tool calls before its first Thinking note, with response metadata only near the end. Searched VS Code Flow grouping and tests, the Eclipse Flow implementation and shared report resources; reused the existing model-run layout. Step inserts an explicitly inferred model card before the leading calls when the first recorded round is a note. The delayed-metadata fallback no longer reassigns earlier note-owned tools when no note is immediately linked to that response. Actual boundaries before the first Thinking cannot be recovered from this log. Added a synthetic event-order regression and repaired the existing round-separation assertion. Focused Flow tests: baseline 28/38 passed, after 30/39 passed; nine failures remain, all present in the baseline. Actual host rendering and build not verified.
+
+## 2026-11-24 — Keep delayed Flow metadata from merging tool rounds
+
+The saved Prompt 4 log records provider response metadata after the entire sequence of local tool calls. Flow's delayed-metadata fallback attached every earlier tool to the final response's Thinking run, overriding the chronological note/tool ownership. Restrict that fallback to responses without a linked Thinking run; earlier tool calls then stay with the note run active at their position. The existing adjacent-note merge still requires no intervening non-note stages. Tests/build not run.
+
+## 2026-11-24 — Preserve Thinking round boundaries in Flow
+
+Step layout attached tool rows to Thinking cards, then merged adjacent Thinking runs without accounting for intervening tool rows. Only merge note rows when no non-note stage lies between them. Added a regression for two Thinking/tool cycles followed by delayed response metadata. Tests/build not run.
+
+## 2026-11-24 — Move AI magic beside Stop
+
+Moved the existing `new-conversation` button from the model picker row into the chat action row beside Stop. Kept its dynamic New conversation/AI magic label and behavior.
+
+## 2026-11-24 — Show original Grep and Glob calls in Flow cards
+
+Grep and Glob cards display the original LLM tool name and complete serialized input arguments, including options such as `glob`, `path` and `ignore_case`, plus a clearly labelled approximate POSIX shell command. The approximation uses `grep -REn` with matching case/include options or `find -type f -name` for Glob; it is not the original call. Bash cards retain their exact recorded command. Their card heights account for wrapped command text, which is not line-clamped. Model run numbering is zero-based, including after visual grouping. Tests/build not run.
+
+## 2026-11-24 — Associate tools logged before first response metadata
+
+The screenshot showed the initial tool calls to the left of the first LLM round. Existing Step assignment only activated a model run when its response metadata row appeared, so tools logged earlier became standalone columns. Reuse the first model run for tool rows after the latest request boundary when no earlier model response exists; arrange its card first, then those tools, and display their count on that card. Calls before a request remain in preparation, and subsequent model rounds retain their existing assignment. The source session log records the user request and prior analysis but not the flow event payload from the screenshot, so that exact event order could not be verified from the log. Tests and build not run.
+
+## 2026-11-24 — Retain tool results by default
+
+Enabled `toolResults` by default in both session loggers and the VS Code setting. Result logging now activates tool call records even when the separate `tools` option is off, so Flow can pair each result with its call. Removed the 20,000-character result cap for VERTEX and MCP tools; all returned result text is retained after sanitization, with protected program source represented by object references. Updated the large-table regression to check complete rows. Tests and build were not run.
+
 ## 2026-11-24 — Local Flow measurements
 
-Searched VS Code folder tools, session logging, Flow, AVE diff and tests, and Eclipse assistant/resources for existing measurement and diff implementations. Reused AVE's character LCS and Flow card styling. Successful local results record serialized UTF-8 size before provider encoding; successful file operations record actual before/after Unicode code point counts, with a one-million-cell LCS limit to avoid blocking. Prepared request component bytes are recorded separately. Read bodies remain omitted; complete non-Read results require toolResults and still pass existing protection. Per-card and recorded-operation totals are not the final applied diff, full model request or a quality metric. API bounds/protection and CLI serialization occur later, so these sizes are not claimed as exact API payloads; an exhaustive initial per-file breakdown, full API request capture and final Git diff remain future work.
+Searched VS Code folder tools, session logging, Flow, AVE diff and tests, and Eclipse assistant/resources for existing measurement and diff implementations. Reused AVE's character LCS and Flow card styling. Successful local results record serialized UTF-8 size before provider encoding; successful file operations record actual before/after Unicode code point counts, with a one-million-cell LCS limit to avoid blocking. Prepared request component bytes are recorded separately. Read bodies remain omitted; complete non-Read results require toolResults and still pass existing protection. Per-card and recorded-operation totals are not the final applied diff or a quality metric. API request logging separately captures each serialized HTTP body after request limits pass and immediately before transport, recording exact UTF-8 bytes and storing a sanitized copy with complete Read tool-result bodies replaced by byte-count markers. It applies to direct Anthropic/OpenAI-compatible API calls; subscription CLI and Copilot request bodies are not exposed to VERTEX. An exhaustive initial per-file breakdown and final applied Git diff remain future work.
 
 Focused baseline: 81 passed, six failed, one skipped. After the change: 83 passed, the same six failing names, one skipped. Actual VS Code light/dark rendering and packaging remain unverified.
 
