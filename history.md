@@ -1,3 +1,7 @@
+## VSIX 0.9.121
+
+The VS Code extension version is 0.9.121. The VSIX is built after the version changes are approved.
+
 ## VSIX 0.9.120
 
 The VS Code extension version is 0.9.120. The VSIX is built after the version changes are approved.
