@@ -365,11 +365,11 @@ test('chronology renders streamed thinking and text between tool steps',()=>{
   assert.match(box.children[2].label,/3\. .*Assistant text/);
 });
 
-test('chronology groups tool calls under the LLM round that issued them',()=>{
+test('chronology shows model rounds and tools as separate chronological operations',()=>{
   const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
   const element=label=>({label,children:[],open:false,querySelector(){return null;},appendChild(child){this.children.push(child);},addEventListener(type,callback){this[type]=callback;}});
   const context={section:(label,kind,text)=>({...element(label),kind,text}),el:(tag,kind,text)=>({...element(text),tag,kind}),
-    document:{createTextNode:text=>({text})},Date,Map,Set,n:value=>String(value||0),modelName:()=>"test-model",stepTitle:detail=>detail.name,
+    document:{createTextNode:text=>({text})},Date,Map,Set,n:value=>String(value||0),questionTimestamp:()=>"",modelName:()=>"test-model",stepTitle:detail=>detail.name,
     appendToolEntry:(target,detail)=>target.appendChild(element(detail.type))};
   vm.createContext(context);
   vm.runInContext(page.slice(page.indexOf('  function chronology('),page.indexOf('  function conversation(')),context);
@@ -377,12 +377,11 @@ test('chronology groups tool calls under the LLM round that issued them',()=>{
     {kind:'model',time:2,model:{usage:{input_tokens:20,output_tokens:3}}},
     {kind:'tool',time:3,detail:0}, {kind:'tool_result',time:4,detail:1}]};
   const box=context.chronology(prompt,element('User'));box.toggle();
-  const round=box.children.find(entry=>entry.label.includes('LLM processing · round 1'));
-  assert.ok(round);
-  assert.equal(round.children.filter(entry=>entry.label==='Read').length,1);
-  assert.equal(box.children.filter(entry=>entry.label.includes('Read')).length,0,'tool call is not presented as a separate peer step');
-  const call=round.children.find(entry=>entry.label==='Read');call.open=true;call.toggle();
-  assert.deepEqual(Array.from(call.children,child=>child.label),['tool','tool result']);
+  assert.match(box.children[1].label,/2\. .*LLM processing · round 1/);
+  assert.match(box.children[2].label,/3\. .*Read/);
+  assert.equal(box.children[2].children.length,0,'tool arguments and result remain collapsed until the operation is opened');
+  box.children[2].open=true;box.children[2].toggle();
+  assert.deepEqual(Array.from(box.children[2].children,child=>child.label),['tool','tool result']);
 });
 
 test('matched skill is labeled Skill search in the recorded chronology',()=>{
@@ -937,6 +936,25 @@ test('Structured orchestrator plan and stage results appear as log details and r
  } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
 
+
+test("review file names open as links while full paths remain visible", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const el = (tag, cls = "", text = "") => ({ tag, cls, text, children: [], style: {}, appendChild(child) { this.children.push(child); return child; } });
+  const messages = [], context = { el, document: { createTextNode: text => ({ text }) }, vscode: { postMessage: message => messages.push(message) } };
+  vm.createContext(context);
+  vm.runInContext(page.slice(page.indexOf("  function fileName("), page.indexOf("  function appendToolEntry(")), context);
+
+  const target = el("div"), file = "/project/vscode/test/log-flow.test.js";
+  assert.equal(context.drawStep(target, { name: "Review", input: { files: [{ file, decision: "approved" }] } }), true);
+  const row = target.children[0].children[0].children[2];
+  const [link, fullPath] = row.children[0].children;
+  assert.equal(link.text, "log-flow.test.js");
+  assert.equal(link.title, "Open " + file);
+  assert.equal(fullPath.tag, "code");
+  assert.equal(fullPath.text, file);
+  link.onclick();
+  assert.equal(JSON.stringify(messages[0]), JSON.stringify({ action: "openObject", object: { path: file, kind: "file" } }));
+});
 
 test("New in includes historical Claude cache creation and preserves Codex counts", () => {
   const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");

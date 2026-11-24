@@ -1,3 +1,15 @@
+## Prepare VSIX 0.9.120
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## 2026-11-23 — Inset and differentiate the AI magic Flow prompt heading
+
+Added an 8 px inset above the Step prompt heading and split its “Prompt N:” label from the question so each can use a distinct theme-aware chart color. Kept the existing heading/card layout and updated its regression; no additional control was introduced. Searched the VS Code and shared Eclipse Flow renderers and existing heading styles. `node --test vscode/test/log-flow.test.js` reports 30 passed and 3 failed; the three failures are the same unrelated test names previously observed in the focused run. Actual host rendering remains unverified; version unchanged.
+
+## 2026-11-23 — Keep chronological tools visible as separate operations
+
+Changed the shared Logs chronology so model-response events stay as numbered round metadata while every tool call and result remains its own subsequent timeline row. Reused the existing lazy disclosure on tool rows and indented them one level under the model round: the operation stays visible, while arguments/results load when opened. Updated the regression to assert round/tool order and lazy detail loading. Kept version unchanged. Focused regression passes (1/1); full log-report test file has unrelated existing fixture/helper failures. Host rendering remains pending.
+
 ## 2026-11-23 — Move AI magic Flow process labels into cards
 
 Reused the existing compact Step-card style rather than adding a detached owner-caption control. The Step lane heading now carries the prompt number and question in one line; process captions above columns are removed. Each model round starts higher, shows “Round N: model” on its first model card, and tool rounds keep their tool cards stacked beneath. Other non-model process runs show “Vertex processing” on their first card; the user run identifies its first card as “User: …”. Other standalone model-processing steps retain their model name and “processing” label. Updated shared report CSS and the Flow DOM regression to cover the integrated labels and card positions. Kept the current version. Actual host rendering, light/dark review and test execution remain pending.

@@ -1,3 +1,15 @@
+## VSIX 0.9.120
+
+The VS Code extension version is 0.9.120. The VSIX is built after the version changes are approved.
+
+## 2026-11-23 — Space and distinguish the prompt heading in AI magic Flow
+
+AI magic Flow now adds a small inset above the prompt heading and colors the “Prompt N:” label separately from the question text.
+
+## 2026-11-23 — Keep chronological tools visible as separate operations
+
+Steps (chronological) now shows each LLM round and each tool call/result as separate numbered entries. Tool operations are indented one level beneath the round; their arguments and result remain available by opening the operation, instead of hiding the operation itself inside the round.
+
 ## VSIX 0.9.119
 
 The VS Code extension version is 0.9.119. The VSIX is built after the version changes are approved.

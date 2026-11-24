@@ -579,7 +579,7 @@
       const stepPositions = new Map();
       const stepHeight = () => 75;
       stepRuns.forEach((run, column) => {
-        let y = 32;
+        let y = 52;
         run.rows.forEach(row => {
           stepPositions.set(row, { column, y, side: run.side });
           y += stepHeight(blocks[0][row]) + 24;
@@ -616,7 +616,8 @@
         const promptNumber=shownEntries[index].index+1;
         const request = "Prompt " + promptNumber;
         const question = String(prompt.text || prompt.operation || "Question not logged").replace(/\s+/g, " ").slice(0, 120);
-        const title = make("strong", "", request + ": " + question); title.style.color = topicAccent; title.title = String(prompt.text || prompt.operation || "Question not logged"); heading.appendChild(title);
+        const title = make("strong"); title.style.color = topicAccent; title.title = String(prompt.text || prompt.operation || "Question not logged");
+        title.append(make("span", "flow-prompt-index", request + ":"), make("span", "flow-prompt-question", " " + question)); heading.appendChild(title);
         lane.appendChild(heading);
         if(view==="context"&&prompt.flow?.contextReduction){
           const reduction=prompt.flow.contextReduction;
