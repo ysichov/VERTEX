@@ -944,11 +944,15 @@ function collect(spawn, file, args, options) {
     // The limit is for silence from the assistant, not the whole task. A folder
     // run can spend many minutes on approvals and tests while still making progress.
     let timer;
+    let killTimer;
     const armTimeout = function () {
       clearTimeout(timer);
       timer = setTimeout(function () {
         timedOut = true;
         child.kill();
+        // Some CLI wrappers leave descendants alive after the parent is killed.
+        // Do not leave a model-list request waiting forever for their close event.
+        killTimer = setTimeout(function () { finish(-1); }, 5000);
       }, options.timeout);
     };
     armTimeout();
@@ -956,6 +960,7 @@ function collect(spawn, file, args, options) {
       if (settled) { return; }
       settled = true;
       clearTimeout(timer);
+      clearTimeout(killTimer);
       resolve({ code: code, stdout: stdout, stderr: error ? error.message : stderr, timedOut: timedOut });
     };
     child.stdout.on("data", function (d) {
