@@ -262,6 +262,107 @@ test("Step draws directional chronological connections in the non-WebGL host", (
   dispose();
 });
 
+test("Step groups the VERTEX setup stages and request as Round 0", () => {
+  const prompt = { text: "Explain this", model: "panel-model", details: [
+    { type: "Screenshot recognition", text: "Recognized text" }, { type: "Jev decision", text: "Answer: ABAP\nABAP: 81%\nConfidence: 72%\nNew topic" },
+    { type: "Skill search", routing: { status: "none" } }, { type: "answer", text: "Done" }
+  ], events: [
+    { kind: "detail", detail: 0, time: 1 }, { kind: "detail", detail: 1, time: 2 },
+    { kind: "detail", detail: 2, time: 3 }, { kind: "request", time: 4 }, { kind: "model", time: 5 }, { kind: "detail", detail: 3, time: 6 }
+  ] };
+  prompt.flow = flow.summary(prompt);
+  const host = flowHost(), dispose = flow.mount(host.root, { prompts: [prompt] }, { state: {} });
+  const cards = host.elements.filter(node => node.className?.includes("flow-step-node"));
+  const service = cards.filter(node => node.className.includes("flow-step-service"));
+  assert.deepEqual(service.map(node => node.children[0].textContent), ["Screenshot recognition", "Jev decision", "Skill search", "VERTEX → panel-model"]);
+  const roundCard = cards.find(node => node.children[0]?.textContent === "VERTEX · Round 0");
+  assert.ok(roundCard, "Round 0 is a separate card using the shared Step styling");
+  assert.equal(roundCard.tagName, "DIV", "group card is not a fake clickable log event");
+  assert.equal(roundCard.style.top, "52px");
+  assert.equal(roundCard.style.left, service[0].style.left);
+  assert.equal(roundCard.style.height, "75px");
+  assert.equal(roundCard.children.length, 1, "group card has no model usage or cost");
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const cardStyle = /^\s*\.flow-node \{([^}]+)\}/m.exec(page)?.[1];
+  assert.ok(cardStyle, "base card layout applies to the non-button Round 0 card too");
+  assert.match(cardStyle, /position: absolute/);
+  assert.match(cardStyle, /display: flex/);
+  assert.match(cardStyle, /color: var\(--vscode-editor-foreground\)/);
+  assert.match(cardStyle, /background: transparent/);
+  assert.match(page, /\.flow-fallback \.flow-node \{[^}]*background: var\(--vscode-editorWidget-background/);
+  assert.equal(service[0].style.top, "151px");
+  const incoming = host.elements.find(node => node.className === "flow-connection" && node.style.width === "20px");
+  assert.equal(incoming.style.height, "0px", "User connects to the group card, not its first service");
+  assert.deepEqual(service.map(node => node.style.left), ["290px", "290px", "290px", "290px"]);
+  assert.equal(cards.find(node => node.className.includes("model")).children[0].textContent, "Round 1: panel-model");
+  assert.equal(cards.length, 8, "each stage renders once, plus the separate Round 0 card");
+  assert.equal(host.elements.filter(node => node.className === "flow-connection").length, 7);
+  dispose();
+});
+
+test("live Step groups preparation before the model request arrives and keeps its position", () => {
+  const state = {}, children = [
+    { key: "shot", operation: "Screenshot recognition", relatedTurnId: "turn", time: 1, usage: { cost: 0.006964 } },
+    { key: "shot2", operation: "Screenshot recognition", relatedTurnId: "turn", time: 1.5, usage: { cost: 0.003772 } },
+    { key: "topic", operation: "Topic routing with Jev", relatedTurnId: "turn", time: 2 },
+    { key: "skill", operation: "Skill match with Jev", relatedTurnId: "turn", time: 3 }
+  ];
+  for (const requested of [false, true]) {
+    const host = flowHost(), prompt = { key: "chat", turnId: "turn", operation: "Chat", text: "Explain", time: 0,
+      screenshots: [{ description: "User image 1" }, { description: "User image 2" }], events: requested ? [{ kind: "request", time: 4 }, { kind: "model", time: 5 }] : [] };
+    const originalPrompt = JSON.stringify(prompt);
+    prompt.flow = flow.summary(prompt);
+    const dispose = flow.mount(host.root, { prompts: [prompt, ...children] }, { state, followRight: true });
+    const cards = host.elements.filter(node => node.className?.includes("flow-step-node"));
+    const service = cards.filter(node => node.className.includes("flow-step-service"));
+    assert.equal(service.length, requested ? 5 : 4);
+    assert.deepEqual(service.slice(0, 2).map(node => node.children[0].textContent), ["Screenshot recognition", "Screenshot recognition"]);
+    assert.match(service[0].children.find(node => node.className === "flow-usage").textContent, /0\.006964/);
+    assert.match(service[1].children.find(node => node.className === "flow-usage").textContent, /0\.003772/);
+    const roundCard = cards.find(node => node.children[0]?.textContent === "VERTEX · Round 0");
+    assert.equal(roundCard.style.top, "52px");
+    assert.equal(roundCard.children.length, 1);
+    assert.equal(roundCard.style.left, service[0].style.left);
+    assert.equal(service[0].style.top, "151px");
+    assert.ok(!host.elements.some(node => node.className === "flow-lane-heading" && node.children[0]?.textContent === "VERTEX · Round 0"));
+    const userCards = cards.filter(node => / (?:user|screenshot) flow-step-node/.test(node.className));
+    assert.equal(userCards.length, 3);
+    assert.deepEqual(userCards.map(node => node.style.left), ["10px", "10px", "10px"], "question and screenshots share one vertical user column");
+    assert.deepEqual(userCards.map(node => node.style.top), ["52px", "151px", "250px"]);
+    assert.ok(service.every(node => node.style.left === "290px"), "no regrouping or sideways jump when request arrives");
+    const unchangedPrompt = { ...prompt };
+    delete unchangedPrompt.flow;
+    assert.equal(JSON.stringify(unchangedPrompt), originalPrompt, "rendering does not rewrite log data");
+    assert.equal(new Set(cards.map(node => node.style.left + ":" + node.style.top)).size, cards.length, "no overlapping duplicate stages");
+    dispose();
+  }
+});
+
+test("Step stacks CLI usage, verification retries and Jev in one closing VERTEX column", () => {
+  const prompt = { key: "chat", turnId: "turn", operation: "Chat", model: "model", time: 0, text: "Fix", details: [
+    { type: "Provider usage (cli_run)", text: "{}" },
+    { type: "tool", name: "Verification", tool_id: "v1" },
+    { type: "tool result", tool_id: "v1", text: "VERTEX automatic checks: FAILED" },
+    { type: "tool", name: "Verification", tool_id: "v2" },
+    { type: "tool result", tool_id: "v2", text: "VERTEX automatic checks: PASSED" },
+    { type: "tool", name: "Review", tool_id: "review" }
+  ], events: [{ kind: "model", time: 1 }, { kind: "detail", detail: 0, time: 2 },
+    { kind: "tool", detail: 1, time: 3 }, { kind: "tool_result", detail: 2, time: 4 },
+    { kind: "tool", detail: 3, time: 5 }, { kind: "tool_result", detail: 4, time: 6 }, { kind: "tool", detail: 5, time: 8 }] };
+  prompt.flow = flow.summary(prompt);
+  const host = flowHost(), dispose = flow.mount(host.root, { prompts: [prompt,
+    { key: "jev", operation: "Change verification with Jev", relatedTurnId: "turn", time: 7, costKind: "jev" }] }, { state: {} });
+  const cards = host.elements.filter(node => node.className?.includes("flow-step-node"));
+  const closing = cards.filter(node => /Provider usage|Verification|Change verification/.test(node.children[0].textContent));
+  assert.equal(closing.length, 4);
+  assert.equal(new Set(closing.map(node => node.style.left)).size, 1);
+  assert.deepEqual(closing.map(node => node.style.top), ["52px", "151px", "250px", "349px"]);
+  assert.match(closing[0].children[0].textContent, /^VERTEX:/);
+  const review = cards.find(node => /Review/.test(node.children[0].textContent));
+  assert.notEqual(review.style.left, closing[0].style.left, "user review remains separate");
+  dispose();
+});
+
 test("Step shows each process in its first card and stacks tool rounds beneath it", () => {
   const prompt = { text: "Fix", displayModel: "panel-model", model: "exact-model-2026", details: [
     ...["a", "b", "c", "d"].map(id => ({ type: "tool", name: "Read", tool_id: id, input: { file_path: id + ".js" } })),
@@ -319,6 +420,33 @@ test("Step shows each process in its first card and stacks tool rounds beneath i
   assert.deepEqual(timeline.elements.filter(node => node.className?.includes("flow-operation")).map(card => card.children[0].textContent),
     ["1. Read · a.js", "2. Read · b.js", "3. Read · c.js", "4. Read · d.js"]);
   close();
+});
+
+test("Step keeps model rounds without new Thinking separate from an earlier Thinking", () => {
+  for (const noteBeforeMetadata of [true, false]) {
+    const note = { kind: "note", model: { text: "First round reasoning" } };
+    const model = { kind: "model" };
+    const prompt = { text: "Fix", model: "Sol", details: [
+      ...["a", "b", "c", "d", "e"].map(id => ({ type: "tool", name: "Read", tool_id: id, input: { file_path: id + ".js" } }))
+    ], events: [
+      ...(noteBeforeMetadata ? [note, model] : [model, note]),
+      { kind: "tool", detail: 0 }, { kind: "tool", detail: 1 },
+      { kind: "model" }, { kind: "tool", detail: 2 }, { kind: "tool", detail: 3 },
+      { kind: "model" }, { kind: "tool", detail: 4 }
+    ] };
+    prompt.flow = flow.summary(prompt);
+    const host = flowHost(), dispose = flow.mount(host.root, { prompts: [prompt] }, { state: {} });
+    const cards = host.elements.filter(node => node.className?.includes("flow-step-node"));
+    const rounds = cards.filter(node => /^Round \d+:/.test(node.children[0].textContent));
+    const tools = cards.filter(node => node.className.includes("flow-operation"));
+    assert.deepEqual(rounds.map(card => card.children[0].textContent), ["Round 1: Sol", "Round 2: Sol", "Round 3: Sol"]);
+    assert.equal(new Set(rounds.map(card => card.style.left)).size, 3);
+    assert.deepEqual(tools.map(card => card.style.left), [
+      rounds[0].style.left, rounds[0].style.left, rounds[1].style.left, rounds[1].style.left, rounds[2].style.left
+    ]);
+    assert.deepEqual(tools.map(card => card.style.top), ["151px", "250px", "151px", "250px", "151px"]);
+    dispose();
+  }
 });
 
 test("tool numbering restarts per request and ignores non-tool events", () => {

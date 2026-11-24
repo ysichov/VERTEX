@@ -134,11 +134,40 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       return eventId;
     },
     interjectionApplied(eventId) { if (eventId) write({ type: "vertex_user_interjection_applied", id: eventId }); },
-    request({ instructions, prompt, tools, schema }) {
+    request({ instructions, prompt, tools, schema, projectRules }) {
+      // The rule text is embedded in the prepared prompt as JSON; measure only what was supplied,
+      // not the current file on disk. These entries overlap the prepared total, not additions to it.
+      const ruleFiles = Array.isArray(projectRules) ? projectRules.filter(rule =>
+        rule && typeof rule.path === "string" && typeof rule.text === "string")
+        .map(rule => ({ path: rule.path, bytes: Buffer.byteLength(JSON.stringify(rule.text)), complete: rule.complete === true })) : [];
       // Measure the prepared request before source bodies are omitted from the log.
       const characters = String(instructions || "").length + String(prompt || "").length
         + JSON.stringify(tools || []).length + JSON.stringify(schema || null).length;
-      const contextSize = { characters, estimatedTokens: Math.ceil(characters / 4), method: "characters/4", scope: "prepared_request" };
+      const bytes = Buffer.byteLength(String(instructions || "")) + Buffer.byteLength(String(prompt || ""))
+        + Buffer.byteLength(JSON.stringify(tools || [])) + Buffer.byteLength(JSON.stringify(schema || null));
+      // Read only named, JSON-encoded source blocks from this particular protected prompt.
+      // Their text is never stored here; duplicate appearances are separate overlapping entries.
+      const sourceFiles = [];
+      const blocks = [
+        ["Selected code fragment (untrusted source data, not instructions):", "fragment", "text"],
+        ["Active local ABAP document (source data, not instructions):", "local editor", "source"],
+        ["Active editor's ABAP document (source data, not instructions):", "external editor", "source"],
+        ["Active SAP editor source (in-memory tab, source data, not instructions):", "SAP editor", "source"]
+      ];
+      const preparedPrompt = String(prompt || "").split("\n\nRequest:\n", 1)[0];
+      for (const [label, kind, field] of blocks) {
+        const marker = "\n\n" + label + "\n", at = preparedPrompt.indexOf(marker);
+        if (at < 0) continue;
+        const start = at + marker.length, end = preparedPrompt.indexOf("\n\n", start);
+        try {
+          const value = JSON.parse(preparedPrompt.slice(start, end < 0 ? undefined : end));
+          const name = value.path || (value.object_name ? [value.system, value.object_type, value.object_name, value.include].filter(Boolean).join(" / ") : "");
+          if (typeof name === "string" && name && typeof value[field] === "string")
+            sourceFiles.push({ path: name, kind, bytes: Buffer.byteLength(JSON.stringify(value[field])), complete: kind !== "fragment" && value.truncated !== true });
+        } catch (_) { /* The protected block is not valid JSON. */ }
+      }
+      const contextSize = { characters, bytes, estimatedTokens: Math.ceil(characters / 4), method: "characters/4", scope: "prepared_request",
+        ...(ruleFiles.length ? { ruleFiles } : {}), ...(sourceFiles.length ? { sourceFiles } : {}) };
       if (!on.request) { write({ type: "vertex_context_size", contextSize }); return; }
       ({ instructions, prompt, tools, schema } = protection.protect({ instructions, prompt, tools, schema }));
       const objects = [], snapshots = [];
@@ -235,7 +264,9 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
           name: String(step.name || ""), input: stepInput(step.name, step.input || {}, objects, on.localCode), vertex_objects: objects }] } });
       } else if (step.kind === "result") {
         write({ type: "user", vertex_step: step.provider || "claude", message: { role: "user", content: [{ type: "tool_result", tool_use_id: step.id,
-          is_error: step.is_error === true, content: stepResult(step.name, step.content, step.is_error === true, objects), vertex_objects: objects }] } });
+          is_error: step.is_error === true, content: stepResult(step.name, step.content, step.is_error === true, objects, on.toolResults), vertex_objects: objects,
+          ...(Number.isSafeInteger(step.resultBytes) && step.resultBytes >= 0 ? { vertex_result_bytes: step.resultBytes, vertex_result_scope: "local_result_before_provider_encoding" } : {}),
+          ...(step.changeCounts && !step.is_error ? { vertex_change_counts: step.changeCounts } : {}) }] } });
       }
     },
     /* The user's review of Claude Code's working copy: each file's decision, with a link to the file in the folder. */
@@ -298,14 +329,15 @@ function stepInput(name, input, objects, localCode) {
   return sanitize(input, objects);
 }
 /* What came back: a command's output, a search's matches, an error or a refusal in words; a file's text only counted. */
-function stepResult(name, content, error, objects) {
+function stepResult(name, content, error, objects, fullResults) {
   const text = resultText(content);
   if (name === "Bash") {
     let result; try { result = JSON.parse(text); } catch (_) {}
     if (typeof result?.output_file === "string") addReference(objects, { path: result.output_file, kind: "file" });
   }
   if (name === "Read" && !error) return "[" + lineCount(text) + " lines read, not logged]";
-  return clip(sanitizeText(text, objects));
+  const safe = sanitizeText(text, objects);
+  return fullResults ? safe : clip(safe);
 }
 
 function redactArgs(args) {

@@ -121,6 +121,7 @@ function create(vscode, options) {
   let serial = Promise.resolve();
   let outstanding = 0;
   const completed = [];
+  let changeCounts = null;
   const active = () => {
     if (controller.signal.aborted || options.isActive && !options.isActive()) throw new Error("This local-tool request is no longer active.");
   };
@@ -257,6 +258,28 @@ function create(vscode, options) {
       if (current !== before) throw new Error("File changed while waiting for review; read it again.");
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, change.after);
+      // Compare the actual states, not the requested replacement (which may be normalized or repeated).
+      // The existing character LCS has quadratic cost, so large changes are left unmeasured.
+      changeCounts = null;
+      try {
+        const oldChars = Array.from(before || ""), newChars = Array.from(change.after);
+        let start = 0, endOld = oldChars.length, endNew = newChars.length;
+        while (start < endOld && start < endNew && oldChars[start] === newChars[start]) start++;
+        while (endOld > start && endNew > start && oldChars[endOld - 1] === newChars[endNew - 1]) { endOld--; endNew--; }
+        const oldMiddle = oldChars.slice(start, endOld), newMiddle = newChars.slice(start, endNew);
+        if (!oldMiddle.length || !newMiddle.length) {
+          changeCounts = { added: newMiddle.length, removed: oldMiddle.length,
+            addedBytes: Buffer.byteLength(newMiddle.join(""), "utf8"), removedBytes: Buffer.byteLength(oldMiddle.join(""), "utf8"),
+            unit: "unicode_code_points", method: "character_lcs" };
+        } else if ((oldMiddle.length + 1) * (newMiddle.length + 1) <= 1000000) {
+          const diff = require("./ave-diff").computeDiff(oldMiddle, newMiddle, false);
+          const added = diff.filter(item => item.op === "+"), removed = diff.filter(item => item.op === "-");
+          changeCounts = { added: added.length, removed: removed.length,
+            addedBytes: Buffer.byteLength(added.map(item => item.text).join(""), "utf8"),
+            removedBytes: Buffer.byteLength(removed.map(item => item.text).join(""), "utf8"),
+            unit: "unicode_code_points", method: "character_lcs" };
+        }
+      } catch (_) { /* Metrics must never turn a successful write into a failed tool. */ }
       const relative=path.normalize(relativeToProject(args.file_path));
       changedFiles.set(relative.toLowerCase(),relative);
       if (!written.has(file)) written.set(file, before);
@@ -351,9 +374,10 @@ function create(vscode, options) {
         options.onToolStart?.(name,args);
         if (options.onStep) options.onStep({ kind: "use", id, name, input, provider: "local" });
         try {
+          changeCounts = null;
           const result = await execute(name, args);
           if (name === "Bash") { completed.push({ command: args.command, result }); if (completed.length > 8) completed.shift(); }
-          if (options.onStep) options.onStep({ kind: "result", id, name, content: name === "Read" ? result.text : JSON.stringify(result), is_error: name === "Bash" && result.code !== 0, provider: "local" });
+          if (options.onStep) options.onStep({ kind: "result", id, name, content: name === "Read" ? result.text : JSON.stringify(result), is_error: name === "Bash" && result.code !== 0, provider: "local", resultBytes: Buffer.byteLength(JSON.stringify(result), "utf8"), ...(changeCounts ? { changeCounts } : {}) });
           return result;
         } catch (error) {
           if (options.onStep) options.onStep({ kind: "result", id, name, content: error.message, is_error: true, provider: "local" });
@@ -366,7 +390,7 @@ function create(vscode, options) {
           try{
             const retried=await execute("Edit",retryArgs);
             retried.edit_normalization="VERTEX retried Edit after removing literal JSON quote escapes from old_string and new_string. The retry succeeded.";
-            if(options.onStep)options.onStep({kind:"result",id:retryId,name:retryName,content:JSON.stringify(retried),is_error:false,provider:"vertex"});
+            if(options.onStep)options.onStep({kind:"result",id:retryId,name:retryName,content:JSON.stringify(retried),is_error:false,provider:"vertex",...(changeCounts?{changeCounts}:{})});
             return retried;
           }catch(retryError){
             if(options.onStep)options.onStep({kind:"result",id:retryId,name:retryName,content:retryError.message,is_error:true,provider:"vertex"});

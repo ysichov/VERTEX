@@ -1,3 +1,51 @@
+## 2026-11-24 — Local Flow measurements
+
+Searched VS Code folder tools, session logging, Flow, AVE diff and tests, and Eclipse assistant/resources for existing measurement and diff implementations. Reused AVE's character LCS and Flow card styling. Successful local results record serialized UTF-8 size before provider encoding; successful file operations record actual before/after Unicode code point counts, with a one-million-cell LCS limit to avoid blocking. Prepared request component bytes are recorded separately. Read bodies remain omitted; complete non-Read results require toolResults and still pass existing protection. Per-card and recorded-operation totals are not the final applied diff, full model request or a quality metric. API bounds/protection and CLI serialization occur later, so these sizes are not claimed as exact API payloads; an exhaustive initial per-file breakdown, full API request capture and final Git diff remain future work.
+
+Focused baseline: 81 passed, six failed, one skipped. After the change: 83 passed, the same six failing names, one skipped. Actual VS Code light/dark rendering and packaging remain unverified.
+
+Follow-up: searched existing project rule assembly, VS Code and Eclipse logging/Flow and shared report details. Reused request details to expose each supplied project-rule text's JSON-encoded UTF-8 byte size, with partial status, even when request bodies are disabled. The sizes overlap the prepared total, omit JSON property overhead and are not an exhaustive file breakdown. Each request event now retains its own measurement. No file contents are added to the size record. The log-report/session-log baseline had 66 passing and 13 failing tests; in the isolated review copy 66 passed and 14 failed, with the extra failure caused by its missing generated `vscode/resources/log-report.html`. The new rule-size regression passed. The actual host, API payload capture and final applied Git diff remain unverified or unimplemented.
+
+Follow-up: searched VS Code prompt assembly, session logging and report details, plus Eclipse assistant and shared resources for existing editor-context measurements. Reused the existing request details and per-request size record. Named local, external and SAP editor source and selected fragments are measured from the protected prepared prompt as JSON-encoded UTF-8 strings without saving their contents; truncated documents and all selected fragments are marked partial, and overlapping appearances remain separate. Unnamed fragments, historical content, review diffs, skill references, provider-added context and API payloads are not included in this breakdown. Matching is restricted to the prepared labelled blocks before the current request, not arbitrary user text. Session-log tests: baseline 27/27 passed; after the follow-up 29/29 passed. Actual host rendering and packaging were not checked.
+
+Follow-up: searched local Edit/Write measurement, AVE and Myers diffs, Flow and both host logging/resources. Reused the existing bounded character LCS and Flow metrics to count UTF-8 bytes on the same added/removed code points, including repeated edits. The user-card byte total states how many edits have byte measurements; it is not an accepted Git diff and older/unmeasured edits are not silently counted as zero. Focused folder-tools and session-log baseline: 53 passed, two failed, one skipped; after changes, 55 passed, the same two failures and one skipped (no new failures). Host rendering and final applied diff remain unverified or unimplemented.
+
+## 2026-11-24 — Replace the detached Round 0 heading with a shared Step card
+
+Searched VS Code Flow cards/tests, the Eclipse bundled Flow renderer and shared log-report resource styling. Reused `flow-node` / `flow-step-node`, theme-aware planes and existing DOM connector markup; no new CSS or helper. Round 0 is a non-interactive group card at 52 px, with services starting at 151 px. Incoming User connections target the group card, which connects down to the first service. No synthetic log event or aggregate cost is introduced.
+
+Updated setup/live regressions for the separate card, spacing, incoming connector, unchanged recognition costs and stable grouping. Focused baseline and post-change: 33/37 passed, the same four failing names, no new failure. Node syntax and git whitespace checks passed. Actual host/light-dark rendering remains unverified; no package built, version unchanged.
+
+Follow-up: the base layout and WebGL fallback selectors were restricted to `button.flow-node`, but Round 0 is a non-interactive `div`. Its label therefore remained in normal document flow while the separate GPU plane occupied the intended card position. Searched VS Code Flow tests, the Eclipse bundled renderer and shared log-report card/fallback CSS; reused the existing rules by widening only the base and fallback selectors to `.flow-node`. Button interaction selectors remain unchanged. Added a regression requiring absolute positioning, flex layout and theme colors for the non-button card. Focused baseline/post-change again have 33/37 passes with the same four failing names (no new failure); syntax and whitespace checks passed. Actual host/light-dark rendering and the cropped right-hand card remain unverified; no VSIX or Eclipse build performed, version unchanged.
+
+## 2026-11-24 — Render Round 0 as a separate Flow heading
+
+Searched the VS Code Flow renderer/tests, Eclipse bundled renderer and shared log-report resources for existing headings and grouping. Reused `flow-lane-heading` and Step run positions, without new controls, helpers or CSS. Round 0 has a theme-colored heading at the common column top; its service cards start 32 px below it and retain their actual titles and individual usage. Chronological stages and model round numbering are unchanged.
+
+Updated preparation regressions for the detached heading, live request arrival and two recognition calls with distinct costs. Focused baseline and post-change: 33/37 passed with the same four failing test names, no new failure. Node syntax and git whitespace checks passed. Actual host/light-dark rendering remains unverified; no package built, version unchanged.
+
+## 2026-11-24 — Keep opening screenshot cards in the User Flow run
+
+Searched the VS Code chronology/Step run renderer and tests plus the Eclipse bundled Flow renderer and shared resources for existing grouping. Reused Step runs and their vertical positions/connectors: consecutive screenshot rows join the preceding User run. No new helper, control or style; no changes to log writing, parsing or chronological Steps.
+
+Expanded the live preparation regression to two screenshots, checking one vertical User column before and after request arrival, stable Round 0 placement, no overlap and unchanged input data. Focused baseline and post-change results: 33/37 passed with the same four failing names, no new failure. Syntax and whitespace checks passed. Actual host/light-dark rendering remains unverified; no package built, version unchanged.
+
+## 2026-11-24 — Respect model-round boundaries after Thinking in AI magic
+
+Searched VS Code Flow summary, round assignment and DOM tests, the shared Eclipse chronology renderer and Java host for existing round/Thinking handling. Reused response-to-note links and Step runs; no new helper, control or style. Removed the fallback that attached every later response without linked notes to the most recent Thinking. Store the exact run for each model row and activate that run at the response boundary, rather than choosing the previous Thinking again. Ordinary chronological logging and compact result previews are unchanged.
+
+Added a DOM regression covering Thinking before and after response metadata, followed by two tool-calling rounds without new Thinking. It checks separate round columns, tool ownership and vertical positions. Focused baseline: 32/36 passed; after change: 33/37 passed, the same four failing names (no new failure). JS syntax and git diff whitespace checks passed. Actual host interaction/light-dark rendering remain unverified; no package built, version unchanged.
+
+## 2026-11-24 — Stable live Flow preparation and closing VERTEX group
+
+Searched VS Code Flow grouping/chronology, its DOM regressions and the shared Eclipse resource renderer for existing grouping and file-link behavior. Reused Step runs and the Review table; no new controls or styles. Removed the shadowed preparation-row set that let the same stages be assigned twice. Step now uses chronological stages even before a prompt has any events, groups available preparation without waiting for the request, and starts that column at the common 52 px top. Consecutive CLI aggregate usage, automatic verification retries and Jev change verification share a closing VERTEX run; User Review stays separate. Review tool entries no longer append object links already present in the table.
+
+Focused baseline: Flow 29/34 passed (5 failing names), report 38/52 passed (14 failing names). Final combined run: 71/89 passed, 18 failures; compared failing names with both baselines, no new failures, and the preparation regression now passes. Added passing regressions for grouping before/after request arrival, closing verification retries and Jev, and duplicate Review links. Actual VS Code/Eclipse interaction and light/dark rendering remain unverified; no package built, version unchanged.
+
+## 2026-11-24 — Refresh ASK Jev availability on decision-model changes
+
+The review binding previously resynchronized only for `vertex.ai.modelConfig`; changing `vertex.ai.decisionModel` could therefore leave ASK Jev hidden or visible with stale availability until reopening the panel. Listen for both configuration scopes and reuse the existing availability sync. Added a binding regression that changes between available and unavailable selections and checks the messages sent to the review webview. Focused test/build verification remains pending; version unchanged.
+
 ## Prepare VSIX 0.9.121
 
 The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
@@ -5,6 +53,10 @@ The deterministic VSIX workflow updated both host version manifests, the lockfil
 ## Prepare VSIX 0.9.120
 
 The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## 2026-11-24 — Group VERTEX preparation as Round 0 in AI magic Flow
+
+Reused the existing Step columns, cards and chronological connectors. Setup rows before the first LLM request (including screenshot recognition, Jev/topic selection and skill search) plus that request are assigned to one VERTEX Round 0 column; ordinary model calls retain their Round 1+ numbering. Added a small top inset and theme-aware purple service labels. Searched the Flow renderers and shared report resources for existing grouping and service-label styling; kept the implementation within the established card layout. Added a DOM regression for the one-column sequence and unchanged Round 1. Host rendering and light/dark verification remain pending; version unchanged.
 
 ## 2026-11-23 — Inset and differentiate the AI magic Flow prompt heading
 

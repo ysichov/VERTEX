@@ -17,6 +17,29 @@ function fixture(t, options = {}) {
   fs.writeFileSync(path.join(root, "a.txt"), "one\ntwo\n");
   return { root, agent, page, steps, asked };
 }
+test("repeated edits count actual Unicode changes and local result bytes independently", async t => {
+  const { agent, root, steps } = fixture(t);
+  fs.writeFileSync(path.join(root, "a.txt"), "a😀 a😀");
+  const read = await agent.call("Read", { file_path: "a.txt" });
+  await agent.call("Edit", { file_path: "a.txt", old_string: "😀", new_string: "é", replace_all: true });
+  await agent.call("Edit", { file_path: "a.txt", old_string: "é", new_string: "😀", replace_all: true });
+  const results = steps.filter(step => step.kind === "result");
+  assert.equal(results[0].resultBytes, Buffer.byteLength(JSON.stringify(read)));
+  assert.deepEqual(results.slice(1).map(step => [step.changeCounts.added, step.changeCounts.removed,
+    step.changeCounts.addedBytes, step.changeCounts.removedBytes]), [[2, 2, 4, 8], [2, 2, 8, 4]]);
+  await assert.rejects(agent.call("Edit", { file_path: "a.txt", old_string: "missing", new_string: "x" }));
+  assert.equal(steps.at(-1).changeCounts, undefined);
+});
+test("Write measures UTF-8 bytes for inserted, removed and replaced Unicode text", async t => {
+  const { agent, steps } = fixture(t);
+  await agent.call("Read", { file_path: "a.txt" });
+  await agent.call("Write", { file_path: "a.txt", content: "😀é" });
+  await agent.call("Write", { file_path: "a.txt", content: "😀" });
+  await agent.call("Write", { file_path: "new.txt", content: "é😀" });
+  const counts = steps.filter(step => step.kind === "result" && step.name === "Write").map(step => step.changeCounts);
+  assert.deepEqual(counts.map(c => [c.added, c.removed, c.addedBytes, c.removedBytes]),
+    [[2, 8, 6, 8], [0, 1, 0, 2], [2, 0, 6, 0]]);
+});
 test("a Glob pattern ending in / lists folders, not files", async t => {
   const { agent, root } = fixture(t);
   fs.mkdirSync(path.join(root, "docs", "img"), { recursive: true });

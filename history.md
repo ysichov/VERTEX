@@ -1,3 +1,31 @@
+## 2026-11-24 — Measure local tool results and code changes in Flow
+
+New folder logs show measured local-result bytes on tool cards, prepared-context bytes on the request card and recorded code-change counts in characters and UTF-8 bytes on Edit/Write cards and the user card. The request details also show sizes of supplied project-rule files and named editor source or selected fragments, including partial texts. Read content remains omitted from the log; full other local results are optional. Measurements describe VERTEX's boundary, not a CLI's complete model request.
+
+## 2026-11-24 — Show VERTEX Round 0 as its own Flow card
+
+AI magic Flow now shows VERTEX · Round 0 in a separate card matching the other diagram cards, with screenshot recognition and Jev stacked below it. The group card has no cost; service cards retain their individual costs. The shared card layout also applies to this non-clickable group: its label stays inside the card instead of appearing above the prompt heading, including when WebGL is unavailable.
+
+## 2026-11-24 — Separate the VERTEX Round 0 heading from service costs
+
+AI magic Flow shows VERTEX · Round 0 as a separate heading above screenshot recognition, Jev and the remaining preparation steps. Each recognition keeps its own name and cost; the heading no longer looks like a recognition card or a cost total.
+
+## 2026-11-24 — Stack user screenshots vertically in AI magic
+
+Flow now keeps the user question and its screenshots in one vertical User column, before VERTEX Round 0, instead of starting a horizontal column for every attachment. This changes only diagram layout; recorded logs and chronological Steps are unchanged.
+
+## 2026-11-24 — Preserve separate model rounds in AI magic
+
+AI magic Flow no longer stacks tools from later LLM rounds under an earlier Thinking card when those rounds have no new Thinking text. Each recorded model round keeps its own column and tool calls, matching the round boundaries in the chronological log.
+
+## 2026-11-24 — Keep AI magic VERTEX groups stable during live updates
+
+AI magic Flow groups preparation immediately, before the first model request is recorded, and aligns its first card with the other columns. CLI usage, automatic verification and Jev change verification share one closing VERTEX column. Review details show file links only in the decision table, without repeating the same list below it.
+
+## 2026-11-24 — Refresh ASK Jev when its decision model changes
+
+An open code review now updates ASK Jev availability immediately when the selected decision provider or model changes.
+
 ## VSIX 0.9.121
 
 The VS Code extension version is 0.9.121. The VSIX is built after the version changes are approved.
@@ -5,6 +33,10 @@ The VS Code extension version is 0.9.121. The VSIX is built after the version ch
 ## VSIX 0.9.120
 
 The VS Code extension version is 0.9.120. The VSIX is built after the version changes are approved.
+
+## 2026-11-24 — Group VERTEX preparation in Flow as Round 0
+
+AI magic Flow now groups screenshot recognition, topic choice, skill search and the prepared model request into one vertical VERTEX · Round 0 column before the model's Round 1. The setup label sits slightly below the lane heading, with service-stage titles in a distinct theme color.
 
 ## 2026-11-24 — Focus Jev code review on requirements and syntax
 

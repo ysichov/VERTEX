@@ -956,6 +956,24 @@ test("review file names open as links while full paths remain visible", () => {
   assert.equal(JSON.stringify(messages[0]), JSON.stringify({ action: "openObject", object: { path: file, kind: "file" } }));
 });
 
+test("Review tool entry renders its file links only once while other tools retain object links", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const el = (tag, cls = "", text = "") => ({ tag, cls, text, children: [], style: {}, appendChild(child) { this.children.push(child); return child; } });
+  const context = { el, document: { createTextNode: text => ({ text }) }, vscode: { postMessage() {} },
+    objectLinks(target, objects) { (objects || []).forEach(object => target.appendChild(el("button", "extra-link", object.path))); } };
+  vm.createContext(context);
+  vm.runInContext(page.slice(page.indexOf("  function fileName("), page.indexOf("  // The rows of a conversation:")), context);
+  const target = el("div"), files = [{ file: "/project/a.js", decision: "approved" }, { file: "/project/b.js", decision: "approved" }];
+  context.appendToolEntry(target, { type: "tool", name: "Review", step: true, input: { files }, objects: files.map(file => ({ path: file.file })) }, {});
+  assert.equal(target.children.length, 1, "only the Review table, no second file list");
+  const table = target.children[0].children[0];
+  assert.equal(table.children.length, 4);
+  assert.deepEqual(table.children.slice(2).map(row => row.children[0].children[0].text), ["a.js", "b.js"]);
+  const read = el("div");
+  context.appendToolEntry(read, { type: "tool", name: "Read", step: true, input: { file_path: "/project/a.js" }, objects: [{ path: "/project/a.js" }] }, {});
+  assert.ok(read.children.some(node => node.cls === "extra-link"));
+});
+
 test("New in includes historical Claude cache creation and preserves Codex counts", () => {
   const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
   const source = page.match(/function newInput\(u\) \{[\s\S]*?\n  \}/)[0];

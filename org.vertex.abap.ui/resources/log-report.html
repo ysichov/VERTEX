@@ -25,7 +25,6 @@
   .recording-link { margin: 4px 8px; color: var(--vscode-textLink-foreground); background: transparent; border: 0; padding: 0; text-decoration: underline; }
   .recording-link:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   .review-file { display: block; margin: 0; }
-  .review-file-path { display: inline-block; margin: 2px 0 4px; padding: 1px 4px; color: var(--vscode-editor-selectionForeground, var(--vscode-editor-foreground)); background: var(--vscode-editor-selectionBackground); font-family: var(--vscode-editor-font-family); overflow-wrap: anywhere; }
   .muted { color: var(--vscode-descriptionForeground); }
   .error { color: var(--vscode-errorForeground); }
   .totals { margin: 6px 0 12px; }
@@ -224,7 +223,7 @@
   .flow-section.excluded { background: color-mix(in srgb, var(--vscode-charts-red, #d16969) 24%, var(--vscode-editor-background)); border-top: 2px solid var(--vscode-charts-red, #d16969); }
   button.flow-node.included { background: color-mix(in srgb, var(--vscode-charts-green, #79b36b) 17%, var(--vscode-editor-background)); border-color: color-mix(in srgb, var(--vscode-charts-green, #79b36b) 48%, transparent); }
   button.flow-node.excluded { background: color-mix(in srgb, var(--vscode-charts-red, #d16969) 12%, var(--vscode-editor-background)); border: 1px dashed var(--vscode-charts-red, #d16969); }
-  button.flow-node { position: absolute; left: 12px; width: 236px; height: 72px; text-align: left; padding: 9px 12px; background: transparent; color: var(--vscode-editor-foreground); border: 1px solid transparent; display: flex; flex-direction: column; gap: 5px; white-space: normal; overflow-wrap: anywhere; }
+  .flow-node { position: absolute; left: 12px; width: 236px; height: 72px; text-align: left; padding: 9px 12px; background: transparent; color: var(--vscode-editor-foreground); border: 1px solid transparent; display: flex; flex-direction: column; gap: 5px; white-space: normal; overflow-wrap: anywhere; }
   .flow-node strong { color: var(--flow-accent); font-size: .95em; }
    .flow-node.flow-prompt { gap: 3px; padding: 6px 10px; }
    .flow-prompt .flow-model { display: block; flex: none; color: var(--vscode-editor-foreground); font-size: .78em; white-space: nowrap; text-overflow: ellipsis; }
@@ -251,6 +250,7 @@
   .flow-step-lane .flow-lane-heading { top: 20px; }
   .flow-step-lane .flow-prompt-index { color: var(--vscode-charts-green, var(--vscode-textLink-foreground)); }
   .flow-step-lane .flow-prompt-question { color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); }
+    .flow-step-lane .flow-step-service > strong { color: var(--vscode-charts-purple, var(--vscode-focusBorder)); }
    .flow-step-lane .flow-node.flow-step-node { width: 260px; box-sizing: border-box; padding: 6px 10px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 42%, var(--vscode-editorWidget-background)); }
    .flow-step-lane .flow-node.flow-step-node > strong { flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .flow-step-lane .flow-node.flow-step-node:focus-visible, .flow-step-lane .flow-node.flow-step-node.selected { border-color: var(--vscode-focusBorder); }
@@ -273,7 +273,7 @@
    .flow-node.unknown { border: 1px dashed var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
   .flow-node.excluded { border-style: dashed; border-color: var(--flow-accent); }
   .flow-fallback .flow-lane { background: var(--vscode-editorWidget-background); }
-  .flow-fallback button.flow-node { border-left: 3px solid var(--flow-accent); background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); }
+  .flow-fallback .flow-node { border-left: 3px solid var(--flow-accent); background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); }
   .flow-hint { font-size: .9em; margin: 6px 0 10px; }
   .flow-topic-select, .flow-step-select { box-sizing: border-box; flex: 0 1 280px; width: min(280px, 100%); max-width: 100%; min-width: 130px; padding: 3px 6px; color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground, var(--vscode-editor-foreground))); background: var(--vscode-dropdown-background, var(--vscode-input-background, var(--vscode-editor-background))); border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, var(--vscode-panel-border))); border-radius: 3px; font: inherit; }
   .conversation-open .flow-topic-select { display: none; }
@@ -887,7 +887,6 @@ function markdown(text, target) {
       link.title = isFile ? "Open " + object.path : "Opens the current source; it may have changed since this conversation.";
       link.onclick = function () { vscode.postMessage({ action: "openObject", object: object }); };
       parent.appendChild(link);
-      if (isFile) parent.appendChild(el("code", "review-file-path", object.path));
     });
   }
   /* Claude Code's own steps and the review, read as what they did rather than as JSON. */
@@ -1059,7 +1058,6 @@ function markdown(text, target) {
         link.title = "Open " + file;
         link.onclick = function () { vscode.postMessage({ action: "openObject", object: { path: file, kind: "file" } }); };
         fileCell.appendChild(link);
-        fileCell.appendChild(el("code", "review-file-path", file));
         row.appendChild(fileCell);
         row.appendChild(el("td", "", f.decision || ""));
         row.appendChild(el("td", "", f.reason || f.error || ""));
@@ -1071,7 +1069,11 @@ function markdown(text, target) {
     return false;
   }
   function appendToolEntry(target, d, p) {
-        if (d.type === "tool" && d.step && drawStep(target, d)) { objectLinks(target, d.objects); return; }
+        if (d.type === "tool" && d.step && drawStep(target, d)) {
+          // Review already renders each file as an actionable link in its table.
+          if (d.name !== "Review") objectLinks(target, d.objects);
+          return;
+        }
         target.appendChild(el("div", "kind", d.type === "tool" ? "Arguments" : "Result"));
         if (d.recording) {
           var link = el("button", "recording-link", (d.recording.kind === "transpiler" ? "Open transpiler recording " : "Open SAP debug recording ") + d.recording.id.slice(0, 8));

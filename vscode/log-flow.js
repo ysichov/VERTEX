@@ -200,6 +200,7 @@
           for (let depth = 0; depth < 4 && typeof data === "string"; depth++) {
             try { data = JSON.parse(data); } catch { break; }
           }
+          if (detail.name === "Read" && !result?.failed) data = result?.text || "";
           if (data && typeof data === "object" && !Array.isArray(data)) {
             if (detail.name === "Bash") {
               const code = typeof data.code === "number" ? "Exit code: " + data.code : "";
@@ -213,8 +214,19 @@
         }
       }
       const usagePreview = providerUsage(detail);
+      const measuredResult = event.kind === "tool" && detail ? resultOf(detail) : null;
+      const metrics = [];
+      if (Number.isSafeInteger(measuredResult?.resultBytes)) metrics.push("C: +" + measuredResult.resultBytes.toLocaleString() + " B");
+      if (Number.isSafeInteger(measuredResult?.changeCounts?.added) && Number.isSafeInteger(measuredResult?.changeCounts?.removed)) {
+        const change = measuredResult.changeCounts;
+        metrics.push("Code: +" + change.added.toLocaleString() + " / −" + change.removed.toLocaleString() + " chars"
+          + (Number.isSafeInteger(change.addedBytes) && Number.isSafeInteger(change.removedBytes)
+            ? " · +" + change.addedBytes.toLocaleString() + " / −" + change.removedBytes.toLocaleString() + " B" : ""));
+      }
+      const requestSize = event.contextSize || prompt.contextSize;
+      if (event.kind === "request" && Number.isSafeInteger(requestSize?.bytes)) metrics.push("Prepared C: " + requestSize.bytes.toLocaleString() + " B");
       return { kind: event.kind, title: String(title).replace(/\s+/g," ").slice(0,110), time: event.time || prompt.time || 0, order,
-        ...(usagePreview.length ? { usagePreview: usagePreview.slice(0, 4) } : {}),
+        ...(usagePreview.length ? { usagePreview: usagePreview.slice(0, 4) } : {}), ...(metrics.length ? { metrics: metrics.join(" · ") } : {}),
         ...(preview ? { preview } : {}), ...(operationPreview ? { operationPreview } : {}), ...(operationDiff ? { operationDiff } : {}), detailIndex: event.detail, detailIndices: event.kind === "request" ? event.details : undefined,
         skillName: detail?.routing?.skill || detail?.routing?.candidate, skillStatus: detail?.routing?.status,
         skillProbability: detail?.routing?.probability,
@@ -331,7 +343,20 @@
     events.forEach(event=>{if(event.kind === "tool_result" && event.toolId)results.set(event.toolId,event);});
     const userText=String(prompt.text||"Recorded user input").replace(/\s+/g," ").slice(0,180);
     const screenshots=flow.screenshots||[];
-    const items = [{kind:"user",title:"User question",label:userText,preview:userText,time:prompt.time||0,order:0,state:"recorded"},
+    const resultDetails = (prompt.details || []).filter(detail => detail.type === "tool result");
+    const measured = resultDetails.filter(detail => Number.isSafeInteger(detail.changeCounts?.added) && Number.isSafeInteger(detail.changeCounts?.removed));
+    const byteResults = resultDetails.filter(detail => Number.isSafeInteger(detail.resultBytes));
+    const totals = [];
+    if (byteResults.length) totals.push("Local results: " + byteResults.reduce((n, d) => n + d.resultBytes, 0).toLocaleString() + " B (recorded)");
+    if (measured.length) {
+      const bytesMeasured = measured.filter(d => Number.isSafeInteger(d.changeCounts.addedBytes) && Number.isSafeInteger(d.changeCounts.removedBytes));
+      totals.push("Code: +" + measured.reduce((n, d) => n + d.changeCounts.added, 0).toLocaleString()
+        + " / −" + measured.reduce((n, d) => n + d.changeCounts.removed, 0).toLocaleString() + " chars (measured edits)"
+        + (bytesMeasured.length ? " · +" + bytesMeasured.reduce((n, d) => n + d.changeCounts.addedBytes, 0).toLocaleString()
+          + " / −" + bytesMeasured.reduce((n, d) => n + d.changeCounts.removedBytes, 0).toLocaleString() + " B (" + bytesMeasured.length + " measured edits)" : ""));
+    }
+    const metrics = totals.join(" · ");
+    const items = [{kind:"user",title:"User question",label:userText,preview:userText,metrics,time:prompt.time||0,order:0,state:"recorded"},
       ...screenshots.map((shot,index)=>({kind:"screenshot",title:shot.title||"Screenshot "+(index+1),label:shot.preview||"Image attachment",
         screenshot:shot,time:prompt.time||0,order:index+1,state:"recorded"}))];
     events.forEach((event,index)=>{
@@ -536,10 +561,10 @@
           label: item.flow?.jevOutcome || (item.operation === "Screenshot recognition" ? item.flow?.answerPreview : "") || modelName(item),
           section: "User", state: "recorded", prompt: item, time: item.time || 0 });
         const normalize = value => String(value || "").replace(/ \(Jev\)/, " with Jev").toLowerCase();
-        if (prompt.flow?.eventItems?.length) {
+        if (view === "step" || prompt.flow?.eventItems?.length) {
           const timeline = chronologicalStages(prompt,group.children);
           if (view === "step") {
-            const flow = prompt.flow, lastAnswer = (prompt.details || []).filter(detail => detail.type === "answer" && detail.text).pop();
+            const flow = prompt.flow || summary(prompt), lastAnswer = (prompt.details || []).filter(detail => detail.type === "answer" && detail.text).pop();
             const answerPreview = lastAnswer?.text || flow.answerPreview;
             if (answerPreview && !timeline.some(node => node.detailIndex === (prompt.details || []).lastIndexOf(lastAnswer) || node.title === "Response")) timeline.push({ kind: "answer", title: prompt.operation === "Screenshot recognition" ? "Image recognition result" : "LLM response",
               label: (prompt.operation === "Screenshot recognition" ? recognitionText(answerPreview) : String(answerPreview)).replace(/\s+/g," ").slice(0,180), ...(lastAnswer ? { detailIndex: (prompt.details || []).lastIndexOf(lastAnswer) } : {}),
@@ -572,9 +597,18 @@
         }
       }
       const stepNodes = blocks[0] || [];
-      const hiddenRoundRows = new Set(), noteRounds = [], noteRunByRow = new Map(), detailRounds = new Map();
-      const stepRuns = [], roundSources = [], thinkingParagraphs = new Map();
+      const hiddenRoundRows = new Set(), noteRounds = [], noteRunByRow = new Map(), modelRunByRow = new Map(), detailRounds = new Map();
+      const stepRuns = [], roundSources = [], thinkingParagraphs = new Map(), preparationRows = new Set();
       if (view === "step") {
+        const requestRow = stepNodes.findIndex(node => node.kind === "request");
+        const firstRoundRow = stepNodes.findIndex(node => node.kind === "model" || node.kind === "note" || node.kind === "tool");
+        const preparationEnd = requestRow >= 0 ? requestRow : firstRoundRow >= 0 ? firstRoundRow - 1 : stepNodes.length - 1;
+        const preparationStart = stepNodes.slice(0, preparationEnd + 1).findIndex(node =>
+          node.kind === "jev" || node.kind === "vertex" || /^(?:Jev decision|Topic routing|Skill search|Screenshot recognition)/i.test(node.title || ""));
+        if (preparationStart >= 0) {
+          for (let row = preparationStart; row <= preparationEnd; row++) preparationRows.add(row);
+          stepRuns.push({ side: "VERTEX", isModel: false, vertexRound: 0, startRow: preparationStart, rows: [...preparationRows] });
+        }
         stepNodes.forEach((node, index) => {
           if (node.kind === "note") {
             const run = { side: modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}), isModel: true,
@@ -587,18 +621,17 @@
         stepNodes.forEach((node, index) => {
           if (node.kind !== "model") return;
           const relatedRounds = noteRounds.filter(note => (node.noteEventIndices || []).includes(note.eventOrder)).map(note => note.run);
-          if (!relatedRounds.length) {
-            const previousThinking = noteRounds.filter(note => note.row < index).at(-1);
-            if (previousThinking) relatedRounds.push(previousThinking.run);
-          }
           if (relatedRounds.length) {
-            // A response record closes the preceding thinking round; it is not another visible round.
+            // Only notes linked to this response can replace its visible processing card.
+            // A previous Thinking is not a fallback for later metadata-only/tool rounds.
             hiddenRoundRows.add(index);
             const run = relatedRounds[relatedRounds.length - 1];
+            modelRunByRow.set(index, run);
             (node.detailIndices || []).forEach(detailIndex => detailRounds.set(detailIndex, run));
           } else {
             const run = { side: modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}), isModel: true,
               startRow: index, rows: [index] };
+            modelRunByRow.set(index, run);
             roundSources.push({ row: index, run });
             (node.detailIndices || []).forEach(detailIndex => detailRounds.set(detailIndex, run));
           }
@@ -607,14 +640,24 @@
           source.run.round = index + 1;
           stepRuns.push(source.run);
         });
-        let activeThinkingRound = null;
+        let activeThinkingRound = null, closingRun = null;
         stepNodes.forEach((node, index) => {
+          if (preparationRows.has(index)) return;
+          const closingStage = /^Provider usage \(cli_run\)$/.test(node.title || "")
+            || node.kind === "tool" && /^verification$/i.test(node.title || "")
+            || /^Change verification (?:with Jev|\(Jev\))$/i.test(node.title || "");
+          if (closingStage) {
+            if (!closingRun) {
+              closingRun = { side: "VERTEX", isModel: false, startRow: index, rows: [] };
+              stepRuns.push(closingRun);
+            }
+            closingRun.rows.push(index);
+            activeThinkingRound = null;
+            return;
+          }
+          closingRun = null;
           if (node.kind === "tool") {
             const operation = String(node.title || "");
-            if (/^verification$/i.test(operation)) {
-              stepRuns.push({ side: "VERTEX", isModel: false, startRow: index, rows: [index] });
-              return;
-            }
             if (/^review$/i.test(operation)) {
               stepRuns.push({ side: "User", isModel: false, startRow: index, rows: [index] });
               return;
@@ -625,9 +668,7 @@
           } else if (node.kind === "note") {
             activeThinkingRound = noteRunByRow.get(index) || null;
           } else if (node.kind === "model") {
-            activeThinkingRound = hiddenRoundRows.has(index)
-              ? noteRounds.filter(note => note.row < index).at(-1)?.run || activeThinkingRound
-              : roundSources.find(source => source.row === index)?.run || null;
+            activeThinkingRound = modelRunByRow.get(index) || null;
           } else if (node.kind === "request" || node.kind === "user_interjection") {
             activeThinkingRound = null;
             const isUser = node.kind === "user_interjection";
@@ -641,7 +682,10 @@
           } else if (node.kind !== "note") {
             const isUser = node.kind === "user" || node.kind === "user_interjection" || node.kind === "screenshot";
             const isModel = node.kind === "answer" || node.title === "Response";
-            stepRuns.push({ side: isUser ? "User" : isModel ? modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}) : node.title || "Operation",
+            const userRun = node.kind === "screenshot" && stepRuns.find(run =>
+              run.side === "User" && run.rows[run.rows.length - 1] === index - 1);
+            if (userRun) userRun.rows.push(index);
+            else stepRuns.push({ side: isUser ? "User" : isModel ? modelName(node.prompt || prompts[selectedPrompt]?.prompt || {}) : node.title || "Operation",
               isModel, startRow: index, rows: [index] });
           }
         });
@@ -665,10 +709,10 @@
       const stepPositions = new Map();
       const stepHeight = node => {
         const row = stepNodes.indexOf(node), paragraphs = thinkingParagraphs.get(row);
-        return paragraphs ? Math.max(75, 34 + paragraphs.reduce((height, text) => height + 14 * Math.ceil(text.length / 42) + 8, 0)) : 75;
+        return paragraphs ? Math.max(75, 34 + paragraphs.reduce((height, text) => height + 14 * Math.ceil(text.length / 42) + 8, 0)) : node.metrics ? 100 : 75;
       };
       stepRuns.forEach((run, column) => {
-        let y = 52;
+        let y = run.vertexRound === 0 ? 151 : 52;
         run.rows.forEach(row => {
           stepPositions.set(row, { column, y, side: run.side });
           y += stepHeight(blocks[0][row]) + 24;
@@ -684,7 +728,7 @@
         : view === "steps" && node.usagePreview?.length ? Math.min(150, 50 + node.usagePreview.length * 22)
           : view === "steps" && node.kind === "note" ? 150
           : view === "steps" && node.kind === "prompt" ? 92
-            : view === "steps" && node.kind === "tool" ? node.operationDiff ? 92 : node.operationPreview ? 88 : 60
+            : view === "steps" && node.kind === "tool" ? (node.operationDiff ? 92 : node.operationPreview ? 88 : 60) + (node.metrics ? 24 : 0)
               : view === "steps" && node.kind === "model" ? 132
                 : view === "steps" && (node.kind === "screenshot" || node.preview && (node.kind === "request" || node.kind === "user" || node.kind === "user_interjection" || node.title === "Response")) ? 92 : 72;
       const height = view === "step" ? Math.max(340, stepBottom + 30) : Math.max(672, ...blocks.map(items => (view==="context"?242:88) + items.reduce((sum, node, row) => sum + nodeHeight(node) + 24 + (view === "steps" && node.kind === "tool" && items[row - 1]?.kind !== "note" && (items[row - 1]?.kind !== "tool" || items[row - 1]?.noteEventIndex !== node.noteEventIndex) ? 32 : 0), 0)));
@@ -708,6 +752,25 @@
         const title = make("strong"); title.style.color = topicAccent; title.title = String(prompt.text || prompt.operation || "Question not logged");
         title.append(make("span", "flow-prompt-index", request + ":"), make("span", "flow-prompt-question", " " + question)); heading.appendChild(title);
         lane.appendChild(heading);
+        if (view === "step") stepRuns.forEach((run, column) => {
+          if (run.vertexRound !== 0) return;
+          const left = 10 + column * stepWidth, accent = color(colors.vertex);
+          plane(x + left, 52, 260, 75, accent, .12);
+          plane(x + left, 52, 3, 75, accent, 1);
+          const roundCard = make("div", "flow-node ready vertex flow-step-node");
+          Object.assign(roundCard.style, { top: "52px", left: left + "px", height: "75px" });
+          roundCard.style.setProperty("--flow-accent", accent);
+          roundCard.appendChild(make("strong", "", "VERTEX · Round 0"));
+          lane.appendChild(roundCard);
+          const connection = make("div", "flow-connection");
+          connection.setAttribute("aria-hidden", "true");
+          Object.assign(connection.style, { position: "absolute", pointerEvents: "none", color: "var(--vscode-descriptionForeground)", background: "transparent",
+            left: left + 130 + "px", top: "127px", height: "24px", borderLeft: "1px solid currentColor" });
+          const arrow = make("span", "", "↓");
+          Object.assign(arrow.style, { position: "absolute", bottom: "-2px", left: "-5px", background: "transparent" });
+          connection.appendChild(arrow);
+          lane.appendChild(connection);
+        });
         if(view==="context"&&prompt.flow?.contextReduction){
           const reduction=prompt.flow.contextReduction;
           const questionCharacters=Number.isFinite(reduction.currentPromptCharacters)?reduction.currentPromptCharacters:String(prompt.text||"").length;
@@ -776,8 +839,9 @@
           if (nextRow != null && nextRow < recordedStages.length) {
             if (stepView) {
               const nextPosition = stepPositions.get(nextRow);
-              const nextLeft = 10 + nextPosition.column * stepWidth, nextY = nextPosition.y;
-              const nextHeight = stepHeight(recordedStages[nextRow]);
+              const entersRoundZero = nextPosition.column !== stepPosition.column && stepRuns[nextPosition.column]?.vertexRound === 0;
+              const nextLeft = 10 + nextPosition.column * stepWidth, nextY = entersRoundZero ? 52 : nextPosition.y;
+              const nextHeight = entersRoundZero ? 75 : stepHeight(recordedStages[nextRow]);
               // DOM connectors survive the accessible/WebGL fallback and follow the world zoom.
               const connection = make("div", "flow-connection");
               connection.setAttribute("aria-hidden", "true");
@@ -822,9 +886,10 @@
           } else {
             const sharedCard = view === "steps" || stepView;
             let cardTitle = compactRound ? modelName(target) + " · processing"
-              : node.kind === "tool" ? node.title + (node.fileName ? " · " + node.fileName : "")
-                : node.kind === "note" ? "Thinking" : node.title;
-            if (stepView && stepPosition && stepRuns[stepPosition.column]?.rows[0] === row) {
+              : stepView && preparationRows.has(row) && node.kind === "request" ? "VERTEX → " + modelName(target)
+                : node.kind === "tool" ? node.title + (node.fileName ? " · " + node.fileName : "")
+                  : node.kind === "note" ? "Thinking" : node.title;
+            if (stepView && stepPosition && stepRuns[stepPosition.column]?.rows[0] === row && stepRuns[stepPosition.column]?.vertexRound !== 0) {
               const run = stepRuns[stepPosition.column];
               if (run.round != null) cardTitle = "Round " + run.round + ": " + modelName(target);
               else if (run.side === "VERTEX") cardTitle = "VERTEX: " + cardTitle;
@@ -834,6 +899,11 @@
                   ? modelName(target) + " · Response" : modelName(target) + " · processing";
             }
             button.appendChild(make("strong", "", (sharedCard && node.kind === "tool" && node.toolNumber ? node.toolNumber + ". " : "") + cardTitle));
+            if (stepView && preparationRows.has(row)) button.className += " flow-step-service";
+            if (sharedCard && node.metrics) {
+              button.appendChild(make("small", "flow-usage", node.metrics));
+              button.title += "\n" + node.metrics + " · Local result before provider encoding; code counts are Unicode code points.";
+            }
             if (sharedCard && node.usagePreview?.length) {
               button.appendChild(make("span", "flow-step-preview", node.usagePreview.join("\n")));
             }

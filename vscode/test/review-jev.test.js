@@ -3,11 +3,11 @@ const test=require("node:test"),assert=require("node:assert/strict");
 const service=require("../review-jev"),profiles=require("../key-profiles");
 const context=()=>({object:"ZCL_TEST",blocks:[{block:1,unit:"METHOD test",line:5,before:["total = amount."],after:["total = total + amount."],context_before:["LOOP AT items INTO item."],context_after:["ENDLOOP."]}]});
 async function setup(){
- const values={modelConfig:{"typesafe-api":{enabled:["jev-latest"],known:["jev-latest"]}}},data=new Map();
+ const values={modelConfig:{"typesafe-api":{enabled:["jev-latest"],known:["jev-latest"]}}},data=new Map();let configurationListener;
  const secrets={get:async k=>data.get(k),store:async(k,v)=>{data.set(k,v);}};
- const vscode={workspace:{getConfiguration:()=>({get:(k,f)=>values[k]??f}),onDidChangeConfiguration:()=>({dispose(){}})}};
+ const vscode={workspace:{getConfiguration:()=>({get:(k,f)=>values[k]??f}),onDidChangeConfiguration:listener=>{configurationListener=listener;return {dispose(){}};}}};
  service.configure(secrets);await profiles.save(secrets,"typesafe-api","TEST","synthetic-key");
- return {values,data,secrets,vscode};
+ return {values,data,secrets,vscode,changeConfiguration:event=>configurationListener?.(event)};
 }
 function result(){return {model:"jev-1.14.0",elapsedMs:120,usage:{input_tokens:100},answers:Object.fromEntries(Object.entries(service.questions).map(([id,q])=>[id,{type:"choice",choice:Object.keys(q.criteria)[0],probabilities:{[Object.keys(q.criteria)[0]]:0.9}}]))};}
 test("ASK Jev requires a saved active key and an enabled provider/model without a prior paid check",async()=>{
@@ -76,6 +76,21 @@ test("whole-review Jev accepts a diff above the former 90000-character limit",as
  assert.ok(JSON.stringify(blocks).length>90000);
  const answer=await service.assess(env.vscode,{...context(),scope:"review",blocks});
  assert.equal(calls,28);assert.equal(answer.files,28);assert.equal(answer.rows.at(-1).answer,"80%");
+});
+test("ASK Jev availability resynchronizes when the decision model changes",async()=>{
+ const env=await setup();let dispose;const posts=[];
+ const panel={webview:{postMessage:async message=>posts.push(message),onDidReceiveMessage:()=>({dispose(){}})},onDidDispose:listener=>{dispose=listener;}};
+ service.bind(env.vscode,panel,()=>context());
+ const changes=[];env.values.decisionModel={provider:"gemini-api",model:"gemini-decision-1"};
+ env.changeConfiguration({affectsConfiguration:key=>{changes.push(key);return key==="vertex.ai.decisionModel";}});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(changes,["vertex.ai.modelConfig","vertex.ai.decisionModel"]);
+ assert.deepEqual(posts,[{jevAvailability:false}]);
+ env.values.decisionModel={provider:"typesafe-api",model:"jev-latest"};
+ env.changeConfiguration({affectsConfiguration:key=>key==="vertex.ai.decisionModel"});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(posts,[{jevAvailability:false},{jevAvailability:true}]);
+ dispose();
 });
 test("ASK Jev prevents duplicate block requests, rejects stale results and cancels on disposal",async t=>{
  const env=await setup();await service.rememberSuccess("synthetic-key","jev-latest");

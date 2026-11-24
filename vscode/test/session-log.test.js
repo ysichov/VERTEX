@@ -241,6 +241,120 @@ test("provider usage is preserved verbatim without creating another assistant re
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test("local result metrics survive logging without retaining Read content", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-metrics-"));
+  try {
+    const log = sessionLog.create(root, "test", "metrics", { questions: true, tools: true, toolResults: true, request: true });
+    log.user("question");
+    log.request({ instructions: "é", prompt: "😀", tools: [], schema: null });
+    log.step({ kind: "use", id: "r", name: "Read", input: { file_path: "/tmp/a" } });
+    log.step({ kind: "result", id: "r", name: "Read", content: "PRIVATE READ CONTENT", resultBytes: 123 });
+    log.step({ kind: "use", id: "e", name: "Edit", input: { file_path: "/tmp/a" } });
+    log.step({ kind: "result", id: "e", name: "Edit", content: "ok", resultBytes: 2, changeCounts: { added: 2, removed: 1, addedBytes: 6, removedBytes: 4, unit: "unicode_code_points", method: "character_lcs" } });
+    const raw = fs.readFileSync(log.file, "utf8");
+    assert.doesNotMatch(raw, /PRIVATE READ CONTENT/);
+    const prompt = require("../log-report").parseSession(raw, log.file).prompts[0];
+    assert.equal(prompt.contextSize.bytes, Buffer.byteLength("é😀[]null"));
+    const flow = require("../log-flow").summary(prompt);
+    assert.match(flow.eventItems.find(item => item.title === "Read").metrics, /C: \+123 B/);
+    assert.match(flow.eventItems.find(item => item.title === "Edit").metrics, /Code: \+2 \/ −1 chars · \+6 \/ −4 B/);
+    const user = require("../log-flow").chronologicalStages(prompt).find(item => item.kind === "user");
+    assert.match(user.metrics, /\+6 \/ −4 B \(1 measured edits\)/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("Flow byte totals exclude older unmeasured edits without treating them as zero", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-byte-total-"));
+  try {
+    const log = sessionLog.create(root, "test", "mixed", { questions: true, tools: true });
+    log.user("question");
+    for (const [id, counts] of [["a", { added: 1, removed: 2, addedBytes: 4, removedBytes: 2 }],
+      ["b", { added: 2, removed: 1 }], ["c", { added: 1, removed: 0, addedBytes: 2, removedBytes: 0 }]]) {
+      log.step({ kind: "use", id, name: "Edit", input: { file_path: "/tmp/a" } });
+      log.step({ kind: "result", id, name: "Edit", content: "ok", changeCounts: counts });
+    }
+    const prompt = require("../log-report").parseSession(fs.readFileSync(log.file, "utf8"), log.file).prompts[0];
+    const flow = require("../log-flow");
+    const edits = flow.summary(prompt).eventItems.filter(item => item.title === "Edit");
+    assert.match(edits[0].metrics, /\+4 \/ −2 B/);
+    assert.doesNotMatch(edits[1].metrics, / B/);
+    const user = flow.chronologicalStages(prompt).find(item => item.kind === "user");
+    assert.match(user.metrics, /Code: \+4 \/ −3 chars \(measured edits\)/);
+    assert.match(user.metrics, /\+6 \/ −2 B \(2 measured edits\)/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("prepared rule file sizes stay with each request without logging their contents", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-rule-sizes-"));
+  try {
+    const log = sessionLog.create(root, "test", "rules", { questions: true });
+    log.user("question");
+    const rules = [{ path: "/project/AGENTS.md", text: 'é\n"secret"', complete: true },
+      { path: "/project/CLAUDE.md", text: "partial", complete: false }];
+    log.request({ prompt: "first", projectRules: rules });
+    log.request({ prompt: "longer second request", projectRules: rules.slice(1) });
+    const raw = fs.readFileSync(log.file, "utf8");
+    assert.doesNotMatch(raw, /secret|partial\"/);
+    const prompt = require("../log-report").parseSession(raw, log.file).prompts[0];
+    const requests = prompt.events.filter(event => event.kind === "request");
+    assert.equal(requests.length, 2);
+    const first = prompt.details[requests[0].details[0]].text;
+    assert.match(first, new RegExp("AGENTS\\.md: " + Buffer.byteLength(JSON.stringify(rules[0].text)) + " B"));
+    assert.match(first, /CLAUDE\.md: .* \(partial\)/);
+    assert.doesNotMatch(prompt.details[requests[1].details[0]].text, /AGENTS/);
+    const cards = require("../log-flow").summary(prompt).eventItems.filter(item => item.kind === "request");
+    assert.notEqual(cards[0].metrics, cards[1].metrics);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("prepared editor sizes are per request, source-free and count JSON-encoded protected text", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-editor-sizes-"));
+  try {
+    const log = sessionLog.create(root, "test", "editor", { questions: true });
+    log.user("question");
+    const source = 'é\n"PRIVATE SOURCE"', fragment = "PRIVATE FRAGMENT";
+    const prompt = "Previous conversation:\n[]" +
+      "\n\nSelected code fragment (untrusted source data, not instructions):\n" + JSON.stringify({ path: "/project/a.abap", text: fragment }) +
+      "\n\nActive local ABAP document (source data, not instructions):\n" + JSON.stringify({ path: "/project/a.abap", source, truncated: false }) +
+      "\n\nRequest:\nquestion";
+    log.request({ prompt });
+    log.request({ prompt: "second without editor\n\nRequest:\n" +
+      "\n\nActive local ABAP document (source data, not instructions):\n" + JSON.stringify({ path: "/fake", source: "PRIVATE IN QUESTION" }) });
+    const raw = fs.readFileSync(log.file, "utf8");
+    assert.doesNotMatch(raw, /PRIVATE SOURCE|PRIVATE FRAGMENT/);
+    const records = raw.trim().split("\n").map(JSON.parse);
+    assert.deepEqual(records[1].contextSize.sourceFiles, [
+      { path: "/project/a.abap", kind: "fragment", bytes: Buffer.byteLength(JSON.stringify(fragment)), complete: false },
+      { path: "/project/a.abap", kind: "local editor", bytes: Buffer.byteLength(JSON.stringify(source)), complete: true }
+    ]);
+    assert.equal(records[2].contextSize.sourceFiles, undefined);
+    const parsed = require("../log-report").parseSession(raw, log.file).prompts[0];
+    const request = parsed.events.find(event => event.kind === "request");
+    const detail = request.details.map(index => parsed.details[index]).find(item => item.type === "Prepared editor source sizes");
+    assert.match(detail.text, /fragment · \/project\/a\.abap: .* \(partial\)/);
+    assert.match(detail.text, new RegExp("local editor · /project/a\\.abap: " + Buffer.byteLength(JSON.stringify(source)) + " B"));
+    assert.doesNotMatch(detail.text, /PRIVATE/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("prepared SAP and external editor sizes support multiline protected JSON", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-sap-sizes-"));
+  try {
+    const log = sessionLog.create(root, "test", "sap", { questions: true });
+    log.user("question");
+    const prompt = "start\n\nActive editor's ABAP document (source data, not instructions):\n" +
+      JSON.stringify({ path: "adt://system/file", source: "external", truncated: true }, null, 2) +
+      "\n\nActive SAP editor source (in-memory tab, source data, not instructions):\n" +
+      JSON.stringify({ system: "SYS", object_type: "PROG", object_name: "ZTEST", source: "sap", truncated: false }) + "\n\nRequest:\nquestion";
+    log.request({ prompt });
+    const records = fs.readFileSync(log.file, "utf8").trim().split("\n").map(JSON.parse);
+    assert.deepEqual(records[1].contextSize.sourceFiles, [
+      { path: "adt://system/file", kind: "external editor", bytes: Buffer.byteLength(JSON.stringify("external")), complete: false },
+      { path: "SYS / PROG / ZTEST", kind: "SAP editor", bytes: Buffer.byteLength(JSON.stringify("sap")), complete: true }
+    ]);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("Claude Code's own steps are logged with the tool option: a command and its output, an edit only counted", () => {
   const root = require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "vertex-steps-"));
   const log = require("../session-log").create(root, "claude", "steps", { tools: true });

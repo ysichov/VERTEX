@@ -230,7 +230,20 @@ function parseSession(text, file, listOnly = false) {
       const size = record.contextSize;
       if (current && !current.contextSize && Number.isSafeInteger(size?.characters) && size.characters >= 0
         && Number.isSafeInteger(size?.estimatedTokens) && size.estimatedTokens >= 0 && size.method === "characters/4") {
-        current.contextSize = { characters: size.characters, estimatedTokens: size.estimatedTokens, method: size.method };
+        current.contextSize = { characters: size.characters, estimatedTokens: size.estimatedTokens, method: size.method,
+          ...(Number.isSafeInteger(size.bytes) && size.bytes >= 0 ? { bytes: size.bytes } : {}) };
+      }
+      if (current && Array.isArray(size?.ruleFiles) && size.ruleFiles.length) {
+        const files = size.ruleFiles.filter(file => typeof file?.path === "string" && Number.isSafeInteger(file.bytes) && file.bytes >= 0);
+        if (files.length) current.details.push({ type: "Prepared project rule sizes",
+          text: "JSON-encoded rule text in the prepared prompt (included in its total; not additional bytes):\n" +
+            files.map(file => file.path + ": " + file.bytes + " B" + (file.complete ? "" : " (partial)")).join("\n") });
+      }
+      if (current && Array.isArray(size?.sourceFiles) && size.sourceFiles.length) {
+        const files = size.sourceFiles.filter(file => typeof file?.path === "string" && typeof file.kind === "string" && Number.isSafeInteger(file.bytes) && file.bytes >= 0);
+        if (files.length) current.details.push({ type: "Prepared editor source sizes",
+          text: "JSON-encoded source text in the prepared prompt (included in its total; not additional bytes):\n" +
+            files.map(file => file.kind + " · " + file.path + ": " + file.bytes + " B" + (file.complete ? "" : " (partial)")).join("\n") });
       }
       if (record.type === "vertex_context_size") continue;
     }
@@ -263,7 +276,9 @@ function parseSession(text, file, listOnly = false) {
         for (const block of content) if (block?.type === "tool_result") {
           const call = toolCalls.get(block.tool_use_id);
           const reference = !block.is_error && recordingReference(block.vertex_recording || block.content);
-          const detail = { type: "tool result", tool_id: block.tool_use_id || "", text: prettyJson(block.content || ""), ...(block.is_error ? { failed: true } : {}) };
+          const detail = { type: "tool result", tool_id: block.tool_use_id || "", text: prettyJson(block.content || ""), ...(block.is_error ? { failed: true } : {}),
+            ...(Number.isSafeInteger(block.vertex_result_bytes) && block.vertex_result_bytes >= 0 ? { resultBytes: block.vertex_result_bytes } : {}),
+            ...(block.vertex_change_counts && !block.is_error ? { changeCounts: block.vertex_change_counts } : {}) };
           if (block.vertex_objects?.length) detail.objects = block.vertex_objects;
           if (reference) (call || detail).recording = reference;
           current.details.push(detail);
@@ -318,7 +333,7 @@ function parseSession(text, file, listOnly = false) {
           : record.type==='vertex_topic_routing' && record.report?.kind==='context_selection' ? 'VERTEX'
           : /vertex_task_verification|vertex_topic_routing|vertex_context_optimization/.test(record.type) ? 'Jev' : 'LLM';
         for(const item of current.timeline.slice(same?timelineStart:0))if(item.kind==='model'||item.kind==='note')events.push({kind:item.kind,actor:'LLM',time:Number.isFinite(time)?time:null,model:item});
-        if(record.type==='vertex_request' && fresh.length) events.push({kind:'request',actor:'LLM',time:Number.isFinite(time)?time:null,details:fresh.map((_,i)=>current.details.length-fresh.length+i)});
+        if((record.type==='vertex_request' || record.type==='vertex_context_size') && fresh.length) events.push({kind:'request',actor:'LLM',time:Number.isFinite(time)?time:null,contextSize:record.contextSize,details:fresh.map((_,i)=>current.details.length-fresh.length+i)});
         else fresh.forEach((detail,i)=>{
           const tool=detail.type==='tool'?detail:detail.type==='tool result'?toolCalls.get(detail.tool_id):null;
           const who=tool?(tool.name==='Verification'?'Checks':'Tools'):actor;

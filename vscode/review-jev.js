@@ -178,7 +178,7 @@ function bind(vscode,panel,resolve) {
     finally{jobs.delete(slot);}
   });
   const keyChange=storage?.onDidChange?.(()=>{void sync();});
-  const configChange=vscode.workspace?.onDidChangeConfiguration?.(event=>{if(!event?.affectsConfiguration||event.affectsConfiguration("vertex.ai.modelConfig"))void sync();});
+  const configChange=vscode.workspace?.onDidChangeConfiguration?.(event=>{if(!event?.affectsConfiguration||event.affectsConfiguration("vertex.ai.modelConfig")||event.affectsConfiguration("vertex.ai.decisionModel"))void sync();});
   panel.onDidDispose(()=>{disposed=true;jobs.forEach(job=>job.abort());receive?.dispose?.();keyChange?.dispose?.();configChange?.dispose?.();});
 }
 function bridge(host) {

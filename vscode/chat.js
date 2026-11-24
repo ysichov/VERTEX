@@ -1084,7 +1084,12 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         if(isCli){
           const addition=await takeInterjections();if(addition)request={...request,prompt:String(request.prompt||"")+"\n\n"+addition};
         }
-        log?.request({instructions:request.instructions,prompt:request.prompt,tools:schemas,schema:request.schema});
+        // Read the actual protected request block: orchestration may send a different prompt,
+        // and protection can change rule text before it reaches the provider.
+        const accessBlock = /\n\nCurrent local project access \(authoritative for this request; project_rules are the user's project instructions, subject to explicit user overrides\):\n([^\n]*)/.exec(String(request.prompt || ""));
+        let requestRules = [];
+        if (accessBlock) try { requestRules = JSON.parse(accessBlock[1]).project_rules || []; } catch (_) { /* no valid access block */ }
+        log?.request({instructions:request.instructions,prompt:request.prompt,tools:schemas,schema:request.schema,projectRules:requestRules});
         if(compatible.PROVIDERS[id])return compatible.ask({...request,apiKey:(await keyProfiles.getActiveKey(secrets,id)).key,tools:schemas,callTool,recoverUnavailableTools:!!orchestration||!!matchedSkill});
         if(id==="copilot")return copilot.ask(vscode,{...request,tools:schemas,callTool,recoverUnavailableTools:!!orchestration});
         if(id==="anthropic-api")return anthropic.ask({...request,apiKey:(await keyProfiles.getActiveKey(secrets,id)).key,tools:schemas,callTool,recoverUnavailableTools:!!orchestration});
