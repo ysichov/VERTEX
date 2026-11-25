@@ -547,12 +547,12 @@ function markdown(text, target) {
      itself, then one per topic Jev was asked about, so what it ruled out is visible without reading JSON. */
   function routingTable(report) {
     var answers = report && report.answers;
-    if (!answers || typeof answers !== "object" || !answers.route) return null;
+    if (!answers || typeof answers !== "object" || !Object.keys(answers).some(function (key) { return key === "route" || key.indexOf("compare_") === 0; })) return null;
     var topics = Array.isArray(report.topics) ? report.topics : [];
     var label = function (key) {
       if (report.labels && report.labels[key]) return report.labels[key];
       if (key === "route") return "Which topic this question belongs to";
-      var found = topics.filter(function (t) { return "need_" + t.id === key; })[0];
+      var found = topics.filter(function (t) { return "need_" + t.id === key || "compare_" + t.id === key; })[0];
       return found ? (found.label || found.lastQuestion || found.id) : key;
     };
     var table = el("table", "jev-table"), head = el("tr"), number = 0;
@@ -583,6 +583,7 @@ function markdown(text, target) {
     var keys = Object.keys(decision.questions || {}), state = decision.state || {};
     var subject = function (key) {
       if (/^tool_\d+$/.test(key) && state.tools) return state.tools[Number(key.slice(5))]?.name || key;
+      if (/^relevant_\d+$/.test(key)) return "Exchange " + key.slice(9);
       var found = null;
       Object.keys(state).forEach(function (field) {
         if (found || !Array.isArray(state[field])) return;
@@ -625,8 +626,20 @@ function markdown(text, target) {
 
   var decisionRunSerial = 0, pendingDecisionRuns = Object.create(null);
   function isJevPrompt(p) { return /Jev|decision/i.test(String(p && p.operation || "")) || !!(p && p.decision); }
-  function jevInputDisclosure(decision) {
+  function jevInputDisclosure(decision, answerText, optimization) {
     if (!decision || !decision.state) return null;
+    var relevanceKeys = Object.keys(decision.questions || {}).filter(function (key) { return /^relevant_\d+$/.test(key); });
+    var isOptimization = relevanceKeys.length > 0 || Array.isArray(decision.state.exchanges) && Object.keys(decision.questions || {}).some(function (key) { return /^(success|duplicate)_\d+$/.test(key); });
+    var relevanceExchanges = relevanceKeys.map(function (key) {
+      try { var data = JSON.parse(decision.questions[key].instructions); return { id: Number(key.slice(9)), question: data.question, answer: data.answer, complete: !!data.answer }; }
+      catch (_) { return { id: Number(key.slice(9)), question: decision.questions[key].instructions, complete: false }; }
+    });
+    var answerParts = String(answerText || "").split(/\n\n(?=Question \d+: |Estimated cost: )/), answersByKey = {};
+    var questionKeys = Object.keys(decision.questions || {});
+    answerParts.forEach(function (part) {
+      var match = /^Question (\d+): [\s\S]*?\nAnswer: (.*)\nConfidence: (.*?)(?:\nProbabilities: ([\s\S]*))?$/.exec(part);
+      if (match && questionKeys[Number(match[1]) - 1]) answersByKey[questionKeys[Number(match[1]) - 1]] = match;
+    });
     var disclosure = el("details", "jev-saved-prompt"), heading = "Jev input";
     if (decision.provider || decision.model) heading += " · " + [decision.provider, decision.model].filter(Boolean).join(" · ");
     disclosure.appendChild(el("summary", "", heading));
@@ -673,27 +686,43 @@ function markdown(text, target) {
       if (Array.isArray(state.blocks)) state.blocks.forEach(function (block, index) {
         section("Code · " + (block.file || "block " + (index + 1)), Array.isArray(block.after) ? block.after.join("\n") : block.after, true);
       });
-      if (Array.isArray(state.exchanges)) {
+      var shownExchanges = relevanceKeys.length ? relevanceExchanges : state.exchanges;
+      if (Array.isArray(shownExchanges)) {
         var exchanges = el("div", "jev-input-questions");
-        exchanges.appendChild(el("strong", "", "Previous conversation exchanges · " + state.exchanges.length));
-        state.exchanges.forEach(function (exchange, index) {
+        exchanges.appendChild(el("strong", "", "Previous conversation exchanges · " + shownExchanges.length));
+        shownExchanges.forEach(function (exchange, index) {
           var item = el("details", "jev-input-exchange"), label = "Exchange " + (exchange.id || index + 1);
           if (exchange.topicId) label += " · " + exchange.topicId;
           label += exchange.complete ? " · answer recorded" : " · no answer";
           if (Number.isSafeInteger(exchange.iterations)) label += " · " + exchange.iterations + " steps";
+          if (isOptimization) {
+            var dropped = optimization && Array.isArray(optimization.dropped) && optimization.dropped.find(function (entry) { return entry.exchange === exchange.id; });
+            if (optimization && (optimization.status === "kept" || optimization.status === "deduplicated" || optimization.status === "filtered") && Array.isArray(optimization.dropped))
+              label += dropped ? (Number.isSafeInteger(dropped.representative) ? " · excluded → exchange " + dropped.representative : " · excluded") : optimization.representative === exchange.id ? " · kept (representative)" : " · kept";
+            else label += optimization && optimization.status === "fallback" ? " · optimization failed; kept" : " · outcome not recorded";
+          }
           item.appendChild(el("summary", "", label));
           var body = el("div", "jev-saved-prompt-body");
           [["Question", exchange.question], ["Answer", exchange.answer]].forEach(function (entry) {
             if (entry[1]) { var field = el("div", "jev-input-section");field.appendChild(el("strong", "", entry[0]));field.appendChild(el("div", "detail", String(entry[1])));body.appendChild(field); }
           });
           if (exchange.truncated) body.appendChild(el("p", "muted", "Exchange text was truncated before it was sent to Jev."));
+          if (isOptimization) ["success_", "duplicate_", "relevant_"].forEach(function (prefix) {
+            var key = prefix + exchange.id, question = decision.questions && decision.questions[key];
+            if (!question) return;
+            var card = el("div", "jev-input-question"), response = answersByKey[key];
+            card.appendChild(el("strong", "", key));
+            if (question.instructions && prefix !== "relevant_") card.appendChild(el("small", "", question.instructions));
+            card.appendChild(el("div", "detail", response ? "Jev: " + response[2] + " · Confidence: " + response[3] + (response[4] ? " · " + response[4] : "") : "Jev answer not recorded or unavailable."));
+            body.appendChild(card);
+          });
           item.appendChild(body);exchanges.appendChild(item);
         });
         body.appendChild(exchanges);hasContent = true;
       }
       if (!hasContent) section("State", JSON.stringify(state, null, 2), true);
     } else section("State", String(state), true);
-    addQuestions();
+    if (!isOptimization) addQuestions();
     disclosure.appendChild(body);
     return disclosure;
   }
@@ -718,7 +747,8 @@ function markdown(text, target) {
       };
     }
     row.appendChild(rerun); row.appendChild(test); target.appendChild(row);
-    var input = jevInputDisclosure(decision);
+    var response = (p.details || []).find(function (detail) { return detail.type === "answer" && detail.text; });
+    var input = jevInputDisclosure(decision, response && response.text, p.contextOptimization);
     if (input) target.appendChild(input);
   }
 
@@ -1313,12 +1343,24 @@ function markdown(text, target) {
 
   function detailSection(d, p, prefix) {
       if (d.type === "answer" || d.type === "tool" || d.type === "tool result") return;
-      var label = d.type === "Model request and context" ? "Request and context" : d.type;
+      var firstTopic = d.routing?.status === "fallback" && d.routing?.beforeMessages === 0 && d.routing?.topic && d.routing?.reason === "No previous topics to compare; full history retained.";
+      var label = firstTopic ? "First topic created automatically · Jev not called" : d.type === "Model request and context" ? "Request and context" : d.type;
       if (prefix) label = prefix + label;
       if (d.snapshot) label = d.snapshot.kind === "uml" ? "Recorded UML" : "Recorded metrics";
-      var tone=/Jev/i.test(d.type)?" jev":/Recovery|Orchestrator/i.test(d.type)?" vertex":"";
+      var tone=firstTopic?" vertex":/Jev/i.test(d.type)?" jev":/Recovery|Orchestrator/i.test(d.type)?" vertex":"";
       var detail;
-      if (d.verification) {
+      // Logs and Flow use the same CLI-run summary; keep the original record available underneath.
+      var usageLines = prefix !== "Raw " && window.vertexLogFlow?.providerUsage ? window.vertexLogFlow.providerUsage(d) : [];
+      if (usageLines.length) {
+        detail = section(label, "technical"+tone);
+        var usageShown = false;
+        detail.addEventListener("toggle", function () {
+          if (!detail.open || usageShown) return;
+          usageShown = true;
+          detail.appendChild(usageTable(usageLines));
+          detail.appendChild(section("Raw " + d.type, "technical", d.text));
+        });
+      } else if (d.verification) {
         detail = section(label, "technical"+tone+(d.failed?" failed":""));
         var verificationShown = false;
         detail.addEventListener("toggle", function () {
@@ -1341,12 +1383,13 @@ function markdown(text, target) {
         detail.addEventListener("toggle", function () {
           if (!detail.open || routingShown) return;
           routingShown = true;
+          if (firstTopic) line(detail, "Topic", "First topic created automatically; there were no previous messages to compare. Jev was not called.");
           var answers = routingTable(d.routing);
           if (answers) detail.appendChild(answers);
           detail.appendChild(el("div", "detail", d.text));
         });
       } else detail = section(label, "technical"+tone+(d.failed?" failed":""), d.text || "No details were recorded for this operation.");
-      if (/Jev/i.test(d.type) || d.routing || d.verification) jevLogActions({operation:d.type,decision:d.decision},detail);
+      if (!firstTopic && (/Jev/i.test(d.type) || d.routing || d.verification)) jevLogActions({operation:d.type,decision:d.decision},detail);
       objectLinks(detail, d.objects);
       if (d.snapshot) {
         var open = el("button", "recording-link", "Open recorded " + (d.snapshot.kind === "uml" ? "UML" : "metrics"));
@@ -1446,10 +1489,14 @@ function markdown(text, target) {
       if (parts.length === 1 && /run cost$/i.test(scope)) {
         var costRow = el("tr"); costRow.append(el("td", "", "Run"), el("td", "", scope), el("td", "num", parts[0])); body.appendChild(costRow); return;
       }
+      if (scope === "Run model" && parts.length === 1) {
+        var modelRow = el("tr"); modelRow.append(el("td", "", "Run"), el("td", "", "Model"), el("td", "", parts[0])); body.appendChild(modelRow); return;
+      }
       if (scope === "Run tokens") scope = "Run";
       parts.forEach(function(part) {
         var cost = /^(estimated|provider-reported)\s+(\$\S+)$/i.exec(part);
-        var match = /^(\S+)\s+(.+)$/.exec(part), row = el("tr");
+        // Token values are locale-formatted and may themselves contain spaces (including NBSP).
+        var match = /^(.+?)\s+(input|output|cache read|cache write)$/.exec(part), row = el("tr");
         row.appendChild(el("td", "", scope));
         row.appendChild(el("td", "", cost ? cost[1] + " cost" : match ? match[2] : "Value"));
         row.appendChild(el("td", "num", cost ? cost[2] : match ? match[1] : part));
@@ -1573,7 +1620,18 @@ function markdown(text, target) {
     flowDispose = window.vertexLogFlow.mount(root, sessions[index], { details: showFlowDetail, state: state, followRight: topicSync?.followRight === true,
       onTopicChange: function (topic) { if (topicSync && topicSync.onChange) topicSync.onChange(topic); } });
   }
-  var lastReport = null, lastRenderedRecords = [], pendingConversationOpen = null, listState = { query: "", hiddenKinds: {}, context: null, contextObject: null, placeInitialized: false, topic: "all" };
+  var lastReport = null, lastRenderedRecords = [], pendingConversationOpen = null, listState = { query: "", hiddenKinds: {}, context: null, contextObject: null, placeInitialized: false, topic: "all", showSkills: false };
+  // Filter recorded matches, never infer a skill from the wording of a question.
+  function visibleSkillSession(session, showSkills) {
+    if (showSkills) return session;
+    var hidden = session.prompts.filter(function (p) { return chat(p) && p.matchedSkill; });
+    if (!hidden.length) return session;
+    if (!session.prompts.some(function (p) { return chat(p) && !p.matchedSkill; })) return null;
+    var turns = new Set(hidden.map(function (p) { return p.turnId; }).filter(Boolean));
+    return Object.assign({}, session, { prompts: session.prompts.filter(function (p) {
+      return !hidden.includes(p) && !(p.relatedTurnId && turns.has(p.relatedTurnId));
+    }) });
+  }
   function openRequestedConversation() {
     if (!pendingConversationOpen) return;
     var request = pendingConversationOpen;
@@ -1771,7 +1829,8 @@ function markdown(text, target) {
     topicSelect.setAttribute("aria-label","Filter conversations by topic");
     topicSelect.title="Show conversations that contain prompts from one topic";
     var topicCounts=new Map();
-    report.sessions.forEach(function(session){
+    report.sessions.forEach(function(original){
+      var session=visibleSkillSession(original,listState.showSkills);if(!session)return;
       var seenTopics=new Set();
       session.prompts.forEach(function(prompt){var topic=prompt.topic;if(!topic||!topic.id||seenTopics.has(topic.id))return;seenTopics.add(topic.id);
         var item=topicCounts.get(topic.id)||{label:topic.label||"",count:0};item.count++;if(!item.label)item.label=topic.label||"";topicCounts.set(topic.id,item);});
@@ -1783,6 +1842,13 @@ function markdown(text, target) {
     });
     if(!topicCounts.has(listState.topic))listState.topic="all";
     topicSelect.value=listState.topic;topicSelect.hidden=!topicCounts.size;tools.appendChild(topicSelect);
+    if (report.sessions.some(function (s) { return s.prompts.some(function (p) { return chat(p) && p.matchedSkill; }); })) {
+      var skillBox = el("input"); skillBox.type = "checkbox"; skillBox.checked = listState.showSkills;
+      var skillLabel = el("label", "kind-filter");
+      skillLabel.title = "Show requests matched to a skill; recorded usage totals still include hidden requests";
+      skillLabel.appendChild(skillBox); skillLabel.appendChild(document.createTextNode(" Skill requests")); tools.appendChild(skillLabel);
+      skillBox.addEventListener("change", function () { listState.showSkills = skillBox.checked; render(lastReport, true); });
+    }
     content.appendChild(tools);
     var actionPanel=el("div","list-tools conversation-actions");actionPanel.hidden=true;
     actionPanel.setAttribute("aria-label","Actions for the selected conversation");content.appendChild(actionPanel);
@@ -1847,7 +1913,9 @@ function markdown(text, target) {
     if (!anyCost) columns = columns.filter(function (column) { return column.name !== "Cost USD"; });
     var list = el("table", "conversation-table"), records = [];
     sortableHead(list, columns, records);
-    report.sessions.forEach(function (s) {
+    report.sessions.forEach(function (original) {
+      var s = visibleSkillSession(original, listState.showSkills);
+      if (!s) return;
       var main = el("tr", "conversation-row"), detail = el("tr", "conversation-detail");
       main.dataset.sessionId = s.id;
       var technical = !s.prompts.some(chat);

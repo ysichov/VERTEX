@@ -39,9 +39,26 @@ test.beforeEach(t => { t.mock.method(assistant, "resolveAssistant", async (vscod
 test.beforeEach(t => { t.mock.method(require('../orchestrator-plan'), 'verifyStage', async()=>({status:'passed',checks:[],usage:{}})); });
 test.beforeEach(t => { t.mock.method(require('../task-verification'), 'verifyTask', async()=>({status:'passed',checks:[],usage:{}})); });
 
-test("Zero context sends the chat only and bypasses workspace tools and routing", async t => {
- const vscode = fakeVscode({provider:"openai-api", model:"fixture"});
- t.mock.method(require("../topic-routing"), "route", async () => assert.fail("Jev routing must not run"));
+test("Full history still tags topics with Jev but retains every exchange", async t => {
+ const vscode=fakeVscode({provider:'openai-api',model:'fixture','context.routeTopics':false}),topic={id:'topic_0001',label:'Prior task',scope:'folder'};
+ let routes=0,received=[];t.mock.method(require('../review-jev'),'enabled',()=>true);
+ t.mock.method(require('../topic-routing'),'route',async(_v,question,history)=>{routes++;if(routes===2)assert.equal(history[0].content,'First question');return {history:[],topic,report:{status:'routed',basis:'jev',keptIndices:[]}};});
+ t.mock.method(compatible,'ask',async request=>{received.push(request.prompt);return {plan:{answer:received.length===1?'First answer':'Second answer'},model:'fixture'};});
+ const ask=chat.create(vscode,{schemas:[],instructions:'',editorContext:()=>assert.fail('No editor context')},null,{get:async()=>null});
+ try{const first=await ask('First question',{contextMode:'folder'});const second=await ask('Follow-up',{contextMode:'folder'});
+  assert.equal(first.topic.id,topic.id);assert.equal(second.topic.id,topic.id);assert.equal(routes,2);
+  assert.match(received[1],/First question/);assert.match(received[1],/First answer/);
+ }finally{await ask.dispose();}
+});
+
+test("Zero context always tags topics with Jev but sends the complete chat history without workspace tools", async t => {
+ const vscode = fakeVscode({provider:"openai-api", model:"fixture",'context.routeTopics':false});
+ const topic={id:'topic_0001',label:'Zero-context chat',scope:'zero'};let routes=0;
+ t.mock.method(require('../review-jev'),'enabled',()=>true);
+ t.mock.method(require("../topic-routing"), "route", async (_v,question,history) => {
+  routes++;assert.equal(question,routes===1?'First question':'Follow-up');
+  return {history:[],topic,report:{status:'routed',basis:'jev',keptIndices:[],beforeMessages:history.length,afterMessages:0}};
+ });
  let requests = 0;
  t.mock.method(compatible, "ask", async request => {
   assert.equal(request.instructions, "");
@@ -54,16 +71,81 @@ test("Zero context sends the chat only and bypasses workspace tools and routing"
  const ask = chat.create(vscode, {editorContext: () => assert.fail("Editor context must not be read")},
    {start: async () => assert.fail("MCP must not start")}, {get: async () => null});
  try {
-  await ask("First question", {contextMode:"zero", web:true, routeTopics:true, state:{workspace:"PRIVATE_WORKSPACE"}});
-  await ask("Follow-up", {contextMode:"zero", routeTopics:true});
+  const first=await ask("First question", {contextMode:"zero", web:false, state:{workspace:"PRIVATE_WORKSPACE"}});
+  const second=await ask("Follow-up", {contextMode:"zero"});
+  assert.equal(first.topic.id,topic.id);assert.equal(second.topic.id,topic.id);assert.equal(routes,2);
   assert.equal(requests, 2);
  } finally { await ask.dispose(); }
+});
+
+test('Zero context Web search keeps chat history without project or SAP access', async t => {
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-zero-web-')), logs=require('../session-log');
+ t.after(()=>{logs.reset();fs.rmSync(root,{recursive:true,force:true});});logs.reset('zero-web');
+ const topic={id:'topic_0001',label:'Search',scope:'zero'};
+ t.mock.method(require('../review-jev'),'enabled',()=>true);
+ t.mock.method(require('../topic-routing'),'route',async()=>({topic,report:{status:'routed',basis:'jev'}}));
+ t.mock.method(compatible,'models',async()=>[{id:'web',label:'Web',capabilities:{tools:true}}]);
+ const requests=[];
+ t.mock.method(compatible,'ask',async request=>{requests.push(request);return {model:'web',plan:{answer:request.webSearch?'Found with source':'Ordinary answer'}};});
+ const vscode=fakeVscode({provider:'vercel-api',model:'web',logPath:root,'log.questions':true,'log.answers':true});
+ const ask=chat.create(vscode,{editorContext:()=>assert.fail('No editor context')},{start:()=>assert.fail('No MCP')},{get:async()=>null});
+ try {
+  await ask('Earlier question',{contextMode:'zero'});
+  const result=await ask('Найди в интернете ABAP benchmarks',{contextMode:'zero',state:{workspace:'PRIVATE_WORKSPACE',git_review:{text:'PRIVATE_DIFF'}}});
+  assert.equal(result.topic.id,topic.id);assert.equal(requests[1].webSearch,true);assert.deepEqual(requests[1].tools,[]);
+  assert.match(requests[1].prompt,/Earlier question[\s\S]*Ordinary answer/);assert.doesNotMatch(requests[1].prompt,/PRIVATE_WORKSPACE|PRIVATE_DIFF/);
+  await ask('Follow-up',{contextMode:'zero'});assert.match(requests[2].prompt,/Найди в интернете[\s\S]*Found with source[\s\S]*Follow-up/);
+  const sessions=require('../log-report').readSessions(root).sessions;
+  assert.ok(sessions.some(s=>s.prompts.some(p=>p.operation==='Web search')));
+ } finally {await ask.dispose();}
+});
+
+test('Zero context Web search accepts a clarification during the request', async t => {
+ let started,release;const waiting=new Promise(resolve=>{started=resolve;}),requests=[];
+ t.mock.method(compatible,'models',async()=>[{id:'web',label:'Web',capabilities:{tools:true}}]);
+ t.mock.method(compatible,'ask',async request=>{
+  requests.push(request);
+  if(requests.length===1){started();await new Promise(resolve=>{release=resolve;});}
+  return {model:'web',plan:{answer:requests.length===1?'First result':'Updated result'},usage:{input_tokens:3}};
+ });
+ const ask=chat.create(fakeVscode({provider:'vercel-api',model:'web'}),{editorContext:()=>assert.fail('No editor')},null,{get:async()=>null});
+ try {
+  const pending=ask('Search the web for ABAP',{contextMode:'zero'});await waiting;
+  assert.equal(ask.interject('Focus on current sources'),true);release();
+  const result=await pending;assert.equal(result.answer,'Updated result');assert.equal(result.usage.input_tokens,6);
+  assert.match(requests[1].webQuery,/Focus on current sources/);assert.match(requests[1].prompt,/First result/);
+ } finally {await ask.dispose();}
+});
+
+test('Claude-compatible providers keep Web requests in the normal chat and enable native web tools', async t => {
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-native-web-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const vscode=fakeVscode({provider:'codemie',model:'fixture'});vscode.workspace.workspaceFolders=[{uri:{scheme:'file',fsPath:root}}];
+ let received;
+ t.mock.method(assistant,'ask',async request=>{received=request;return {model:'fixture',plan:{answer:'Found'}};});
+ const ask=chat.create(vscode,{schemas:[],instructions:'',editorContext:()=>null},{token:'test',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:()=>({route:'/chat',dispose(){}})},{get:async()=>null});
+ try {
+  assert.equal((await ask('Какая погода сейчас в Киеве?',{contextMode:'folder'})).answer,'Found');
+  assert.equal(received.nativeWebSearch,true);
+ } finally {await ask.dispose();}
+});
+
+test('Zero context Web requests use Vercel regardless of the chat provider, reject screenshots, and honour web:false', async t => {
+ const vscode=fakeVscode({provider:'openai-api',model:'fixture'});let calls=0,received;
+ t.mock.method(compatible,'models',async id=>[{id:id==='vercel-api'?'gateway':'fixture',capabilities:{tools:true}}]);
+ t.mock.method(compatible,'ask',async request=>{calls++;received=request;return {model:request.model,plan:{answer:request.webSearch?'Found':'Ordinary'}};});
+ const ask=chat.create(vscode,{editorContext:()=>assert.fail('No editor')},null,{get:async()=>null});
+ try {
+  assert.equal((await ask('Найди в интернете новости',{contextMode:'zero'})).answer,'Found');assert.equal(received.assistant,'vercel-api');assert.equal(received.model,'gateway');
+  await assert.rejects(ask('Search the web',{contextMode:'zero',images:[{media_type:'image/png',data:'abcd'}]}),/Remove screenshots/);
+  assert.equal((await ask('Найди в интернете новости',{contextMode:'zero',web:false})).answer,'Ordinary');assert.equal(calls,2);
+ } finally {await ask.dispose();}
 });
 
 for (const provider of ['openai-api', 'claude-subscription']) test(`Zero context shows screenshot recognition before the ${provider} request`, async t => {
  const vscode = fakeVscode({provider, model:'fixture'}), progress = [];
  const images = [{media_type:'image/png', data:'aW1hZ2U='}];
- t.mock.method(require('../topic-routing'), 'route', async () => assert.fail('Zero context must not route'));
+ t.mock.method(require('../review-jev'),'enabled',()=>true);
+ let routes=0;t.mock.method(require('../topic-routing'), 'route', async () => {routes++;return {history:[],topic:{id:'topic_0001',label:'Screenshot',scope:'zero'},report:{status:'routed',basis:'jev',keptIndices:[]}};});
  t.mock.method(provider === 'openai-api' ? compatible : assistant, 'ask', async request => {
   assert.equal(progress.length, 1, 'recognition must start before waiting for the provider');
   assert.equal(progress[0].kind, 'recognize');assert.equal(progress[0].imageIndex, 0);
@@ -75,7 +157,8 @@ for (const provider of ['openai-api', 'claude-subscription']) test(`Zero context
  const ask = chat.create(vscode, {editorContext:()=>assert.fail('Do not read editor context')},
   {start:async()=>assert.fail('Do not start MCP')}, {get:async()=>null});
  try {
-  assert.equal((await ask('', {contextMode:'zero', images, onProgress:update=>progress.push(update)})).answer, 'Visible error');
+  const result=await ask('', {contextMode:'zero', images, onProgress:update=>progress.push(update)});
+  assert.equal(result.answer, 'Visible error');assert.equal(result.topic.id,'topic_0001');assert.equal(routes,1);
   assert.equal(progress.length, 2);assert.equal(progress[1].status, 'Model request 1');
  } finally {await ask.dispose();}
 });
@@ -411,19 +494,23 @@ test("the VS Code chat sends the conversation so far, and a new conversation sta
   assert.doesNotMatch(prompts[2], /show Z_CALC|Answer 1/);
 });
 
-test("follow-up receives the previous tool calls and full local results as historical data", async t => {
+test("follow-up keeps source but omits old logs and command results", async t => {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),"vertex-tool-history-"));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const body="READ_START\n"+"x".repeat(5000)+"\nREAD_END";
-  fs.writeFileSync(path.join(root,"sample.txt"),body);
-  const vscode=fakeVscode({provider:"codex-subscription",model:"test"});
+  fs.writeFileSync(path.join(root,"sample.js"),body);
+  fs.writeFileSync(path.join(root,"sample.log"),"NON_SOURCE_LOG_CONTENT");
+  const vscode=fakeVscode({provider:"codex-subscription",model:"test",shellWithoutAsking:true});
   vscode.workspace.workspaceFolders=[{uri:{scheme:"file",fsPath:root}}];
   let served, calls=0, followup;
   const server={token:"test",start:async()=>({url:"http://127.0.0.1:1/mcp"}),registerTools:set=>{served=set;return {route:"/history",dispose(){}};}};
   t.mock.method(assistant,"ask",async options=>{
     if(++calls===1){
-      await served.call({},"Read",{file_path:"sample.txt"});
-      try { await served.call({},"Read",{file_path:"missing.txt"}); } catch (_) {}
+      const code=await served.call({},"Read",{file_path:"sample.js"});
+      const log=await served.call({},"Read",{file_path:"sample.log"});
+      assert.match(JSON.stringify(code),/READ_END/);assert.match(JSON.stringify(log),/NON_SOURCE_LOG_CONTENT/);
+      await served.call({},"Bash",{command:process.platform==='win32'?'Write-Output OLD_BASH_RESULT':'printf OLD_BASH_RESULT',purpose:'command'});
+      try { await served.call({},"Read",{file_path:"missing.js"}); } catch (_) {}
     } else followup=options.prompt;
     return {model:"test",plan:{answer:"Done",navigation:null,build_command:""}};
   });
@@ -432,10 +519,11 @@ test("follow-up receives the previous tool calls and full local results as histo
     await ask("Read the file",{contextMode:"folder"});
     await ask("What did it say?",{contextMode:"folder"});
     assert.match(followup,/tool_history/);
-    assert.match(followup,/sample\.txt/);
+    assert.match(followup,/sample\.js/);
     assert.match(followup,/READ_START/);
     assert.match(followup,/READ_END/);
-    assert.match(followup,/missing\.txt/);
+    assert.doesNotMatch(followup,/NON_SOURCE_LOG_CONTENT|sample\.log|OLD_BASH_RESULT|missing\.js/);
+    assert.match(followup,/Non-source historical tool details omitted/);
     assert.match(followup,/"is_error": true/);
     assert.match(followup,/untrusted data/);
     ask.newConversation();
@@ -444,13 +532,29 @@ test("follow-up receives the previous tool calls and full local results as histo
   } finally {await ask.dispose();}
 });
 
+test("restored history filters mixed search results and arbitrary tools", async t => {
+  const history=[{role:'user',content:'Find code'},{role:'assistant',content:'Found it',tool_history:[
+    {tool:'Grep',arguments:{pattern:'needle'},result:{matches:[{file:'src/a.js',line:1,text:'CODE_MATCH'}, {file:'old.log',line:1,text:'LOG_MATCH'}],truncated:false}},
+    {tool:'Bash',arguments:{command:'cat SECRET_LOG'},result:{stdout:'SECRET_LOG'}},
+    {tool:'read_other',arguments:{key:'PRIVATE_ARG'},result:{source:'NOT_TRUSTED_SOURCE'}}]}];
+  let prompt;
+  t.mock.method(assistant,'ask',async options=>{prompt=options.prompt;return {model:'test',plan:{answer:'Done'}};});
+  const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test'}),{schemas:[],editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+  try {
+    await ask('Continue',{state:{conversation:history}});
+    assert.match(prompt,/CODE_MATCH/);assert.match(prompt,/omitted_non_source_matches/);
+    assert.doesNotMatch(prompt,/LOG_MATCH|old\.log|SECRET_LOG|PRIVATE_ARG|NOT_TRUSTED_SOURCE/);
+    assert.equal(history[1].tool_history[0].result.matches.length,2,'filter does not mutate conversation');
+  } finally {await ask.dispose();}
+});
+
 test("SAP tool results and structured credentials are protected in follow-up history", async t => {
-  const tool={name:'read_evidence',description:'read',inputSchema:{type:'object',properties:{}}};
-  const tools={schemas:[tool],instructions:'',editorContext:()=>null,execute:async()=>({text:'SAP_RESULT',password:'sensitive-value'})};
+  const tool={name:'read_sap_object',description:'read',inputSchema:{type:'object',properties:{}}};
+  const tools={schemas:[tool],instructions:'',editorContext:()=>null,execute:async()=>({source:'SAP_RESULT',password:'sensitive-value'})};
   const vscode=fakeVscode({provider:'openai-api',model:'test',contextMode:'sap'});
   let calls=0, prompt;
   t.mock.method(compatible,'ask',async options=>{
-    if(++calls===1)await options.callTool('read_evidence',{object_name:'Z_SAMPLE',access_token:'argument-secret'});
+    if(++calls===1)await options.callTool('read_sap_object',{object_name:'Z_SAMPLE',access_token:'argument-secret'});
     else prompt=options.prompt;
     return {model:'test',plan:{answer:'Done'}};
   });
@@ -465,8 +569,8 @@ test("SAP tool results and structured credentials are protected in follow-up his
 
 test("selected topic keeps its tool history and excludes other exchanges", async t => {
   const topic={id:"topic_0001",label:"First",scope:"folder"},other={id:"topic_0002",label:"Other",scope:"folder"};
-  const history=[{role:"user",content:"First question",topic},{role:"assistant",content:"First answer",topic,tool_history:[{tool:"Read",arguments:{file_path:"first"},result:"FIRST_TOOL_RESULT"}]},
-    {role:"user",content:"Other question",topic:other},{role:"assistant",content:"Other answer",topic:other,tool_history:[{tool:"Read",arguments:{file_path:"other"},result:"OTHER_TOOL_RESULT"}]}];
+  const history=[{role:"user",content:"First question",topic},{role:"assistant",content:"First answer",topic,tool_history:[{tool:"Read",arguments:{file_path:"first.js"},result:"FIRST_TOOL_RESULT"}]},
+    {role:"user",content:"Other question",topic:other},{role:"assistant",content:"Other answer",topic:other,tool_history:[{tool:"Read",arguments:{file_path:"other.js"},result:"OTHER_TOOL_RESULT"}]}];
   t.mock.method(require('../review-jev'),'enabled',()=>true);
   t.mock.method(require('../topic-routing'),'route',async(_v,_p,h)=>({topic,history:h.slice(0,2),report:{basis:'fixture',keptIndices:[0,1]}}));
   let prompt;

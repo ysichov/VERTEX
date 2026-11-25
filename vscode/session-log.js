@@ -296,7 +296,9 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
         write({ type: "user", vertex_step: step.provider || "claude", message: { role: "user", content: [{ type: "tool_result", tool_use_id: step.id,
           is_error: step.is_error === true, content: stepResult(step.name, step.content, step.is_error === true, objects, on.toolResults), vertex_objects: objects,
           ...(Number.isSafeInteger(step.resultBytes) && step.resultBytes >= 0 ? { vertex_result_bytes: step.resultBytes, vertex_result_scope: "local_result_before_provider_encoding" } : {}),
-          ...(step.changeCounts && !step.is_error ? { vertex_change_counts: step.changeCounts } : {}) }] } });
+          ...(step.changeCounts && !step.is_error ? { vertex_change_counts: step.changeCounts } : {}),
+          ...(step.name === "Write" && on.localCode && step.changePreview && !step.is_error
+            ? { vertex_change_preview: step.changePreview } : {}) }] } });
       }
     },
     /* The user's review of Claude Code's working copy: each file's decision, with a link to the file in the folder. */

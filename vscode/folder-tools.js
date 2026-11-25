@@ -121,7 +121,7 @@ function create(vscode, options) {
   let serial = Promise.resolve();
   let outstanding = 0;
   const completed = [];
-  let changeCounts = null;
+  let changeCounts = null, changePreview = null;
   const active = () => {
     if (controller.signal.aborted || options.isActive && !options.isActive()) throw new Error("This local-tool request is no longer active.");
   };
@@ -258,6 +258,17 @@ function create(vscode, options) {
       if (current !== before) throw new Error("File changed while waiting for review; read it again.");
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, change.after);
+      // Keep only a bounded preview of the actual Write change; the logger applies localCode policy.
+      changePreview = null;
+      if (name === "Write") {
+        const oldLines = before === null || before === "" ? [] : before.split(/\r?\n/);
+        const newLines = change.after === "" ? [] : change.after.split(/\r?\n/);
+        let start = 0, oldEnd = oldLines.length, newEnd = newLines.length;
+        while (start < oldEnd && start < newEnd && oldLines[start] === newLines[start]) start++;
+        while (oldEnd > start && newEnd > start && oldLines[oldEnd - 1] === newLines[newEnd - 1]) { oldEnd--; newEnd--; }
+        changePreview = { removed: oldLines.slice(start, Math.min(oldEnd, start + 2)).map(line => line.slice(0, 240)),
+          added: newLines.slice(start, Math.min(newEnd, start + 2)).map(line => line.slice(0, 240)) };
+      }
       // Compare the actual states, not the requested replacement (which may be normalized or repeated).
       // The existing character LCS has quadratic cost, so large changes are left unmeasured.
       changeCounts = null;
@@ -374,10 +385,10 @@ function create(vscode, options) {
         options.onToolStart?.(name,args);
         if (options.onStep) options.onStep({ kind: "use", id, name, input, provider: "local" });
         try {
-          changeCounts = null;
+          changeCounts = null; changePreview = null;
           const result = await execute(name, args);
           if (name === "Bash") { completed.push({ command: args.command, result }); if (completed.length > 8) completed.shift(); }
-          if (options.onStep) options.onStep({ kind: "result", id, name, content: name === "Read" ? result.text : JSON.stringify(result), historyResult: result, is_error: name === "Bash" && result.code !== 0, provider: "local", resultBytes: Buffer.byteLength(JSON.stringify(result), "utf8"), ...(changeCounts ? { changeCounts } : {}) });
+          if (options.onStep) options.onStep({ kind: "result", id, name, content: name === "Read" ? result.text : JSON.stringify(result), historyResult: result, is_error: name === "Bash" && result.code !== 0, provider: "local", resultBytes: Buffer.byteLength(JSON.stringify(result), "utf8"), ...(changeCounts ? { changeCounts } : {}), ...(changePreview ? { changePreview } : {}) });
           return result;
         } catch (error) {
           if (options.onStep) options.onStep({ kind: "result", id, name, content: error.message, is_error: true, provider: "local" });

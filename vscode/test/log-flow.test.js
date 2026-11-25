@@ -335,10 +335,10 @@ test("Step numbers model rounds from 1 with or without VERTEX preparation", () =
 
 test("live Step groups preparation before the model request arrives and keeps its position", () => {
   const state = {}, children = [
-    { key: "shot", operation: "Screenshot recognition", relatedTurnId: "turn", time: 1, usage: { cost: 0.006964 } },
+    { key: "shot", operation: "Screenshot recognition", relatedTurnId: "turn", time: 1, usage: { cost: 0.006964, costEstimated: 1 } },
     { key: "shot2", operation: "Screenshot recognition", relatedTurnId: "turn", time: 1.5, usage: { cost: 0.003772 } },
-    { key: "topic", operation: "Topic routing with Jev", relatedTurnId: "turn", time: 2 },
-    { key: "skill", operation: "Skill match with Jev", relatedTurnId: "turn", time: 3 }
+    { key: "topic", operation: "Topic routing with Jev", costKind: "jev", relatedTurnId: "turn", time: 2, usage: { cost: 0.000052, costEstimated: 1 } },
+    { key: "skill", operation: "Skill match with Jev", costKind: "jev", relatedTurnId: "turn", time: 3, usage: { input: 50 } }
   ];
   for (const requested of [false, true]) {
     const host = flowHost(), prompt = { key: "chat", turnId: "turn", operation: "Chat", text: "Explain", time: 0,
@@ -354,7 +354,7 @@ test("live Step groups preparation before the model request arrives and keeps it
     assert.match(service[1].children.find(node => node.className === "flow-usage").textContent, /0\.003772/);
     const roundCard = cards.find(node => node.children[0]?.textContent === "VERTEX · Round 0");
     assert.equal(roundCard.style.top, "52px");
-    assert.equal(roundCard.children.length, 1);
+    assert.equal(roundCard.children.find(node => node.className === "flow-usage").textContent, "Cost ≈ $0.010788 (partial)");
     assert.equal(roundCard.style.left, service[0].style.left);
     assert.equal(service[0].style.top, "151px");
     assert.ok(!host.elements.some(node => node.className === "flow-lane-heading" && node.children[0]?.textContent === "VERTEX · Round 0"));
@@ -369,6 +369,28 @@ test("live Step groups preparation before the model request arrives and keeps it
     assert.equal(new Set(cards.map(node => node.style.left + ":" + node.style.top)).size, cards.length, "no overlapping duplicate stages");
     dispose();
   }
+});
+
+test("Round 0 totals recorded preparation costs only, including zero and estimated costs", () => {
+  const prompt = { key: "chat", turnId: "turn", operation: "Chat", text: "Fix", time: 0,
+    usage: { cost: 20 }, events: [{ kind: "request", time: 4 }, { kind: "model", time: 5 }] };
+  const children = [
+    { key: "shot", operation: "Screenshot recognition", relatedTurnId: "turn", time: 1, usage: { cost: 0.018805, costEstimated: 1 } },
+    { key: "topic", operation: "Topic routing with Jev", costKind: "jev", relatedTurnId: "turn", time: 2, usage: { cost: 0.000052, costEstimated: 1 } },
+    { key: "skill", operation: "Skill match with Jev", costKind: "jev", relatedTurnId: "turn", time: 3, usage: { cost: 0.000056, costEstimated: 1 } },
+    { key: "verify", operation: "Change verification with Jev", costKind: "jev", relatedTurnId: "turn", time: 6, usage: { cost: 5 } }
+  ];
+  prompt.flow = flow.summary(prompt);
+  const host = flowHost(), dispose = flow.mount(host.root, { prompts: [prompt, ...children] }, { state: {} });
+  const round = host.elements.find(node => node.children?.[0]?.textContent === "VERTEX · Round 0");
+  assert.equal(round.children.find(node => node.className === "flow-usage").textContent, "Cost ≈ $0.018913");
+  dispose();
+  children[0].usage = { cost: 0 };
+  children[1].usage = children[2].usage = {};
+  const zeroHost = flowHost(), close = flow.mount(zeroHost.root, { prompts: [prompt, ...children] }, { state: {} });
+  const zeroRound = zeroHost.elements.find(node => node.children?.[0]?.textContent === "VERTEX · Round 0");
+  assert.equal(zeroRound.children.find(node => node.className === "flow-usage").textContent, "Cost $0");
+  close();
 });
 
 test("Step stacks CLI usage, verification retries and Jev in one closing VERTEX column", () => {
@@ -455,14 +477,70 @@ test("Step shows each process in its first card and stacks tool rounds beneath i
   close();
 });
 
+test("Step round headers total recorded costs, Read bytes and measured changes without inventing missing data", () => {
+  const prompt = { text: "Fix", model: "model", details: [
+    { type: "tool", name: "Read", tool_id: "r1" }, { type: "tool", name: "Read", tool_id: "r2" },
+    { type: "tool", name: "Write", tool_id: "w" }, { type: "tool result", tool_id: "r1", resultBytes: 123 },
+    { type: "tool result", tool_id: "w", changeCounts: { added: 5, removed: 2 } }
+  ], events: [{ kind: "model", model: { usage: { estimated_cost_usd: 0.001 } } },
+    { kind: "tool", detail: 0 }, { kind: "tool", detail: 1 }, { kind: "tool", detail: 2 },
+    { kind: "tool_result", detail: 3 }, { kind: "tool_result", detail: 4 }, { kind: "model", model: { usageScope: "cli_turn", usage: { cost_usd: 9 } } }] };
+  prompt.flow = flow.summary(prompt);
+  const host = flowHost(), dispose = flow.mount(host.root, { prompts: [prompt] }, { state: {} });
+  const rounds = host.elements.filter(node => node.className?.includes("flow-step-node") && node.className.includes("model"));
+  const first = rounds[0].children.find(node => node.className === "flow-usage").textContent;
+  assert.match(first, /Cost ≈ \$0\.001/);
+  assert.match(first, /Read C: 123 B \(1\/2\)/);
+  assert.match(first, /Code: \+5 \/ −2 chars \(1\/1\)/);
+  assert.ok(!rounds[1].children.some(node => node.className === "flow-usage"), "no cost is shown for an unattributable CLI aggregate");
+  dispose();
+});
+
+test("Step keeps Read totals when the round has no cost data", () => {
+  const prompt = { text: "Read", model: "model", details: [
+    { type: "tool", name: "Read", tool_id: "r" }, { type: "tool result", tool_id: "r", resultBytes: 12 }
+  ], events: [{ kind: "model" }, { kind: "tool", detail: 0 }, { kind: "tool_result", detail: 1 }] };
+  prompt.flow = flow.summary(prompt);
+  const host = flowHost(), dispose = flow.mount(host.root, { prompts: [prompt] }, { state: {} });
+  const round = host.elements.find(node => node.children?.[0]?.textContent === "Round 1: model");
+  assert.equal(round.children.find(node => node.className === "flow-usage").textContent, "Read C: 12 B (1/1)");
+  dispose();
+});
+
+test("live list reports update round totals as tool results arrive without exposing details", () => {
+  const snapshot = count => {
+    const details = [
+      { type: "tool", name: "Read", tool_id: "r1" }, { type: "tool", name: "Read", tool_id: "r2" },
+      { type: "tool", name: "Write", tool_id: "w" },
+      { type: "tool result", tool_id: "r1", resultBytes: 100, text: "private source" },
+      { type: "tool result", tool_id: "r2", resultBytes: 200 },
+      { type: "tool result", tool_id: "w", changeCounts: { added: 5, removed: 2, addedBytes: 7, removedBytes: 3 } }
+    ];
+    const events = [{ kind: "model", model: { usage: { estimated_cost_usd: 0.001 } } },
+      ...[0, 1, 2].map(detail => ({ kind: "tool", detail })),
+      ...Array.from({ length: count }, (_, index) => ({ kind: "tool_result", detail: 3 + index }))];
+    const prompt = { key: "chat", operation: "Chat", model: "model", text: "Fix", open: true, details: details.slice(0, 3 + count), events };
+    return logs.listReport({ sessions: [{ prompts: [prompt] }] }).sessions[0];
+  };
+  for (const [count, expected] of [[0, /Cost ≈ \$0\.001/], [1, /Read C: 100 B \(1\/2\)/],
+    [3, /Read C: 300 B \(2\/2\).*Code: \+5 \/ −2 chars \(1\/1\).*\+7 \/ −3 B \(1\/1\)/]]) {
+    const session = snapshot(count);
+    assert.equal(session.prompts[0].details, undefined);
+    const host = flowHost(), dispose = flow.mount(host.root, session, { state: {} });
+    const round = host.elements.find(node => node.children?.[0]?.textContent === "Round 1: model");
+    assert.match(round.children.find(node => node.className === "flow-usage").textContent, expected);
+    dispose();
+  }
+});
+
 test("Step visually groups consecutive Edit-only rounds without Thinking and preserves their details", () => {
   const prompt = { text: "Fix", model: "Sol", details: [
     ...["a", "b", "c", "d"].map(id => ({ type: "tool", name: "Edit", tool_id: id, input: { file_path: id + ".js" } })),
     { type: "tool", name: "Read", tool_id: "r", input: { file_path: "r.js" } },
     { type: "answer", text: "Done" }
   ], events: [
-    { kind: "model", model: { id: "one" } }, { kind: "tool", detail: 0 },
-    { kind: "model", model: { id: "two" } }, { kind: "tool", detail: 1 },
+    { kind: "model", model: { id: "one", usage: { cost_usd: 0.001 } } }, { kind: "tool", detail: 0 },
+    { kind: "model", model: { id: "two", usage: { cost_usd: 0.002 } } }, { kind: "tool", detail: 1 },
     { kind: "model", model: { id: "three" } }, { kind: "tool", detail: 2 },
     { kind: "model" }, { kind: "tool", detail: 4 },
     { kind: "note", model: { text: "Think again" } }, { kind: "model" }, { kind: "tool", detail: 3 },
@@ -476,6 +554,7 @@ test("Step visually groups consecutive Edit-only rounds without Thinking and pre
   const tools = cards.filter(card => card.className.includes("flow-operation"));
   assert.ok(group);
   assert.equal(group.children[1].textContent, "3 tool calls");
+  assert.match(group.children.find(child => child.className === "flow-usage").textContent, /Cost \$0\.003 \(partial\)/);
   assert.deepEqual(tools.slice(0, 3).map(card => card.style.left), [group.style.left, group.style.left, group.style.left]);
   assert.deepEqual(tools.map(card => card.children[0].textContent), ["1. Edit · a.js", "2. Edit · b.js", "3. Edit · c.js", "4. Read · r.js", "5. Edit · d.js"]);
   assert.notEqual(tools[3].style.left, group.style.left);
@@ -556,8 +635,8 @@ test("Step keeps Thinking notes in separate rounds when tool calls occur between
   const rounds = cards.filter(node => /^Round \d+:/.test(node.children[0].textContent));
   const tools = cards.filter(node => node.className.includes("flow-operation"));
   assert.deepEqual(rounds.map(card => card.children[0].textContent), ["Round 1: Sol", "Round 2: Sol", "Round 3: Sol"]);
-  assert.equal(rounds[0].children.at(-1).textContent, "First round thinking");
-  assert.equal(rounds[1].children.at(-1).textContent, "Second round thinking");
+  assert.ok(rounds[0].children.some(child => child.textContent === "First round thinking"));
+  assert.ok(rounds[1].children.some(child => child.textContent === "Second round thinking"));
   assert.notEqual(rounds[0].style.left, rounds[1].style.left);
   assert.deepEqual(tools.map(card => card.style.left), [rounds[0].style.left, rounds[1].style.left]);
   dispose();
@@ -641,7 +720,7 @@ test("CLI usage cards show recorded aggregate and model values while empty detai
   const prompt = parsed.prompts[0]; prompt.flow = flow.summary(prompt);
   const previews = prompt.flow.eventItems.filter(item => item.usagePreview);
   assert.equal(previews.length, 1);
-  assert.deepEqual(previews[0].usagePreview, ["Estimated run cost · $0.25", "Run tokens · 100 input · 0 output", "model-a · 100 input · 0 output · 25 cache read · estimated $0.25"]);
+  assert.deepEqual(previews[0].usagePreview, ["Estimated run cost · $0.25", "Run tokens · 100 input · 0 output", "Run model · model-a", "model-a · 25 cache read"]);
   const host = flowHost(), dispose = flow.mount(host.root, parsed, { state: {} });
   const cards = host.elements.filter(node => node.className?.includes("flow-step-node") && node.className.includes("detail"));
   assert.equal(cards[0].style.height, "75px");
@@ -650,6 +729,23 @@ test("CLI usage cards show recorded aggregate and model values while empty detai
   dispose();
   assert.deepEqual(flow.providerUsage({ type: "Provider usage (cli_run)", text: "not JSON" }), []);
   assert.deepEqual(flow.providerUsage({ type: "Provider usage (cli_run)", text: JSON.stringify({ provider: "claude", response: { total_cost_usd: 0 } }) }), ["Provider-reported run cost · $0"]);
+});
+
+test("CLI usage suppresses only identical single-model fields", () => {
+  const detail = response => ({ type: "Provider usage (cli_run)", text: JSON.stringify({ provider: "codemie", response }) });
+  const one = { total_cost_usd: 0.1, usage: { input_tokens: 1093, output_tokens: 831 },
+    modelUsage: { terra: { inputTokens: 1093, outputTokens: 831, costUSD: 0.1 } } };
+  assert.deepEqual(flow.providerUsage(detail(one)), ["Estimated run cost · $0.1", "Run tokens · " + (1093).toLocaleString() + " input · 831 output", "Run model · terra"]);
+  one.modelUsage.terra.outputTokens = 832;
+  one.modelUsage.terra.costUSD = 0.2;
+  assert.deepEqual(flow.providerUsage(detail(one)).slice(-1), ["terra · 832 output · estimated $0.2"]);
+  one.modelUsage.other = { inputTokens: 5, costUSD: 0.1 };
+  const multiple = flow.providerUsage(detail(one));
+  assert.ok(multiple.some(line => line.startsWith("terra ·")));
+  assert.ok(multiple.some(line => line.startsWith("other ·")));
+  assert.ok(!multiple.some(line => line.startsWith("Run model ·")));
+  const modelOnly = flow.providerUsage(detail({ modelUsage: { terra: { inputTokens: 4, costUSD: 0 } } }));
+  assert.deepEqual(modelOnly, ["Run model · terra", "terra · 4 input · estimated $0"]);
 });
 
 test("live Flow reveals newly recorded tool batches in order without replaying old cards", async () => {
@@ -719,6 +815,12 @@ test("Context totals split topic and duplicate savings when the routing stages a
   const groups=[{prompt:{text:"1234",flow:{contextReduction:{beforeCharacters:396,topicAfterCharacters:196,afterCharacters:96}}}}];
   assert.deepEqual(flow.contextStats(groups),{before:100,after:25,saved:75,percent:75,duplicateSaved:25,topicSaved:50,skillSaved:0,
     unattributedSaved:0,covered:1,total:1,reconstructed:0});
+});
+
+test("Context totals attribute relevance exclusions without calling them topic selection",()=>{
+  const groups=[{prompt:{text:"1234",flow:{contextReduction:{beforeCharacters:396,afterCharacters:196,
+    blocks:[{reason:"relevance",estimatedTokens:20}]}}}}];
+  const totals=flow.contextStats(groups);assert.equal(totals.duplicateSaved,20);assert.equal(totals.topicSaved,30);
 });
 
 test("prompt lane keeps executor usage separate from linked Jev usage",()=>{

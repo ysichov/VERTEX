@@ -384,11 +384,54 @@ test('chronology shows model rounds and tools as separate chronological operatio
   assert.deepEqual(Array.from(box.children[2].children,child=>child.label),['tool','tool result']);
 });
 
+test('first topic fallback is clearly automatic in Logs and Flow, including old logs',()=>{
+ const first={status:'fallback',beforeMessages:0,topic:{id:'topic_0001',label:'First'},reason:'No previous topics to compare; full history retained.'};
+ const rows=[{type:'user',message:{content:'First'}},{type:'vertex_topic_routing',report:first}];
+ const session=report.parseSession(rows.map(row=>JSON.stringify({timestamp:'2026-11-16T18:41:51Z',...row})).join('\n'),'codex_first.jsonl');
+ const prompt=session.prompts[0], event=prompt.events.find(e=>e.kind==='detail');
+ assert.equal(event.actor,'VERTEX');
+ const flow=require('../log-flow'), index=flow.summary(prompt);
+ assert.match(index.eventItems[0].title,/automatically · Jev not called/);
+ assert.match(flow.stages({...prompt,flow:index})[1].label,/No previous messages/);
+ assert.equal(flow.stages({...prompt,flow:index})[1].kind,'vertex');
+ const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+ const element=(label,kind,text)=>({label,kind,text,children:[],open:true,appendChild(child){this.children.push(child);},addEventListener(type,fn){this[type]=fn;}});
+ let actions=0;const context={window:{},section:element,el:element,line:(node,key,value)=>node.appendChild({key,value}),routingTable:()=>null,jevLogActions:()=>actions++,objectLinks:()=>{}};
+ vm.createContext(context);vm.runInContext(page.slice(page.indexOf('  function detailSection('),page.indexOf('  /* A table whose headings')),context);
+ const detail=context.detailSection(prompt.details[0],prompt,'2. ');assert.match(detail.label,/automatically · Jev not called/);assert.equal(actions,0);
+ detail.toggle();assert.match(detail.children[0].value,/Jev was not called/);assert.match(detail.children[1].text,/fallback/);
+ const other=context.detailSection({type:'Topic routing (Jev)',routing:{...first,beforeMessages:2,reason:'provider failed'},text:'fallback'},prompt,'');
+ assert.match(other.label,/Topic routing \(Jev\)/);assert.equal(actions,1);
+});
+
 test('matched skill is labeled Skill search in the recorded chronology',()=>{
  const rows=[{type:'user',message:{content:'собери всикс'}},{type:'vertex_topic_routing',report:{status:'skill',skill:'build-vertex-vsix',beforeMessages:6,afterMessages:0}}];
  const session=report.parseSession(rows.map(row=>JSON.stringify({timestamp:'2026-11-16T18:41:51Z',...row})).join('\n'),'codex_skill.jsonl');
  assert.equal(session.prompts[0].details[0].type,'Skill search');
 });
+test('skill matches remain identifiable in list reports and can be hidden without deleting ordinary turns',()=>{
+ const rows=[
+  {type:'user',vertex_turn:'ordinary',message:{content:'Explain the build'}},
+  {type:'vertex_topic_routing',report:{kind:'skill_search',status:'not_matched'}},
+  {type:'user',vertex_turn:'skill',message:{content:'Build the VSIX'}},
+  {type:'vertex_topic_routing',report:{kind:'skill_search',status:'skill',skill:'build-vertex-vsix'}},
+  {type:'user',vertex_turn:'next',message:{content:'What happened?'}}
+ ];
+ const session=report.parseSession(rows.map(row=>JSON.stringify({timestamp:'2026-11-16T18:41:51Z',...row})).join('\n'),'codex_skill.jsonl');
+ const list=report.listReport({sessions:[session]}).sessions[0];
+ assert.equal(list.prompts[1].matchedSkill,'build-vertex-vsix');
+ assert.equal(list.prompts[0].matchedSkill,undefined);
+ const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+ const context={chat:p=>p.operation==='Chat'||p.operation==='Web search',Set,Object};vm.createContext(context);
+ vm.runInContext(page.slice(page.indexOf('  function visibleSkillSession('),page.indexOf('  function openRequestedConversation()')),context);
+ const child={operation:'Skill match with Jev',relatedTurnId:'skill'};
+ const mixed={...list,prompts:[...list.prompts,child]};
+ assert.deepEqual(Array.from(context.visibleSkillSession(mixed,false).prompts,p=>p.text),['Explain the build','What happened?']);
+ assert.equal(context.visibleSkillSession(mixed,true),mixed);
+ assert.equal(context.visibleSkillSession({...mixed,prompts:[list.prompts[1],child]},false),null);
+ assert.equal(list.prompts.length,3,'the recorded session is not modified');
+});
+
 test('skill search audit from an older log joins its parent conversation',()=>{
  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
  const source=page.slice(page.indexOf('    var internal = function (s)'),page.indexOf('    var parents ='));
@@ -730,6 +773,59 @@ test("a run reads as one timeline: a model call per message, then the tools it c
   assert.deepEqual(prompt.details.filter(d => /^Provider usage/.test(d.type)).map(d => d.type), ["Provider usage (cli_run)"]);
 });
 
+test("provider usage table keeps locale-grouped token values intact", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const node = (tag, cls = "", text = "") => ({ tag, cls, text, children: [],
+    appendChild(child) { this.children.push(child); return child; },
+    append(...children) { this.children.push(...children); } });
+  const context = { el: node };
+  vm.createContext(context);
+  vm.runInContext(page.slice(page.indexOf("  function usageTable("), page.indexOf("  function showFlowDetail(")), context);
+  const table = context.usageTable([
+    "Estimated run cost · $1.4647414",
+    "Run model · terra",
+    "Run tokens · 1 222 input · 11 778 output · 3 622 442 cache read · 99,961 cache write",
+    "model-a · 1 222 input · estimated $1.4647414",
+    "model-b · 0 output · provider-reported $0",
+    "model-c · unavailable"
+  ]).children[0];
+  const rows = table.children[1].children.map(row => row.children.map(cell => cell.text));
+  assert.deepEqual(rows, [
+    ["Run", "Estimated run cost", "$1.4647414"], ["Run", "Model", "terra"],
+    ["Run", "input", "1 222"], ["Run", "output", "11 778"],
+    ["Run", "cache read", "3 622 442"], ["Run", "cache write", "99,961"],
+    ["model-a", "input", "1 222"], ["model-a", "estimated cost", "$1.4647414"],
+    ["model-b", "output", "0"], ["model-b", "provider-reported cost", "$0"],
+    ["model-c", "Value", "unavailable"]
+  ]);
+});
+
+test("Logs render the Flow CLI usage summary with raw data retained", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const section = (label, cls, text) => ({ label, cls, text, children: [], events: {}, open: false,
+    appendChild(child) { this.children.push(child); return child; },
+    addEventListener(name, fn) { this.events[name] = fn; } });
+  const flow = require("../log-flow");
+  const context = { window: { vertexLogFlow: flow }, section, objectLinks() {}, usageTable: lines => ({ lines }) };
+  vm.createContext(context);
+  vm.runInContext(page.slice(page.indexOf("  function detailSection("), page.indexOf("  /* A table whose headings")), context);
+  const record = { type: "Provider usage (cli_run)", text: JSON.stringify({ provider: "codemie", response: {
+    total_cost_usd: 0.1, usage: { input_tokens: 1093 }, modelUsage: { terra: { inputTokens: 1093, costUSD: 0.1 } }
+  } }) };
+  const entry = context.detailSection(record, {}, "18. ");
+  assert.equal(entry.label, "18. Provider usage (cli_run)");
+  assert.equal(entry.children.length, 0);
+  entry.open = true; entry.events.toggle(); entry.events.toggle();
+  assert.deepEqual(entry.children[0].lines, flow.providerUsage(record));
+  assert.equal(entry.children[1].label, "Raw Provider usage (cli_run)");
+  assert.equal(entry.children[1].text, record.text);
+  assert.equal(entry.children.length, 2);
+  const invalid = context.detailSection({ ...record, text: "not JSON" }, {}, "");
+  assert.equal(invalid.text, "not JSON");
+  context.window.vertexLogFlow = {};
+  assert.equal(context.detailSection(record, {}, "").text, record.text);
+});
+
 test("provider evidence is visible without doubling session usage", () => {
   const records = [
     { type: "user", message: { content: "Question" } },
@@ -820,6 +916,60 @@ test("a Jev answer reads as a table: what each question was about, the answer, c
   assert.equal(rows[1].children[4].children.find(line => line.cls === "chosen").text, "Starts a new topic: 95%");
   assert.equal(box.children[1].text, "Estimated cost: $0.0001");
   assert.equal(jevTable("A plain model answer", decision), null);
+});
+
+test('context optimization pairs Jev questions and answers with the recorded outcome',()=>{
+  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+  const node=(tag,cls='',text='')=>({tag,cls,text,children:[],appendChild(child){this.children.push(child);return child;}});
+  const render=new Function('el',page.slice(page.indexOf('  function jevInputDisclosure('),page.indexOf('  function jevLogActions('))+';return jevInputDisclosure;')(node);
+  const questions={success_1:{type:'noul',instructions:'Verified?'},success_2:{type:'noul',instructions:'Success?'},duplicate_1:{type:'noul',instructions:'Replace?'},duplicate_2:{type:'noul',instructions:'Replace too?'}};
+  const decision={state:{exchanges:[{id:1,question:'Old',answer:'Failed',complete:true},{id:2,question:'New',answer:'Done',complete:true}]},questions};
+  const text=require('../jev').formatAnswers(questions,{success_1:{type:'noul',noul:.1,confidence:.9},success_2:{type:'noul',noul:.95},duplicate_1:{type:'noul',noul:.7,confidence:.8},duplicate_2:{type:'noul',noul:.9}});
+  const outcome={status:'deduplicated',representative:2,dropped:[{exchange:1,representative:2}]};
+  const tree=render(decision,text,outcome), list=tree.children[1].children.find(n=>n.cls==='jev-input-questions');
+  assert.match(list.children[1].children[0].text,/excluded → exchange 2/);
+  assert.match(list.children[2].children[0].text,/kept \(representative\)/);
+  const cards=list.children[1].children[1].children.filter(n=>n.cls==='jev-input-question');
+  assert.equal(cards[0].children[1].text,'Verified?');assert.match(cards[0].children[2].text,/Jev: No · Confidence: 90%/);
+  assert.equal(cards[1].children[1].text,'Replace?');assert.match(cards[1].children[2].text,/Jev: Yes · Confidence: 80%/);
+  assert.match(render(decision,'',null).children[1].children[0].children[1].children[0].text,/outcome not recorded/);
+  assert.match(render(decision,'',null).children[1].children[0].children[1].children[1].children.at(-1).children[2].text,/not recorded or unavailable/);
+  const records=[{type:'user',message:{content:'Optimization'}},{type:'vertex_context_optimization',report:outcome}].map(r=>({timestamp:'2026-11-25T00:00:00Z',...r}));
+  assert.deepEqual(report.parseSession(records.map(JSON.stringify).join('\n'),'typesafe-api_20261125_000000.jsonl').prompts[0].contextOptimization,outcome);
+});
+
+test('relevance optimization displays each exchange, answer and actual exclusion',()=>{
+  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+  const node=(tag,cls='',text='')=>({tag,cls,text,children:[],appendChild(child){this.children.push(child);return child;}});
+  const render=new Function('el',page.slice(page.indexOf('  function jevInputDisclosure('),page.indexOf('  function jevLogActions('))+';return jevInputDisclosure;')(node);
+  const questions={relevant_1:{type:'noul',instructions:JSON.stringify({question:'Old prompt',answer:'Old answer'})}};
+  const decision={state:{policy:'Relevant?',currentQuestion:'New request'},questions};
+  const text=require('../jev').formatAnswers(questions,{relevant_1:{type:'noul',noul:.05,confidence:.95}});
+  const tree=render(decision,text,{status:'filtered',dropped:[{exchange:1,start:0,end:2}]});
+  const list=tree.children[1].children.find(n=>n.cls==='jev-input-questions');
+  const item=list.children[1];assert.match(item.children[0].text,/excluded$/);
+  assert.equal(item.children[1].children[0].children[1].text,'Old prompt');
+  assert.equal(item.children[1].children[1].children[1].text,'Old answer');
+  assert.match(item.children[1].children[2].children[1].text,/Jev: No · Confidence: 95%/);
+  const table=new Function('el',page.slice(page.indexOf('  function jevTable('),page.indexOf('  var decisionRunSerial'))+';return jevTable;')(node)(text,decision);
+  assert.equal(table.children[0].children[0].children[1].children[1].text,'Exchange 1');
+});
+
+test('legacy optimization result is linked only to an unambiguous parent turn',()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-optimization-'));
+  const folder=path.join(root,'claude_compatible');fs.mkdirSync(folder);
+  const write=(file,rows)=>fs.writeFileSync(path.join(folder,file),rows.map(r=>JSON.stringify({timestamp:'2026-11-25T00:00:00Z',...r})).join('\n'));
+  const outcome={status:'deduplicated',representative:2,dropped:[{exchange:1,representative:2}]};
+  try {
+    write('codemie_20261125_000000.jsonl',[{type:'user',vertex_conversation:'chat',vertex_turn:'turn',message:{content:'Q'}},{type:'vertex_context_optimization',report:outcome}]);
+    const audit={type:'user',vertex_conversation:'audit',vertex_related_conversation:'chat',vertex_related_turn:'turn',vertex_operation:'Context optimization with Jev',message:{content:'audit'}};
+    write('typesafe-api_20261125_000001.jsonl',[audit]);
+    let sessions=report.readSessions(root).sessions;
+    assert.deepEqual(sessions.find(s=>s.conversation==='audit').prompts[0].contextOptimization,outcome);
+    write('typesafe-api_20261125_000002.jsonl',[{...audit,vertex_conversation:'audit2'}]);
+    sessions=report.readSessions(root).sessions;
+    assert.equal(sessions.find(s=>s.conversation==='audit2').prompts[0].contextOptimization,undefined);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
 
 test('task verification reuses the Jev decision table with probabilities and legacy missing-confidence support',()=>{

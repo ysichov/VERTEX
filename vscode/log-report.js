@@ -221,9 +221,12 @@ function parseSession(text, file, listOnly = false) {
     if(record.type==="vertex_tool_selection"){if(current)current.details.push({type:"Orchestrator tool selection",text:prettyJson(record.report)});continue;}
     if(record.type==="vertex_task_recovery" || record.type==="vertex_task_verification" && record.report?.recovery){if(current)current.details.push({type:"Recovery: "+(record.report?.recovery||"state"),text:[record.report?.attempt?"Attempt "+record.report.attempt:"",record.report?.status?"Last verdict: "+record.report.status:"",record.report?.error||""].filter(Boolean).join("\n"),failed:record.report?.recovery==="error"});continue;}
     if(record.type==="vertex_task_verification"){if(current)current.details.push({type:record.report?.scope==="changes"?"Change verification with Jev":"Task verification with Jev",verification:record.report,text:prettyJson(record.report),failed:record.report?.status==="failed"});continue;}
-    if(record.type==="vertex_topic_routing"){if(current){if(record.report?.topic)current.topic=record.report.topic;current.details.push({type:record.report?.kind==="context_selection"?"Context selection":record.report?.kind==="skill_search"||record.report?.status==="skill"?"Skill search":"Topic routing (Jev)",routing:record.report&&typeof record.report==="object"?record.report:null,text:prettyJson(record.report)});}continue;}
+    if(record.type==="vertex_topic_routing"){if(current){if(record.report?.topic)current.topic=record.report.topic;if(record.report?.status==="skill")current.matchedSkill=record.report.skill||true;current.details.push({type:record.report?.kind==="context_selection"?"Context selection":record.report?.kind==="skill_search"||record.report?.status==="skill"?"Skill search":"Topic routing (Jev)",routing:record.report&&typeof record.report==="object"?record.report:null,text:prettyJson(record.report)});}continue;}
     if (record.type === "vertex_context_optimization") {
-      if(current) current.details.push({type:"Context optimization (Jev)",text:prettyJson(record.report)});
+      if(current) {
+        current.contextOptimization = record.report;
+        current.details.push({type:"Context optimization (Jev)",text:prettyJson(record.report)});
+      }
       continue;
     }
     if (record.type === "vertex_context_size" || record.type === "vertex_request") {
@@ -289,7 +292,8 @@ function parseSession(text, file, listOnly = false) {
           const reference = !block.is_error && recordingReference(block.vertex_recording || block.content);
           const detail = { type: "tool result", tool_id: block.tool_use_id || "", text: prettyJson(block.content || ""), ...(block.is_error ? { failed: true } : {}),
             ...(Number.isSafeInteger(block.vertex_result_bytes) && block.vertex_result_bytes >= 0 ? { resultBytes: block.vertex_result_bytes } : {}),
-            ...(block.vertex_change_counts && !block.is_error ? { changeCounts: block.vertex_change_counts } : {}) };
+            ...(block.vertex_change_counts && !block.is_error ? { changeCounts: block.vertex_change_counts } : {}),
+            ...(block.vertex_change_preview && !block.is_error ? { changePreview: block.vertex_change_preview } : {}) };
           if (block.vertex_objects?.length) detail.objects = block.vertex_objects;
           if (reference) (call || detail).recording = reference;
           current.details.push(detail);
@@ -341,7 +345,7 @@ function parseSession(text, file, listOnly = false) {
         const fresh=current.details.slice(same?detailStart:0);
         const actor=record.type==='vertex_task_recovery' || record.type==='vertex_task_verification' && record.report?.recovery ? 'VERTEX orchestrator'
           : record.type==='vertex_orchestration' || record.type==='vertex_tool_selection' ? 'MCP orchestrator'
-          : record.type==='vertex_topic_routing' && record.report?.kind==='context_selection' ? 'VERTEX'
+          : record.type==='vertex_topic_routing' && (record.report?.kind==='context_selection' || record.report?.status==='fallback' && record.report?.beforeMessages===0 && record.report?.topic && record.report?.reason==='No previous topics to compare; full history retained.') ? 'VERTEX'
           : /vertex_task_verification|vertex_topic_routing|vertex_context_optimization/.test(record.type) ? 'Jev' : 'LLM';
         for(const item of current.timeline.slice(same?timelineStart:0))if(item.kind==='model'||item.kind==='note')events.push({kind:item.kind,actor:'LLM',time:Number.isFinite(time)?time:null,model:item});
         if(record.type==='vertex_api_request' && fresh.length) events.push({kind:'request',actor:'LLM',time:Number.isFinite(time)?time:null,apiRequest:true,provider:record.provider,requestSize:record.requestSize,details:fresh.map((_,i)=>current.details.length-fresh.length+i)});
@@ -450,7 +454,19 @@ function readSessions(root, filter = {}) {
     const tags = tagged.get(session.conversation);
     for (const prompt of session.prompts) if (!prompt.topic && tags[prompt.key]) prompt.topic = tags[prompt.key];
   }
-  if(!filter.listOnly)restoreContextSelections(sessions);
+  if(!filter.listOnly) {
+    restoreContextSelections(sessions);
+    // Older optimization audits stored the applied result only in their parent turn.
+    // Link only an unambiguous exact turn, never by time or across conversations.
+    for (const session of sessions) for (const prompt of session.prompts) {
+      if (prompt.operation !== "Context optimization with Jev" || prompt.contextOptimization || !prompt.relatedTurnId || !session.relatedConversation) continue;
+      const audits = sessions.filter(item => item.relatedConversation === session.relatedConversation).flatMap(item => item.prompts)
+        .filter(item => item.operation === prompt.operation && item.relatedTurnId === prompt.relatedTurnId);
+      const parents = sessions.filter(item => item.conversation === session.relatedConversation).flatMap(item => item.prompts)
+        .filter(item => item.operation === "Chat" && item.turnId === prompt.relatedTurnId && item.contextOptimization);
+      if (audits.length === 1 && parents.length === 1) prompt.contextOptimization = parents[0].contextOptimization;
+    }
+  }
   const places=[...placeCounts.values()].map(({conversations,...place})=>({...place,count:conversations.size}));
   return { configured: true, folder, sessions, places };
 }

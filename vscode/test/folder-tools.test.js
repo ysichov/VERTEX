@@ -39,6 +39,9 @@ test("Write measures UTF-8 bytes for inserted, removed and replaced Unicode text
   const counts = steps.filter(step => step.kind === "result" && step.name === "Write").map(step => step.changeCounts);
   assert.deepEqual(counts.map(c => [c.added, c.removed, c.addedBytes, c.removedBytes]),
     [[2, 8, 6, 8], [0, 1, 0, 2], [2, 0, 6, 0]]);
+  const previews = steps.filter(step => step.kind === "result" && step.name === "Write").map(step => step.changePreview);
+  assert.deepEqual(previews[0], { removed: ["one", "two"], added: ["😀é"] });
+  assert.deepEqual(previews[2], { removed: [], added: ["é😀"] });
 });
 test("a Glob pattern ending in / lists folders, not files", async t => {
   const { agent, root } = fixture(t);

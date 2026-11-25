@@ -307,7 +307,6 @@ async function ask(options) {
   if (id === "gemini-api" && String(options.model).replace(/^models\//, "") === "gemini-decision-1" || PROVIDERS[id]?.decisionOnly || id === "opencode-api" && require("./opencode-models").isDecision(options.model)) throw new Error("Jev is a decision model. Use Check models in LLM Providers to test its Decision API; choose a language model for chat.");
   const request = (id,key,route,body,maxBytes,timeout) => (options.request || requestJson)(id,key,route,body,maxBytes,timeout,options.signal,options.onApiRequest);
   if (options.images?.length && options.capabilities?.vision === false) throw new Error("This model does not accept screenshots. Choose a Vision model or remove the images.");
-  if(options.webSearch && id!=="vercel-api")throw new Error("Web mode currently requires Vercel AI Gateway.");
   if(options.webSearch && (options.capabilities?.tools===false || toolSupport.rejection(id,options.apiKey,options.model)))throw new Error("This model cannot use Gateway search tools. Choose another Vercel model for Web mode.");
   let tools = options.structuredResult ? [] : options.webSearch ? [{type:"vercel:perplexity_search",config:{query:options.webQuery || options.prompt,max_results:5}}] : options.capabilities?.tools === false || toolSupport.rejection(id, options.apiKey, options.model) ? [] : (options.tools || []).map(tool => ({ type: "function", function: {
     name: tool.name, description: tool.description, parameters: tool.inputSchema

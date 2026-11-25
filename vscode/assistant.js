@@ -493,7 +493,7 @@ async function ask(options) {
     };
     const toolStatus = block => {
       // With host-controlled tools the stream only announces intent; the host reports execution.
-      if (options.localTools) return;
+      if (options.localTools || options.nativeWebSearch) return;
       let args = block.input;
       try { if (block.json) args = JSON.parse(block.json); } catch (_) { /* Wait for the complete arguments. */ }
       const name = String(block.name || "").replace(/^mcp__vertex__/, "");
@@ -681,6 +681,7 @@ function claudeCommand(options, dir) {
   const system = path.join(dir, "system-prompt.md");
   fs.writeFileSync(system, String(options.instructions || ""));
 
+  const nativeWebTools = options.nativeWebSearch ? ["WebSearch", "WebFetch"] : [];
   const args = [
     "-p", "--output-format", options.onProgress ? "stream-json" : "json",
     "--json-schema", JSON.stringify(options.schema),
@@ -690,7 +691,7 @@ function claudeCommand(options, dir) {
     // even though the compact source fragment already answers the question.
     // In a working folder (a local file of an open workspace folder) Claude
     // works on its files with its own tools, shell included.
-    "--tools", nativeFolder ? FOLDER_TOOLS.join(",") : "",
+    "--tools", nativeFolder ? FOLDER_TOOLS.join(",") : nativeWebTools.join(","),
     "--strict-mcp-config", "--mcp-config", config,
     "--no-session-persistence"
   ];

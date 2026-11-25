@@ -2,82 +2,55 @@
 const test=require("node:test"),assert=require("node:assert/strict"),dedup=require("../context-dedup");
 const topic={id:"topic_0001",label:"Build",scope:"folder"};
 const other={id:"topic_0002",label:"Other",scope:"folder"};
-const exchange=(question,answer,chosen=topic,iterations)=>[{role:"user",content:question,topic:chosen},
-  {role:"assistant",content:answer,topic:chosen,...(iterations===undefined?{}:{execution:{iterations}})}];
-const yes={type:"noul",noul:.95,confidence:.95},no={type:"noul",noul:.05,confidence:.95};
+const exchange=(question,answer,chosen=topic)=>[{role:"user",content:question,topic:chosen},{role:"assistant",content:answer,topic:chosen}];
+const yes={type:"noul",noul:.95},no={type:"noul",noul:.05};
 
-test("one Jev comparison keeps the best representative and distinct requirements",async t=>{
-  const history=[...exchange("Build VSIX","Build completed without artifact"),...exchange("Keep the version unchanged","Version remains 0.9.99"),...exchange("Rebuild VSIX","Verified VSIX at output/vertex.vsix")];
-  let calls=0;
+test("one Jev call evaluates each prompt and answer against the full current request",async t=>{
+  const history=[...exchange("Old task","Finished"),...exchange("Keep the version unchanged","Version remains 0.9.99")];
+  const current="Continue: "+"x".repeat(450); let calls=0,auditReport;
   t.mock.method(require("../review-jev"),"connection",async()=>({provider:"typesafe-api",model:"jev-test",key:"test"}));
-  t.mock.method(require("../ai-accounting"),"begin",()=>({callbacks:{},decision(){},finish(){},fail(){}}));
-  t.mock.method(require("../jev"),"evaluate",async(_p,_k,_m,state,questions)=>{calls++;assert.equal(state.exchanges.length,3);assert.equal(Object.keys(questions).length,6);
-    return {model:"jev-test",usage:{input_tokens:10},answers:{success_1:no,success_2:no,success_3:yes,duplicate_1:yes,duplicate_2:no,duplicate_3:no}};});
-  const result=await dedup.select({},"Continue",history,topic.id);
-  assert.equal(calls,1);assert.deepEqual(result.keptIndices,[2,3,4,5]);assert.equal(result.report.dropped[0].representativeStart,4);
+  t.mock.method(require("../ai-accounting"),"begin",()=>({callbacks:{},decision(){},finish(){},fail(){},contextOptimization(report){auditReport=report;}}));
+  t.mock.method(require("../jev"),"evaluate",async(_p,_k,_m,state,questions)=>{
+    calls++;assert.equal(state.currentQuestion,current);assert.equal(state.exchanges,undefined);
+    assert.deepEqual(Object.keys(questions),["relevant_1","relevant_2"]);
+    assert.deepEqual(JSON.parse(questions.relevant_1.instructions),{question:"Old task",answer:"Finished"});
+    return {model:"jev-test",usage:{input_tokens:10},answers:{relevant_1:no,relevant_2:yes}};
+  });
+  const result=await dedup.select({},current,history,topic.id);
+  assert.equal(calls,1);assert.deepEqual(result.keptIndices,[2,3]);
+  assert.deepEqual(result.report.dropped,[{exchange:1,start:0,end:2}]);
+  assert.equal(result.report.status,"filtered");assert.deepEqual(auditReport,result.report);
+  assert.equal(history.length,4);
 });
 
-test("uncertain, cyclic and different-topic exchanges remain intact",()=>{
-  const history=[...exchange("First","A"),...exchange("Again","B"),...exchange("Other topic","C",other)];
-  const prepared=dedup.request(history,topic.id);
-  assert.deepEqual(prepared.candidates.map(item=>item.id),[1,2]);
-  const valid={success_2:yes};
-  assert.deepEqual(dedup.apply(history,prepared,{...valid,duplicate_1:{type:"noul",noul:.6}}).history,history);
-  assert.deepEqual(dedup.apply(history,prepared,{...valid,duplicate_1:no}).history,history);
-  assert.equal(dedup.request(exchange("Only","A"),topic.id),null);
+test("uncertain, missing and invalid decisions keep the exchange",()=>{
+  const history=exchange("Question","Answer"),prepared=dedup.request(history,topic.id,"Current");
+  for(const answer of [undefined,{type:"noul",noul:.21},{type:"noul",noul:-1},{type:"noul",noul:NaN},{type:"noul",noul:"0"},{type:"choice",choice:"skip"}])
+    assert.deepEqual(dedup.apply(history,prepared,{relevant_1:answer}).history,history);
+  assert.equal(dedup.apply(history,prepared,{relevant_1:{type:"noul",noul:.2}}).history.length,0);
 });
 
-test("Jev audit treats repeated successful builds as superseded attempts",()=>{
-  const prepared=dedup.request([...exchange("Build VSIX","Verified VSIX: first"),...exchange("Build again","Verified VSIX: second")],topic.id);
-  assert.match(prepared.state.policy,/failed attempt at the same task is an inferior candidate/i);
-  assert.match(prepared.questions.duplicate_1.instructions,/Differences in build logs, timestamps, and transient errors/);
-});
-
-test("a failed duplicate can be replaced by a later verified success",()=>{
-  const history=[...exchange("Build VSIX","Build failed: missing binding"),...exchange("Build VSIX again","Verified VSIX: vertex-abap-0.9.99.vsix")];
-  const prepared=dedup.request(history,topic.id);
-  const result=dedup.apply(history,prepared,{success_1:no,success_2:yes,duplicate_1:yes});
-  assert.deepEqual(result.keptIndices,[2,3]);
-  assert.equal(result.dropped[0].representative,2);
-});
-
-test("an unverified latest answer cannot erase earlier attempts",()=>{
-  const history=[...exchange("Build VSIX","Verified VSIX: first"),...exchange("Build again","I will try")];
-  const prepared=dedup.request(history,topic.id);
-  const result=dedup.apply(history,prepared,{success_1:no,success_2:no,duplicate_1:yes});
-  assert.deepEqual(result.keptIndices,[0,1,2,3]);
-});
-
-test("Jev may choose an earlier verified result with fewer iterations",()=>{
-  const history=[...exchange("Build","Failed"),...exchange("Build again","Verified in one attempt",topic,1),...exchange("Build again","Verified after three retries",topic,3)];
-  const prepared=dedup.request(history,topic.id);
-  const result=dedup.apply(history,prepared,{success_1:no,success_2:yes,success_3:yes,duplicate_1:yes,duplicate_3:yes});
-  assert.deepEqual(result.keptIndices,[2,3]);
-  assert.deepEqual(result.dropped.map(item=>item.exchange),[1,3]);
-});
-
-test("legacy untagged and unanswered repeats are eligible but distinct topics are not",()=>{
+test("other topics, long or incomplete exchanges and unseen tool results are protected",()=>{
+  const source=exchange("Source","Found");source[1].tool_history=[{tool:"Read",result:{text:"code"}}];
+  const omitted=exchange("Old command","Done");omitted[1].tool_history=[{tool:"Bash",omitted:"Non-source historical tool details omitted"}];
+  const image=exchange("Screenshot","See image");image[0].images=[{file:"image.png"}];
   const untagged={id:"",label:"",scope:""};
-  const history=[...exchange("Build VSIX","",untagged),...exchange("Other task","Done",other),...exchange("Build VSIX again","Verified VSIX",topic)];
-  const prepared=dedup.request(history,topic.id);
-  assert.deepEqual(prepared.candidates.map(item=>item.id),[1,3]);
-  const result=dedup.apply(history,prepared,{success_3:yes,duplicate_1:yes});
-  assert.deepEqual(result.keptIndices,[2,3,4,5]);
+  const history=[...exchange("Other","Done",other),...exchange("x".repeat(1601),"Done"),...exchange("Incomplete",""),...source,...image,...omitted,...exchange("Legacy","Done",untagged)];
+  const prepared=dedup.request(history,topic.id,"Current");
+  assert.deepEqual(prepared.candidates.map(x=>x.id),[6,7]);
+  assert.deepEqual(dedup.apply(history,prepared,{relevant_6:no,relevant_7:no}).keptIndices,[0,1,2,3,4,5,6,7,8,9]);
 });
 
-test("Jev binary probability works without a separate confidence field",()=>{
-  const history=[...exchange("Build","Failed"),...exchange("Build again","Verified VSIX")];
-  const prepared=dedup.request(history,topic.id);
-  const result=dedup.apply(history,prepared,{success_2:{type:"noul",noul:.93},duplicate_1:{type:"noul",noul:.96}});
-  assert.equal(result.representative,2);
-  assert.deepEqual(result.dropped.map(item=>item.exchange),[1]);
+test("empty, oversized or unavailable decision input fails closed",()=>{
+  assert.equal(dedup.request(exchange("Q","A"),topic.id,""),null);
+  assert.equal(dedup.request(exchange("Q","A"),topic.id,"x".repeat(180001)),null);
+  assert.equal(dedup.request(Array.from({length:49},()=>exchange("Q","A")).flat(),topic.id,"Current"),null);
 });
 
-test("a resolved failed attempt needs less duplicate certainty than a distinct requirement",()=>{
-  const history=[...exchange("Build VSIX","Failed: old version"),...exchange("Change version","Version bumped"),
-    ...exchange("Build again","Verified VSIX at new version")];
-  const prepared=dedup.request(history,topic.id);
-  const result=dedup.apply(history,prepared,{success_1:{type:"noul",noul:.14},success_2:no,success_3:{type:"noul",noul:.93},
-    duplicate_1:{type:"noul",noul:.67},duplicate_2:{type:"noul",noul:.33}});
-  assert.deepEqual(result.keptIndices,[2,3,4,5]);
+test("provider failure retains the selected history",async t=>{
+  const history=exchange("Q","A");
+  t.mock.method(require("../ai-accounting"),"begin",()=>({callbacks:{},decision(){},finish(){},fail(){},contextOptimization(){}}));
+  t.mock.method(require("../jev"),"evaluate",async()=>{throw Error("unavailable");});
+  const result=await dedup.select({},"Current",history,topic.id,{connection:{provider:"typesafe-api",model:"test",key:"test"}});
+  assert.deepEqual(result.history,history);assert.equal(result.report.status,"fallback");
 });

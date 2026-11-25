@@ -281,6 +281,26 @@ test("local result metrics survive logging without retaining Read content", () =
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test("Write preview follows localCode policy and survives into Flow", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-write-preview-"));
+  try {
+    for (const localCode of [true, false]) {
+      const log = sessionLog.create(root, "test", "write-" + localCode, { questions: true, tools: true, localCode });
+      log.user("question");
+      log.step({ kind: "use", id: "w", name: "Write", input: { file_path: "/tmp/a", content: "NEW PRIVATE" } });
+      log.step({ kind: "result", id: "w", name: "Write", content: "ok", changeCounts: { added: 3, removed: 3 },
+        changePreview: { removed: ["OLD PRIVATE"], added: ["NEW PRIVATE"] } });
+      const raw = fs.readFileSync(log.file, "utf8");
+      if (!localCode) assert.doesNotMatch(raw, /OLD PRIVATE|NEW PRIVATE/);
+      const prompt = require("../log-report").parseSession(raw, log.file).prompts[0];
+      const card = require("../log-flow").summary(prompt).eventItems.find(item => item.title === "Write");
+      assert.match(card.metrics, /Code: \+3 \/ −3 chars/);
+      if (localCode) assert.deepEqual(card.operationDiff.removed, ["OLD PRIVATE"]);
+      else assert.equal(card.operationDiff, undefined);
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("Flow byte totals exclude older unmeasured edits without treating them as zero", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-byte-total-"));
   try {

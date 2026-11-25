@@ -40,9 +40,16 @@
     const total = tokens(response.usage, [["input_tokens", "input"], ["output_tokens", "output"], ["cache_read_input_tokens", "cache read"], ["cache_creation_input_tokens", "cache write"]]);
     if (total) lines.push("Run tokens · " + total);
     if (response.modelUsage && typeof response.modelUsage === "object" && !Array.isArray(response.modelUsage)) {
-      for (const [model, usage] of Object.entries(response.modelUsage).slice(0, 50)) {
-        const parts = tokens(usage, [["inputTokens", "input"], ["outputTokens", "output"], ["cacheReadInputTokens", "cache read"], ["cacheCreationInputTokens", "cache write"]]);
-        const cost = numeric(usage?.costUSD) ? (data.provider === "codemie" ? "estimated " : "provider-reported ") + money(usage.costUSD) : "";
+      const models = Object.entries(response.modelUsage), single = models.length === 1;
+      if (single) lines.push("Run model · " + String(models[0][0]).slice(0, 120));
+      const fields = [["inputTokens", "input", "input_tokens"], ["outputTokens", "output", "output_tokens"],
+        ["cacheReadInputTokens", "cache read", "cache_read_input_tokens"], ["cacheCreationInputTokens", "cache write", "cache_creation_input_tokens"]];
+      for (const [model, usage] of models.slice(0, 50)) {
+        // A single model can repeat the run values. Suppress only identical recorded fields;
+        // missing or different values, and multi-model breakdowns, remain visible.
+        const parts = tokens(usage, fields.filter(([key, , totalKey]) => !single || !numeric(response.usage?.[totalKey]) || usage?.[key] !== response.usage[totalKey]));
+        const cost = numeric(usage?.costUSD) && !(single && numeric(response.total_cost_usd) && usage.costUSD === response.total_cost_usd)
+          ? (data.provider === "codemie" ? "estimated " : "provider-reported ") + money(usage.costUSD) : "";
         if (parts || cost) lines.push(String(model).slice(0, 120) + " · " + [parts, cost].filter(Boolean).join(" · "));
       }
     }
@@ -66,6 +73,10 @@
     }
     if (name === "Glob") return "find " + shellQuote(input.path || ".") + " -type f -name " + shellQuote(input.pattern || "*");
     return "";
+  }
+
+  function firstAutomaticTopic(report) {
+    return report?.status === "fallback" && report.beforeMessages === 0 && report.topic && report.reason === "No previous topics to compare; full history retained.";
   }
 
   function summary(prompt) {
@@ -169,6 +180,7 @@
       const title = event.kind === "request" ? event.apiRequest ? String(event.provider || "API") + " HTTP request" : "LLM request with system prompt and tools" : event.kind === "tool_result" ? (event.tool || "Tool") + " result"
         : event.kind === "tool" ? toolName
         : detail?.routing?.kind === "context_selection" ? "Context selection · Full history"
+        : firstAutomaticTopic(detail?.routing) ? "First topic created automatically · Jev not called"
         : detail?.routing?.status === "skill" ? "Skill search"
         : detail?.type === "answer" ? "Response" : detail?.type || "Recorded step";
       const preview = event.kind === "request"
@@ -212,6 +224,13 @@
               return { prefix: before.slice(0, prefix), removed: before.slice(prefix, before.length - suffix),
                 added: after.slice(prefix, after.length - suffix), suffix: suffix ? before.slice(-suffix) : "" };
             }).flatMap(change => Array.isArray(change) ? change : [change]) };
+        } else if (detail.name === "Write" && result && !result.failed && Array.isArray(result.changePreview?.removed) && Array.isArray(result.changePreview?.added)) {
+          const removed = result.changePreview.removed.slice(0, 2).filter(line => typeof line === "string");
+          const added = result.changePreview.added.slice(0, 2).filter(line => typeof line === "string");
+          operationDiff = { removed, added, changes: [
+            ...removed.map(line => ({ prefix: "", removed: line, added: "", suffix: "" })),
+            ...added.map(line => ({ prefix: "", removed: "", added: line, suffix: "" }))
+          ] };
         } else {
           let answer = result?.text || "";
           let data = answer;
@@ -246,6 +265,11 @@
       if (event.apiRequest && Number.isSafeInteger(event.requestSize?.bytes)) metrics.push("HTTP body: " + event.requestSize.bytes.toLocaleString() + " B");
       return { kind: event.kind, title: String(title).replace(/\s+/g," ").slice(0,110), time: event.time || prompt.time || 0, order,
         ...(usagePreview.length ? { usagePreview: usagePreview.slice(0, 4) } : {}), ...(metrics.length ? { metrics: metrics.join(" · ") } : {}),
+        ...(Number.isSafeInteger(measuredResult?.resultBytes) && measuredResult.resultBytes >= 0 ? { resultBytes: measuredResult.resultBytes } : {}),
+        ...(Number.isSafeInteger(measuredResult?.changeCounts?.added) && Number.isSafeInteger(measuredResult?.changeCounts?.removed)
+          ? { changeCounts: { added: measuredResult.changeCounts.added, removed: measuredResult.changeCounts.removed,
+            ...(Number.isSafeInteger(measuredResult.changeCounts.addedBytes) && Number.isSafeInteger(measuredResult.changeCounts.removedBytes)
+              ? { addedBytes: measuredResult.changeCounts.addedBytes, removedBytes: measuredResult.changeCounts.removedBytes } : {}) } } : {}),
         ...(preview ? { preview } : {}), ...(toolCommand ? { toolCommand } : {}), ...(operationPreview ? { operationPreview } : {}), ...(operationDiff ? { operationDiff } : {}), detailIndex: event.detail, detailIndices: event.kind === "request" ? event.details : undefined,
         skillName: detail?.routing?.skill || detail?.routing?.candidate, skillStatus: detail?.routing?.status,
         skillProbability: detail?.routing?.probability,
@@ -267,13 +291,13 @@
           topicId: block.topicId, topic: String(block.topic || "").slice(0, 80),
           included: Boolean(block.included), reason:block.reason, preferredPromptNumber:block.preferredPromptNumber,
           estimatedTokens: block.estimatedTokens, preview: String(block.preview || "").slice(0, 100) })) } : null,
-      jev: jev.map(d => ({ label: d.type, time: eventTime(d.detailIndex),
+      jev: jev.map(d => ({ label: firstAutomaticTopic(d.routing) ? "First topic created automatically · Jev not called" : d.type, time: eventTime(d.detailIndex),
         detail: /^Recovery: started$/i.test(d.type) ? "Automatic retry started"
           : /^Recovery: finished$/i.test(d.type) ? "Automatic retry completed"
           : /^Recovery: awaiting user$/i.test(d.type) ? "Waiting for user continuation"
           : d.verification?.status ? String(d.verification.status).toUpperCase()
-          : /Topic routing/i.test(d.type) ? "Topic selected by Jev" : "Recorded operation",
-        ...(d.section ? { section: d.section } : {}),
+          : firstAutomaticTopic(d.routing) ? "No previous messages to compare" : /Topic routing/i.test(d.type) ? (d.routing?.status === "fallback" ? "Routing fallback" : "Topic selected by Jev") : "Recorded operation",
+        ...(d.section || firstAutomaticTopic(d.routing) ? { section: d.section || d.type } : {}),
         ...(d.verification?.status ? { state: d.verification.status } : {}) })),
       models: models.length, cliTurns: models.filter(t => t.usageScope === "cli_turn").length, stepItems, eventItems,
       answerPreview: prompt.operation === "Screenshot recognition" ? recognitionText(answerText).replace(/\s+/g, " ").slice(0, 130) : "",
@@ -288,7 +312,7 @@
 
   function stages(prompt) {
     const flow = prompt.flow || summary(prompt);
-    const decisions = flow.jev.map(item => ({ kind: /Orchestrator|Recovery:/i.test(item.label) ? "vertex" : "jev", present: true, title: item.label, label: item.detail || "", section: item.section || item.label, state: item.state || "recorded", time: item.time || prompt.time || 0 }));
+    const decisions = flow.jev.map(item => ({ kind: /Orchestrator|Recovery:|First topic created automatically/i.test(item.label) ? "vertex" : "jev", present: true, title: item.label, label: item.detail || "", section: item.section || item.label, state: item.state || "recorded", time: item.time || prompt.time || 0 }));
     const recordedSteps = (flow.stepItems || []).map((item, index) => ({ kind: item.kind, present: true,
       title: item.label, label: item.detail || "", section: "Steps (chronological)", state: "recorded", stepIndex: index, time: item.time || prompt.time || 0 }));
     return [
@@ -339,8 +363,8 @@
         const requestTopicAfter=Math.ceil((reduction.topicAfterCharacters+current)/4);
         topicSaved+=Math.max(0,requestBefore-requestTopicAfter);
         duplicateSaved+=Math.max(0,requestTopicAfter-requestAfter);
-      }else if((reduction.blocks||[]).some(block=>block.reason==="duplicate")){
-        const duplicate=Math.min(requestSaved,(reduction.blocks||[]).filter(block=>block.reason==="duplicate").reduce((sum,block)=>sum+Number(block.estimatedTokens||0),0));
+      }else if((reduction.blocks||[]).some(block=>block.reason==="duplicate"||block.reason==="relevance")){
+        const duplicate=Math.min(requestSaved,(reduction.blocks||[]).filter(block=>block.reason==="duplicate"||block.reason==="relevance").reduce((sum,block)=>sum+Number(block.estimatedTokens||0),0));
         duplicateSaved+=duplicate;topicSaved+=requestSaved-duplicate;
       }else if(reduction.reconstructed)unattributedSaved+=requestSaved;
       else topicSaved+=requestSaved;
@@ -419,7 +443,7 @@
 
   function groupUsage(group,kind="model") {
     const result = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, costReported: false, costMissing: false, costEstimated: false };
-    for (const item of [group.prompt,...(group.children || [])]) {
+    for (const item of [group.prompt,...(group.children || [])].filter(Boolean)) {
       if ((item.costKind === "jev" ? "jev" : "model") !== kind) continue;
       const usage = item.usage || {};
       for (const key of ["input","output","cacheRead","cacheWrite"]) result[key] += Number(usage[key] || 0);
@@ -521,7 +545,7 @@
       headline.append(make("strong","flow-stats-saving","≈ "+totals.saved.toLocaleString()+" history tokens omitted"),
         make("span","flow-stats-percent",totals.percent+"% less prior conversation history"));
       const comparison=make("div","flow-stats-comparison","Full history ≈ "+totals.before.toLocaleString()+" → selected history ≈ "+totals.after.toLocaleString()+" tokens · "+totals.covered+"/"+totals.total+" requests measured"+(totals.reconstructed?" · "+totals.reconstructed+" reconstructed":""));
-      const reasons=make("div","flow-stats-reasons","Duplicate attempts ≈ "+totals.duplicateSaved.toLocaleString()+" saved · Topic selection ≈ "+totals.topicSaved.toLocaleString()+" saved"+
+      const reasons=make("div","flow-stats-reasons","Context optimization ≈ "+totals.duplicateSaved.toLocaleString()+" saved · Topic selection ≈ "+totals.topicSaved.toLocaleString()+" saved"+
         (totals.skillSaved?" · Skill match ≈ "+totals.skillSaved.toLocaleString()+" saved":"")+
         (totals.unattributedSaved?" · Older reconstructed logs ≈ "+totals.unattributedSaved.toLocaleString()+" (reason unavailable)":""));
       const bar=make("div","flow-comparison-bar");bar.setAttribute("aria-label",totals.percent+" percent of full conversation context excluded");
@@ -738,6 +762,14 @@
           }
         });
         stepRuns.sort((a, b) => a.startRow - b.startRow);
+        // Cost belongs to the recorded model response, never to the CLI run aggregate.
+        for (const [row, run] of modelRunByRow) {
+          const model = stepNodes[row].model || {}, usage = model.usage || {};
+          const reported = model.usageScope !== "cli_turn" && Number.isFinite(usage.cost_usd) && usage.cost_usd >= 0;
+          const estimated = model.usageScope !== "cli_turn" && !reported && Number.isFinite(usage.estimated_cost_usd) && usage.estimated_cost_usd >= 0;
+          (run.costs ||= []).push(reported ? { value: usage.cost_usd, estimated: false }
+            : estimated ? { value: usage.estimated_cost_usd, estimated: true } : null);
+        }
         for (let index = 0; index < stepRuns.length - 1;) {
           const run = stepRuns[index], next = stepRuns[index + 1];
           const row = run.rows[0], nextRow = next.rows[0];
@@ -746,6 +778,7 @@
             && stepNodes.slice(row + 1, nextRow).every(node => node.kind === "note")) {
             const paragraphs = [...(thinkingParagraphs.get(row) || [stepNodes[row].preview]),
               ...(thinkingParagraphs.get(nextRow) || [stepNodes[nextRow].preview])].filter(Boolean);
+            run.costs = [...(run.costs || []), ...(next.costs || [])];
             thinkingParagraphs.set(row, paragraphs);
             hiddenRoundRows.add(nextRow);
             run.rows.push(...next.rows.slice(1));
@@ -770,18 +803,47 @@
           const header = stepNodes[run.rows[0]], nextHeader = stepNodes[next.rows[0]];
           if (!run.editRounds) run.editRounds = [{ round: run.round, metadata: header.model }];
           run.editRounds.push({ round: next.round, metadata: nextHeader.model });
+          run.costs = [...(run.costs || []), ...(next.costs || [])];
           run.editDetailIndices = [...(run.editDetailIndices || header.detailIndices || []), ...(nextHeader.detailIndices || [])];
           hiddenRoundRows.add(next.rows[0]);
           run.rows.push(...next.rows.slice(1));
           stepRuns.splice(index + 1, 1);
         }
       }
+      if (view === "step") for (const run of stepRuns) {
+        if (run.round == null) continue;
+        const details = shown[0]?.prompt.details || [];
+        const tools = run.rows.map(row => stepNodes[row]).filter(node => node?.kind === "tool");
+        // List reports deliberately omit details; numeric measurements travel on the tool node.
+        const result = node => node.resultBytes !== undefined || node.changeCounts ? node
+          : details.find(detail => detail.type === "tool result" && detail.tool_id && detail.tool_id === node.toolId);
+        const reads = tools.filter(node => node.title === "Read"), edits = tools.filter(node => node.title === "Edit" || node.title === "Write");
+        const parts = [], costs = run.costs || [], known = costs.filter(Boolean);
+        if (known.length) parts.push((known.some(cost => cost.estimated) ? "Cost ≈ $" : "Cost $")
+          + known.reduce((sum, cost) => sum + cost.value, 0).toLocaleString("en-US", { maximumFractionDigits: 8, useGrouping: false })
+          + (known.length < costs.length ? " (partial)" : ""));
+        if (reads.length) {
+          const measured = reads.map(result).filter(item => Number.isSafeInteger(item?.resultBytes) && item.resultBytes >= 0);
+          parts.push(measured.length ? "Read C: " + measured.reduce((sum, item) => sum + item.resultBytes, 0).toLocaleString() + " B (" + measured.length + "/" + reads.length + ")" : "Read C unavailable");
+        }
+        if (edits.length) {
+          const measured = edits.map(result).filter(item => Number.isSafeInteger(item?.changeCounts?.added) && Number.isSafeInteger(item?.changeCounts?.removed));
+          const bytes = measured.filter(item => Number.isSafeInteger(item.changeCounts.addedBytes) && Number.isSafeInteger(item.changeCounts.removedBytes));
+          parts.push(measured.length ? "Code: +" + measured.reduce((sum, item) => sum + item.changeCounts.added, 0).toLocaleString()
+            + " / −" + measured.reduce((sum, item) => sum + item.changeCounts.removed, 0).toLocaleString() + " chars (" + measured.length + "/" + edits.length + ")"
+            + (bytes.length ? " · +" + bytes.reduce((sum, item) => sum + item.changeCounts.addedBytes, 0).toLocaleString()
+              + " / −" + bytes.reduce((sum, item) => sum + item.changeCounts.removedBytes, 0).toLocaleString() + " B (" + bytes.length + "/" + edits.length + ")" : "") : "Code unavailable");
+        }
+        run.summary = parts.join(" · ");
+      }
       const stepPositions = new Map();
       const stepHeight = node => {
         const row = stepNodes.indexOf(node), paragraphs = thinkingParagraphs.get(row);
-        if (paragraphs) return Math.max(75, 34 + paragraphs.reduce((height, text) => height + 14 * Math.ceil(text.length / 42) + 8, 0));
+        const run = stepRuns.find(item => item.rows[0] === row);
+        const summaryHeight = run?.summary ? 42 + 14 * Math.ceil(run.summary.length / 36) : 75;
+        if (paragraphs) return Math.max(summaryHeight, 75, 34 + paragraphs.reduce((height, text) => height + 14 * Math.ceil(text.length / 42) + 8, 0) + (run?.summary ? 14 * Math.ceil(run.summary.length / 36) : 0));
         if (node.toolCommand) return Math.max(124, 44 + node.toolCommand.split("\\n").reduce((height, line) => height + 14 * Math.ceil(line.length / 34), 0));
-        return node.metrics ? 100 : 75;
+        return Math.max(summaryHeight, node.metrics ? 100 : 75);
       };
       stepRuns.forEach((run, column) => {
         let y = run.vertexRound === 0 ? 151 : 52;
@@ -833,6 +895,18 @@
           Object.assign(roundCard.style, { top: "52px", left: left + "px", height: "75px" });
           roundCard.style.setProperty("--flow-accent", accent);
           roundCard.appendChild(make("strong", "", "VERTEX · Round 0"));
+          // Sum only the preparation cards' own usage, never the chat or CLI aggregate.
+          const services = [...new Set(run.rows.map(row => stepNodes[row]?.prompt).filter(item => item && item !== prompt))];
+          const serviceUsage = ["model", "jev"].map(kind => groupUsage({ children: services }, kind));
+          const recorded = serviceUsage.filter(usage => usage.costReported);
+          if (recorded.length) {
+            const cost = recorded.reduce((sum, usage) => sum + usage.cost, 0);
+            const text = (recorded.some(usage => usage.costEstimated) ? "Cost ≈ $" : "Cost $")
+              + cost.toLocaleString("en-US", { maximumFractionDigits: 8, useGrouping: false })
+              + (serviceUsage.some(usage => usage.costMissing) || services.some(item => Number(item.usage?.costMissing || 0) > 0) ? " (partial)" : "");
+            roundCard.appendChild(make("small", "flow-usage", text));
+            roundCard.title = text + " · Recorded preparation costs only.";
+          }
           lane.appendChild(roundCard);
           const connection = make("div", "flow-connection");
           connection.setAttribute("aria-hidden", "true");
@@ -1023,6 +1097,10 @@
               if (node.label) button.appendChild(make("span", "", compactRound
                   ? effectiveToolCount + (effectiveToolCount === 1 ? " tool call" : " tool calls") : node.label));
             } else if (node.kind === "tool" && node.explanation && !node.operationPreview && !node.operationDiff) button.appendChild(make("span", "", node.explanation));
+            if (stepView && roundRun?.rows[0] === row && roundRun.summary) {
+              button.appendChild(make("small", "flow-usage", roundRun.summary));
+              button.title += "\n" + roundRun.summary + " · Read C is recorded local result bytes; code counts are measured Unicode code points, not the accepted diff.";
+            }
             if (node.prompt && node.prompt !== prompt && node.prompt.usage) {
               const own = groupUsage({ prompt: node.prompt }, node.prompt.costKind === "jev" ? "jev" : "model");
               if (own.costReported || own.input || own.output || own.cacheRead || own.cacheWrite) {

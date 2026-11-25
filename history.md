@@ -1,3 +1,67 @@
+## VSIX 0.9.122
+
+The VS Code extension version is 0.9.122. The VSIX is built after the version changes are approved.
+
+## 2026-11-25 — Native web tools for Claude Code and CodeMie
+
+In VS Code, live-web questions sent through Claude Code or CodeMie now receive Claude’s built-in `WebSearch` and `WebFetch` tools. This does not require a Vercel AI Gateway key; other providers retain the Gateway search route. “Без интернета” and equivalent opt-out wording still keeps the request in ordinary chat.
+
+## 2026-11-25 — Current weather opens Web search
+
+In VS Code, a request for the current weather now opens Web search automatically, so the answer can use live sources. Claude Code and CodeMie use their built-in web tools; other providers use the configured Vercel AI Gateway model and key. “Без интернета” and equivalent opt-out wording still keeps the request in ordinary chat.
+
+## 2026-11-25 — Web search in Zero context
+
+In VS Code, explicit web searches now work in Zero context with Vercel AI Gateway, without exposing project or SAP context. Search remains a separate, potentially billed operation.
+
+## 2026-11-25 — Compare short replies with topic choices
+
+For short requests, Jev selects from existing topics or a new task while considering the full preceding question and answer, including offers to continue. History remains available after this check.
+
+## 2026-11-25 — Preserve context when topic comparison is uncertain
+
+Topic routing compares each topic's label and bounded initial and latest exchanges. If no topic matches a short request, a second Jev check compares it with the full previous question and answer. A matched or new topic is assigned; history is retained when the second check runs or an exclusion is uncertain.
+
+## 2026-11-25 — Show automatic first-topic creation in Logs
+
+Logs & Cost and Flow now identify the first topic as automatically created when there is no prior conversation, and state that Jev was not called. Existing recorded logs are supported.
+
+## 2026-11-25 — Jev topic assignment in every context mode
+
+When the selected Jev decision model is enabled and available, chat requests receive topic assignments even with Full history or Zero context selected. These modes retain their complete-history behavior; Auto (Jev) alone filters history by the selected topic.
+
+## 2026-11-25 — Hide skill requests in Logs
+
+Requests matched to a skill are hidden by default in Logs & Cost. The **Skill requests** checkbox shows them again; their usage remains included in totals.
+
+## 2026-11-25 — Simpler topic-routing input
+
+Topic routing compares the current request with each earlier topic in a separate decision question. The shared request contains only the current prompt, its screenshot recognition and review file names; earlier questions and answers are in the comparison questions. The comparison no longer offers an uncertain answer: when several topics match, the most recently active one is selected and the other matches remain as context.
+
+## 2026-11-25 — Provider usage in Logs
+
+Logs now show CLI provider usage in the same table as Flow, with the original record available below. When one model repeats the run's values, identical figures appear only once; differing values remain visible.
+
+## 2026-11-25 — Correct provider usage numbers
+
+The Flow provider-usage table keeps locale-formatted token counts together in the Value column instead of splitting off their first digit group.
+
+## 2026-11-25 — Round totals and Write previews in Flow
+
+Flow round headers show available model cost, Read result sizes and measured Edit/Write totals, including as results arrive in live Flow. Round 0 also sums recorded preparation costs such as Jev and screenshot recognition; rounds without cost data omit the cost line. New local Write calls can also show a small preview of the actual change when local code logging is enabled.
+
+## 2026-11-25 — Check earlier exchanges for relevance
+
+When Auto (Jev) selects follow-up context, Jev compares previous prompts and answers with the new request rather than looking only for repeated attempts. Session Logs shows each relevance decision and whether the exchange was kept or excluded.
+
+## 2026-11-25 — Read context optimization by exchange
+
+The Jev context-optimization log groups each exchange with its questions, answers and recorded keep/exclude outcome, including the replacement when excluded.
+
+## 2026-11-25 — Keep source rather than old tool logs in follow-ups
+
+Follow-up context retains recognized source-code tool history, while omitting non-source tool details such as old Bash output and logs. The agent can read them again when needed.
+
 ## 2026-11-25 — Open Bash output from Flow
 
 Bash result details now offer a link to open the recorded stdout and stderr, or the saved full output file for large commands. Partial recordings are identified.

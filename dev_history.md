@@ -1,3 +1,75 @@
+## Prepare VSIX 0.9.122
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## 2026-11-25 — Native web tools for Claude Code and CodeMie
+
+Searched the VS Code chat routing, Claude/CodeMie launcher, tool allowlists, focused assistant/chat tests and the Eclipse/shared hosts. Reused Claude Code’s existing built-in `WebSearch` and `WebFetch` tools rather than adding a direct HTTP client, arbitrary URL access or a new provider. Live-web intents now remain with Claude Code or CodeMie, enable only those native tools and instruct the model to cite returned URLs; Vercel remains the fallback route for all other providers. The normal project/SAP MCP endpoint stays available, while web tools are not exposed through it. Focused launcher and routing tests cover native-tool selection; actual CodeMie web-tool availability and live network behavior remain unverified.
+
+## 2026-11-25 — Detect current-weather requests as Web search
+
+Searched VS Code chat and sidebar callers, existing web-intent detection and its focused test, plus Eclipse and shared resources; reused the existing Vercel/Perplexity Web-search path rather than adding another provider integration. Requests which pair weather with a current-time qualifier now enter that path automatically; historical weather questions remain ordinary chat, and the existing Russian and English explicit opt-out expressions take precedence. Web requests now always select the configured Vercel model and its key instead of rejecting an ordinary-chat provider; the search transport still verifies server-side tool execution. The focused intent and chat tests cover Russian and English current-weather phrases, a historical-weather question, opt-out wording, provider-independent Gateway selection and screenshot rejection. Live Gateway behavior and packaging remain unverified.
+
+## 2026-11-25 — Route Zero context web searches
+
+Searched VS Code chat, sidebar intent detection and Gateway search, plus Eclipse and shared resources; reused the existing explicit Vercel/Perplexity search path. Zero context keeps its log scope, topic and complete text history, without collecting project or SAP state. Search still requires Vercel, rejects screenshots and requires confirmed Gateway search execution. Eight focused chat regressions passed, including a clarification during search; provider responses were mocked. Live Gateway behavior and packaging remain unverified.
+
+## 2026-11-25 — Choose a topic for short replies
+
+Reused VS Code topic routing, its protected previous-exchange check, choice decisions and accounting; searched Eclipse topic handling and shared log resources. For short requests, the second decision runs even when the first comparison finds a match and chooses among topic IDs, an unassigned previous exchange if present, and a new task. Its prompt explicitly considers the preceding answer, including offers to continue. The size limit, full-history fallback and protection limitations remain; this adds a decision call for short requests. Focused routing tests passed 24/28, with the same four failures as the pre-change baseline; decisions were mocked. Live model accuracy and packaging remain unverified.
+
+## 2026-11-25 — Check short follow-ups against the previous exchange
+
+Searched VS Code routing, chat integration, Jev accounting and tests, plus Eclipse topic handling; reused the per-topic comparison, decision accounting and topic creation. If the first pass finds no same topic, requests up to 160 characters and 12 words receive a second binary Jev decision with the protected, complete previous question and assistant answer. A match assigns the preceding topic (or backfills an unassigned exchange); otherwise a new topic is assigned. History is retained after a second pass, including failure or the 24 KB input limit, and on uncertain unrelated comparisons. Both calls have separate audit records. The short-request limits and existing 0.8 exclusion threshold are provisional; protection does not guarantee removal of secrets in plain text. Routing tests passed 24/28 with the same four failure names as the pre-change baseline; the second-pass tests use mocked Jev decisions. Live provider accuracy and packaging remain unverified.
+
+## 2026-11-25 — Preserve context on uncertain topic exclusions
+
+Searched VS Code topic routing, Jev probability handling, context selection and tests, plus Eclipse logging and shared report resources; reused the per-topic decision and unplaced/full-history path. Comparison input now includes the topic label and a clipped initial exchange when different from the latest, and explicitly treats questions about an answer as follow-ups. An unrelated choice may exclude context only with probability at least 0.8 and, when supplied, confidence at least 0.8; missing or invalid evidence keeps all history and leaves the turn unassigned, also bypassing the later context optimization. The threshold is provisional, not calibrated; high-confidence mistakes remain possible, and additional input can trigger the existing size fallback. The focused file passed 21/25 versus 19/23 before, with the same four existing failures; new tests use mocked decisions. Live Jev accuracy and packaging remain unverified.
+
+## 2026-11-25 — Distinguish first-topic creation from a Jev call
+
+Searched VS Code routing, log parsing and Flow, Eclipse log handling and the shared report. Reused the existing routing record and report sections: the exact empty-history fallback is shown as an automatic first topic with no Jev call, without replay buttons. The VS Code Flow and event actor show the same distinction; other fallback reasons are not treated as proof that Jev was not called. This also interprets existing records without changing the routing contract. Two focused regressions passed, including parsing an old-format record and proving no Jev connection is made. Actual host rendering and packaging were not checked.
+
+## 2026-11-25 — Filter matched skill requests in Logs
+
+Searched VS Code skill matching, session parsing, Flow and report tests, Eclipse logging and the shared report; reused the existing checkbox styling and recorded skill-routing result. The list report carries matched-skill metadata and the shared view hides matched chat turns and their exactly linked technical children by default, without deleting logs or changing cost totals. The checkbox restores them. Historical turns without a recorded match remain visible; unlinked technical records cannot be reliably attributed. Three focused report tests passed. Actual host rendering and packaging were not checked.
+
+## 2026-11-25 — Resolve topic comparisons without uncertainty
+
+Reused the per-topic Jev choice contract: each comparison offers same, dependency or unrelated, with no uncertain option. Multiple same answers select the topic with the most recent exchange; other matches and dependencies remain in context. Invalid responses and unavailable routing still fall back to a new topic with full history. Focused routing tests passed 18/22 versus 17/21 before, with the same four failing names. Live Jev accuracy and packaging remain unverified.
+
+## 2026-11-25 — Simplify topic-routing input
+
+Searched VS Code routing and context optimization, Eclipse logging and shared report resources; reused the existing multiple-question decision contract. State contains the current request, its recognized screenshot and review file names; each previous topic gets a separate comparison containing its latest question and answer, not its screenshot description. One match selects a topic; multiple matches or uncertainty retain full history without assigning one, and dependencies are retained. No topics means no decision call. The shared report supports the new comparison keys and still supports older routing logs. Previous answers remain clipped and can themselves contain usage data; losing prior screenshot evidence may make some follow-ups harder to route. Focused routing tests passed 17/21 versus 16/20 before the change, with the same four failing test names; some old mocks still use the previous response contract. Live decision accuracy, host rendering and packaging remain unverified.
+
+## 2026-11-25 — Reuse CLI usage in Logs
+
+Searched VS Code and Eclipse Flow, their log hosts, the shared report and existing tests; reused the Flow formatter and shared usage table for Logs, retaining the raw provider record. For exactly one model, omit only model fields identical to corresponding run fields; retain different or missing-run values and all multiple-model breakdowns. Missing formatter or malformed records fall back to raw details. Focused formatter and report tests passed; actual host rendering and packaging were not checked.
+
+## 2026-11-25 — Preserve grouped usage values
+
+Searched the VS Code Flow usage formatter, the Eclipse assistant logging and shared report resource, and the existing report tests; reused the existing usage table and labels. Parse token rows by their known metric suffix rather than the first whitespace, preserving locale grouping including nonbreaking spaces. A focused table regression passed for spaces, nonbreaking spaces, comma grouping, costs and multiple models. Actual host rendering and packaging were not checked.
+
+## 2026-11-25 — Sum preparation costs in Flow
+
+Searched VS Code Flow, its usage aggregation and tests, plus Eclipse logging and shared report resources; reused the existing per-card usage accounting and Flow card styling. Round 0 sums the recorded child services actually in its preparation group, including Jev and screenshot recognition, without attributing chat or closing costs to it. It marks known incomplete sums as partial; absent cost data is not treated as zero. Model rounds omit unavailable costs. Lightweight list reports omit detail bodies, so round headers now use numeric measurements on each summarized tool event; refreshed live snapshots can sum results as they arrive. Six focused Flow tests passed, including incremental list-report snapshots. Actual VS Code rendering and packaging were not checked.
+
+## 2026-11-25 — Summarize Flow rounds and preview local Write changes
+
+Searched VS Code local-tool metrics, session and report logging, Flow and tests, Eclipse Flow and shared report resources; reused existing tool metrics, round grouping and diff styling. Round totals use only recorded per-model costs and measured Read/Edit/Write results, with coverage counts; CLI run aggregates are not assigned to individual rounds. Local Write emits a bounded before/after line preview, logged only with localCode and tool logging. Older logs and external tools cannot recover missing prior state; large changes may lack character measurements. Four targeted tests passed. Flow tests passed 40/45 versus 39/44 before the change, with the same five failing names; `git diff --check` passed. VS Code host and light/dark rendering, provider behavior and packaging remain unverified.
+
+## 2026-11-25 — Select exchanges by relevance
+
+Searched VS Code topic routing, context deduplication, Jev request and accounting, Flow and report tests, Eclipse and the shared report resource; reused the existing single-call Jev decision and exchange disclosure. The full current request and shared relevance policy form the state; each binary question contains the earlier prompt and answer as JSON. Only a strong No excludes an eligible exchange; dependency topics, incomplete or oversized exchanges, image attachments and source tool results remain at this stage. Earlier topic routing may still exclude them. The original history is unchanged. The report supports old duplicate audits and new relevance decisions; Flow labels the combined second-stage savings as context optimization. The replay script accepts new relevance audits rather than misinterpreting old duplicate decisions. Five focused selection tests and three report regressions passed. Live Jev accuracy, provider cost, cache behavior, host rendering and packaging remain unverified.
+
+## 2026-11-25 — Pair context-optimization decisions with outcomes
+
+Searched VS Code Jev accounting, context deduplication and log parsing, Eclipse log handling and shared report resources; reused the existing Jev input disclosure and theme-aware cards. New audit logs retain the applied optimization report; older ones link to the parent report only when the related turn is unambiguous. The exchange view pairs saved questions with formatted answers and distinguishes the actual result from Jev's opinion. Missing input, answers or outcomes remain unavailable rather than inferred; multiple legacy audits on one turn cannot be matched. The nine context-dedup tests and two focused report regressions passed. Actual host rendering and packaging were not checked.
+
+## 2026-11-25 — Filter historical non-source tool details
+
+Searched VS Code chat history, context protection, folder tools, SAP source tools, Eclipse and shared resources; reused the existing transcript and topic-selection path. Filter selected historical tool entries before routing and model prompt construction, leaving current-turn results and the stored conversation intact. Recognized local source extensions and SAP source reads remain; Grep retains source matches only, while other tool arguments/results are replaced by omission markers. Extension-based classification can omit source in unsupported formats and cannot guarantee that a source-named file contains no log data. Dialog text may still quote non-source results. Four focused tests passed. The complete chat test file has the same 30 failures as its baseline when using the project's dependencies via NODE_PATH (68/98 passed versus 67/97); without those dependencies, the review copy has three additional missing-eslint failures. Live provider behavior and packaging have not been verified.
+
 ## 2026-11-25 — Open recorded Bash output
 
 Searched VS Code session logs, command-output handling, shared report links and Eclipse's generated log host; reused the report's existing link style and VS Code's text editor. Bash results open saved inline stdout/stderr as an unsaved document or their existing large-output file after validating its location under the configured log folder. The link is VS Code-only; sanitized or clipped historical data cannot be recovered. Two new focused regressions passed. The report test baseline had 13 failures; in the working copy those same failures remain plus one test that cannot find the generated, Git-ignored `vscode/resources/log-report.html`. Actual host/theme rendering and packaging were not checked.
@@ -596,6 +668,10 @@ Follow-up: the first installed Context view showed "Context unavailable" for old
 Investigated the installed 0.9.99 `Cannot find module './sap-debug-history'` error. The installed file and source have identical SHA-256 hashes; the VSIX contains the same 3,601-byte file, and Node resolves it from the installed extension. The log error therefore does not reproduce against the completed installation, suggesting the Extension Host saw the folder while it was being updated or retained an earlier load failure. Added the module to `package.js`'s required VSIX entries so future packages fail verification if it is absent. No new build was run.
 
 Jev topic routing now logs compact per-message inclusion metadata and a characters / 4 savings estimate against the full unfiltered history for each request. The lightweight Flow index carries previews, topic IDs and token estimates. Context uses the existing topic palette, faded dashed exclusions and block heights scaled against the largest visible block. It shares Flow's Three.js zoom controls. Existing logs without routing metadata show an unavailable state. The shared report source is in the Eclipse resources and is copied to VS Code resources during packaging; no build was run.
+
+## 2026-11-25 — Assign Jev topics independently of history filtering
+
+Moved topic classification before the Zero-context chat branch and separated it from the Auto (Jev) history-pruning choice. Available Jev now classifies requests in Zero context and Full history as well; Zero context still sends its entire chat history directly to the chat model, while Full history retains every exchange in normal requests. Topic IDs now accompany Zero-context live history and answers. Added chat coverage for repeated Zero-context assignment and screenshot requests while preserving no-tool and full-history behavior. The panel tooltip, setting description and VS Code guide distinguish assignment from history filtering. No build or full test run in this change.
 
 ## 2026-11-16 — 0.9.99: Release
 
