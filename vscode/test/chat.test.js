@@ -39,6 +39,27 @@ test.beforeEach(t => { t.mock.method(assistant, "resolveAssistant", async (vscod
 test.beforeEach(t => { t.mock.method(require('../orchestrator-plan'), 'verifyStage', async()=>({status:'passed',checks:[],usage:{}})); });
 test.beforeEach(t => { t.mock.method(require('../task-verification'), 'verifyTask', async()=>({status:'passed',checks:[],usage:{}})); });
 
+for (const contextMode of ['folder', 'zero']) test('web-intent decision starts with the chat context and turn: ' + contextMode, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vertex-web-decision-log-'));
+  const logs = require('../session-log');
+  logs.reset();
+  t.after(() => { logs.reset(); fs.rmSync(root, { recursive: true, force: true }); });
+  t.mock.method(require('../agent-worktree'), 'open', async () => null);
+  t.mock.method(compatible, 'ask', async () => ({ plan: { answer: 'Done' }, model: 'fixture' }));
+  const vscode = fakeVscode({ provider: 'openai-api', model: 'fixture', logPath: root, 'log.questions': true });
+  vscode.workspace.workspaceFolders = [{ uri: { scheme: 'file', fsPath: root } }];
+  const ask = chat.create(vscode, { schemas: [], instructions: '', editorContext: () => null }, null, { get: async () => null });
+  t.after(() => ask.dispose());
+  await ask('Find logs', { contextMode, webDecision: { web: false, status: 'decided' } });
+  const file = logs.currentFiles(root)[0];
+  const rows = fs.readFileSync(file, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(rows[0].type, 'vertex_decision');
+  assert.deepEqual(rows[0].vertex_context, contextMode === 'zero' ? { mode: 'zero' } : { mode: 'folder', folder: root });
+  assert.equal(rows[0].vertex_operation, 'Chat');
+  assert.match(rows[0].vertex_turn, /^[a-f0-9]{16}$/);
+  assert.equal(rows[0].vertex_turn, rows.find(row => row.type === 'user').vertex_turn);
+});
+
 test("Full history still tags topics with Jev but retains every exchange", async t => {
  const vscode=fakeVscode({provider:'openai-api',model:'fixture','context.routeTopics':false}),topic={id:'topic_0001',label:'Prior task',scope:'folder'};
  let routes=0,received=[];t.mock.method(require('../review-jev'),'enabled',()=>true);
@@ -78,7 +99,7 @@ test("Zero context always tags topics with Jev but sends the complete chat histo
  } finally { await ask.dispose(); }
 });
 
-test('Zero context Web search keeps chat history without project or SAP access', async t => {
+test('Zero context direct weather search keeps chat history without project or SAP access', async t => {
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-zero-web-')), logs=require('../session-log');
  t.after(()=>{logs.reset();fs.rmSync(root,{recursive:true,force:true});});logs.reset('zero-web');
  const topic={id:'topic_0001',label:'Search',scope:'zero'};
@@ -91,10 +112,10 @@ test('Zero context Web search keeps chat history without project or SAP access',
  const ask=chat.create(vscode,{editorContext:()=>assert.fail('No editor context')},{start:()=>assert.fail('No MCP')},{get:async()=>null});
  try {
   await ask('Earlier question',{contextMode:'zero'});
-  const result=await ask('Найди в интернете ABAP benchmarks',{contextMode:'zero',state:{workspace:'PRIVATE_WORKSPACE',git_review:{text:'PRIVATE_DIFF'}}});
+   const result=await ask('Какая погода в Ромнах?',{contextMode:'zero',state:{workspace:'PRIVATE_WORKSPACE',git_review:{text:'PRIVATE_DIFF'}}});
   assert.equal(result.topic.id,topic.id);assert.equal(requests[1].webSearch,true);assert.deepEqual(requests[1].tools,[]);
   assert.match(requests[1].prompt,/Earlier question[\s\S]*Ordinary answer/);assert.doesNotMatch(requests[1].prompt,/PRIVATE_WORKSPACE|PRIVATE_DIFF/);
-  await ask('Follow-up',{contextMode:'zero'});assert.match(requests[2].prompt,/Найди в интернете[\s\S]*Found with source[\s\S]*Follow-up/);
+   await ask('Follow-up',{contextMode:'zero'});assert.match(requests[2].prompt,/Какая погода в Ромнах\?[\s\S]*Found with source[\s\S]*Follow-up/);
   const sessions=require('../log-report').readSessions(root).sessions;
   assert.ok(sessions.some(s=>s.prompts.some(p=>p.operation==='Web search')));
  } finally {await ask.dispose();}

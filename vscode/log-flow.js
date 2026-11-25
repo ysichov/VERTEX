@@ -85,7 +85,7 @@
     const checks = calls.filter(d => /^(?:Verification|Lint|Tests?)$/i.test(d.name || ""));
     const reviews = calls.filter(d => d.name === "Review");
     const jev = details.map((detail, index) => ({ ...detail, detailIndex: index })).filter(d => /Jev|Skill search|Orchestrator|Recovery:/i.test(d.type || ""));
-    if (!jev.length && prompt.decision) jev.push({ type: "Jev decision", section: "Model answer" });
+    if (!jev.length && prompt.decision) jev.push({ type: prompt.decision.web_intent ? "Web intent (Jev)" : "Jev decision", section: "Model answer" });
     const eventTime = index => (prompt.events || []).find(event => event.detail === index)?.time || prompt.time || 0;
     const resultOf = call => details.find(d => d.type === "tool result" && d.tool_id === call.tool_id);
     const stateOf = call => {

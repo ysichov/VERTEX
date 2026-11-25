@@ -469,7 +469,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           if (requestId > nextRequest) nextRequest = requestId;
           // The window shows the question as written; the review's blocks go to the model with it, unseen.
           const zero = ask.state().contextMode === "zero";
-          const web=message.web===true||require("./web-intent").requested(message.text);
+          const webDecision=await ask.decideWeb(message.text),web=webDecision.web;
           const asked = web || zero ? null : reviewAsk;
           if (asked) { reviewAsk = null; await showReview(); }
           const images = (Array.isArray(message.images) ? message.images : []).filter(image => image
@@ -496,7 +496,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
               delete state.selected_fragment;
             }
             pending.started=true;
-            const reply = await ask(asked ? review.askRequest(asked.review_result ? shown : message.text, asked) : shown, {model: message.model, state, web,routeTopics:!!message.routeTopics,contextMode:asked?.system==="local"?"folder":asked?"sap":ask.state().contextMode,
+            const reply = await ask(asked ? review.askRequest(asked.review_result ? shown : message.text, asked) : shown, {model: message.model, state, web,webDecision,routeTopics:!!message.routeTopics,contextMode:asked?.system==="local"?"folder":asked?"sap":ask.state().contextMode,
               interjections: pending.interjections,
               ...(images.length ? { images } : {}),
               onProgress: update => {

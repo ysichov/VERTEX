@@ -64,10 +64,11 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs, signa
   }
   const base = baseUrl(id);
   const geminiDecision = id === "gemini-api" && route === "/decisions";
-  const url = new URL(base + (geminiDecision ? "/../decisions" : provider.routes?.[route] || route));
+  const geminiGrounding = id === "gemini-api" && route.startsWith("/generate-content?model=");
+  const url = new URL(geminiGrounding ? "https://generativelanguage.googleapis.com/v1beta/models/" + route.slice("/generate-content?model=".length) + ":generateContent" : base + (geminiDecision ? "/../decisions" : provider.routes?.[route] || route));
   return new Promise((resolve, reject) => {
     const req = (url.protocol === "http:" ? http : https).request(url, { signal, method: payload ? "POST" : "GET", headers: {
-      ...(apiKey && !provider.local ? geminiDecision ? { "x-goog-api-key": apiKey } : { authorization: "Bearer " + apiKey } : {}), ...(payload ? { "content-type": "application/json",
+       ...(apiKey && !provider.local ? geminiDecision || geminiGrounding ? { "x-goog-api-key": apiKey } : { authorization: "Bearer " + apiKey } : {}), ...(payload ? { "content-type": "application/json",
         "content-length": Buffer.byteLength(payload, "utf8") } : {})
     } }, res => {
       let text = "";
@@ -110,6 +111,38 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs, signa
     req.setTimeout(timeoutMs || (provider.local ? 600000 : payload ? 180000 : 60000), () => req.destroy(new Error(provider.label + " API timed out.")));
     req.end(payload || undefined);
   });
+}
+
+async function geminiWebSearch(options) {
+  const model = String(options.model || "").replace(/^models\//, "");
+  const request = options.request || requestJson;
+  const response = await request("gemini-api", options.apiKey, "/generate-content?model=" + encodeURIComponent(model), {
+    contents: [{ role: "user", parts: [{ text: options.prompt }] }],
+    tools: [{ google_search: {} }]
+  }, options.maxInputBytes || 256 * 1024, undefined, options.signal, options.onApiRequest);
+  const answer = response.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("").trim();
+  if (!answer) throw new Error("Gemini returned no grounded text.");
+  const sources = (response.candidates?.[0]?.groundingMetadata?.groundingChunks || []).map(chunk => chunk.web).filter(source => source?.uri);
+  const unique = [...new Map(sources.map(source => [source.uri, source])).values()];
+  return { plan: { answer: answer + (unique.length ? "\n\nSources:\n" + unique.map(source => "- [" + (source.title || source.uri) + "](" + source.uri + ")").join("\n") : ""), navigation: null },
+    model: response.modelVersion || options.model, usage: response.usageMetadata ? { input_tokens: Number(response.usageMetadata.promptTokenCount || 0), output_tokens: Number(response.usageMetadata.candidatesTokenCount || 0) } : null };
+}
+
+async function openaiWebSearch(options) {
+  const request = options.request || requestJson;
+  const response = await request("openai-api", options.apiKey, "/responses", {
+    model: options.model,
+    input: options.prompt,
+    tools: [{ type: "web_search" }],
+    include: ["web_search_call.action.sources"]
+  }, options.maxInputBytes || 256 * 1024, undefined, options.signal, options.onApiRequest);
+  const content = (response.output || []).flatMap(item => item.content || []);
+  const answer = response.output_text || content.filter(part => part.type === "output_text").map(part => part.text || "").join("\n").trim();
+  if (!answer) throw new Error("OpenAI returned no web-search text.");
+  const citations = content.flatMap(part => part.annotations || []).filter(item => item.type === "url_citation" && item.url);
+  const sources = [...new Map(citations.map(item => [item.url, item])).values()];
+  return { plan: { answer: answer + (sources.length ? "\n\nSources:\n" + sources.map(item => "- [" + (item.title || item.url) + "](" + item.url + ")").join("\n") : ""), navigation: null },
+    model: response.model || options.model, usage: response.usage ? { input_tokens: Number(response.usage.input_tokens || 0), output_tokens: Number(response.usage.output_tokens || 0) } : null };
 }
 
 async function models(id, apiKey, request = requestJson) {
@@ -505,4 +538,4 @@ function limitsText(limits) {
   return parts.length ? "OpenRouter: " + parts.join(" · ") : "OpenRouter limits not reported";
 }
 
-module.exports = { PROVIDERS, isLocal, setLocalBase, baseUrl, secretKey, requestJson, models, ask, probe, rateLimitedRequest, keyLimits, limitsText };
+module.exports = { PROVIDERS, isLocal, setLocalBase, baseUrl, secretKey, requestJson, models, ask, geminiWebSearch, openaiWebSearch, probe, rateLimitedRequest, keyLimits, limitsText };

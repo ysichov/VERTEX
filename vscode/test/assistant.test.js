@@ -108,7 +108,7 @@ test("Claude Code runs shut in: no built-in tool, one MCP server, the token only
   assert.equal(fs.existsSync(call.options.cwd), false, "the run's folder is removed");
 });
 
-test("Web search requests enable only Claude Code's built-in web tools", async () => {
+test("Web search requests enable and authorize Claude Code's built-in web tools", async () => {
   const spawn = spawner(call => {
     call.child.stdout.emit("data", JSON.stringify({ type: "result", subtype: "success", is_error: false,
       result: "", structured_output: PLAN, modelUsage: {} }));
@@ -117,7 +117,7 @@ test("Web search requests enable only Claude Code's built-in web tools", async (
   await assistant.ask(common(spawn, "claude", { nativeWebSearch: true }));
   const call = spawn.calls[0];
   assert.equal(after(call.args, "--tools"), "WebSearch,WebFetch");
-  assert.equal(after(call.args, "--allowedTools"), "mcp__vertex__sap_table_layout");
+  assert.equal(after(call.args, "--allowedTools"), "WebSearch,WebFetch,mcp__vertex__sap_table_layout");
 });
 
 test("in a working folder Claude Code runs there with its file and shell tools and the folder's CLAUDE.md", async () => {

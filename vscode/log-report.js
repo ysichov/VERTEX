@@ -139,7 +139,7 @@ function parseSession(text, file, listOnly = false) {
   const seen = new Set();
   const toolCalls = new Map();
   const nativeCosts = new Map(), reportedCosts = new Set();
-  let current;
+  let current, pendingDecision;
   for (const line of text.split(/\r?\n/)) {
     if(listOnly&&!/"type"\s*:\s*"user"/.test(line))continue;
     if (!line.trim()) continue;
@@ -200,7 +200,7 @@ function parseSession(text, file, listOnly = false) {
       continue;
     }
     if (record.type === "vertex_decision") {
-      if (current && record.input) current.decision = record.input;
+      if (record.input) { if (current) current.decision = record.input; else pendingDecision = record.input; }
       continue;
     }
     if (record.type === "vertex_user_interjection") {
@@ -276,7 +276,7 @@ function parseSession(text, file, listOnly = false) {
       const prompt = typeof content === "string" ? content : Array.isArray(content) && !content.some(block => block?.type === "tool_result")
         ? content.filter(block => block?.type === "text").map(block => block.text || "").join("\n") : "";
       if (prompt.trim()) {
-        current = { time: Number.isFinite(time) ? time : session.end, end: Number.isFinite(time) ? time : session.end, toolset: record.vertex_toolset || "",
+        current = { time: Number.isFinite(time) ? time : session.end, end: Number.isFinite(time) ? time : session.end, toolset: record.vertex_toolset || "", ...(pendingDecision ? { decision: pendingDecision } : {}),
           key: name + ":" + session.prompts.length, provider, branch: record.vertex_branch || "main", parent: record.vertex_parent || null,
           turnId: typeof record.vertex_turn === "string" ? record.vertex_turn : null,
           relatedTurnId: typeof record.vertex_related_turn === "string" ? record.vertex_related_turn : null,

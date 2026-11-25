@@ -2,6 +2,32 @@
 
 The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
 
+## 2026-11-25 — Restore context-filtered session logs
+
+Inspected the uncommitted Git diff, actual configured logs, VS Code session writer/reader and context tests, Eclipse generated assistant/log reader and shared report resources. The web-intent decision was written before operation, turn and context were set; the list prefilter read only that first record and excluded the file before parsing the later, correctly contextualized user record. Chat now sets metadata before writing the decision. Reused `readHeader` for old files: it scans complete JSONL records within its existing 4 MiB bound for the first recorded context, preserving first-record identity and UTF-8 boundaries; it never infers context from prompt text or paths. Files remain unchanged. Logs with context beyond the bound remain a limitation.
+
+Verified that both the preceding `codemie_20261125_163557_559003` conversation and this `codemie_20261125_164156_76d211` conversation are excluded by the original reader and included by the corrected reader using the real configured folder filter. Context regressions passed 9/9 and focused chat metadata regressions passed 2/2. The session-log/log-report pair remained at 77/94 passing, with exactly the same 17 failing names as the pre-change baseline and no new failures, after generating the copy's ignored resources with the existing `copy-pages.js`. An initial copy run additionally failed because those resources were absent; no source change was needed for that setup issue. JavaScript syntax and diff whitespace checks passed. Actual VS Code UI rendering and packaging were not checked; the version is unchanged.
+
+## 2026-11-25 — Authorize native web tools
+
+Searched the VS Code and Eclipse assistant launchers, model routing, existing native-web configuration, tool allowlists and focused launcher tests. Reused Claude Code's built-in `WebSearch` and `WebFetch` instead of adding a browser or provider-specific HTTP client. When native web search is requested, the launcher now includes those tools in both `--tools` and `--allowedTools`, alongside the VERTEX MCP tools, so non-interactive Claude Code and CodeMie runs can execute the tools rather than report that they are unavailable. The focused launcher regression verifies the complete allowlist; live CLI search behavior and Eclipse parity remain unverified.
+
+## 2026-11-25 — Native Gemini grounding
+
+Web mode uses Gemini's direct `generateContent` endpoint with `google_search` grounding, parses returned grounding links into the answer and authenticates with the existing Gemini API key. Vercel's prior Web-mode route is disabled; Codex receives its documented `--search` live-search flag. Syntax checks pass; live provider calls remain unverified.
+
+## 2026-11-25 — Native OpenAI web search
+
+OpenAI API Web mode now sends a direct Responses API request with the `web_search` tool and source inclusion enabled. URL citations from output annotations are appended as Markdown sources. The focused response-format regression and JavaScript syntax checks pass; a live OpenAI request remains unverified.
+
+## 2026-11-25 — Jev web-intent decision
+
+Replaced the keyword classifier with a bounded, protected Jev `noul` decision over the user's request only. A probability of at least 80% activates Web mode; an unavailable, failed or malformed decision conservatively keeps the request out of live search. The sidebar resolves the same decision before collecting review, SAP or workspace context and passes the result to chat, preventing a duplicate decision. The main chat session log now records the protected decision input, Jev model, probabilities and selected route as `vertex_decision`, alongside topic-routing decisions.
+
+## 2026-11-25 — Search direct weather questions
+
+Searched the web-intent detector, chat routing and existing weather regressions. Reused the current Web-search route rather than adding a weather service or sending an ordinary model a prompt that merely requests live data. Any direct weather question now opts into Web search; questions explicitly about usual, typical or average weather remain outside the billed live-search route. The focused intent regression covers “Какая погода в Ромнах?” and preserves the historical-climate case; live provider behavior remains unverified.
+
 ## 2026-11-25 — Native web tools for Claude Code and CodeMie
 
 Searched the VS Code chat routing, Claude/CodeMie launcher, tool allowlists, focused assistant/chat tests and the Eclipse/shared hosts. Reused Claude Code’s existing built-in `WebSearch` and `WebFetch` tools rather than adding a direct HTTP client, arbitrary URL access or a new provider. Live-web intents now remain with Claude Code or CodeMie, enable only those native tools and instruct the model to cite returned URLs; Vercel remains the fallback route for all other providers. The normal project/SAP MCP endpoint stays available, while web tools are not exposed through it. Focused launcher and routing tests cover native-tool selection; actual CodeMie web-tool availability and live network behavior remain unverified.
@@ -7835,4 +7861,3 @@ ASK Jev's review panel now parses tagged string state to display requirements an
 ## 2026-11-24 — Keep unrelated source lines out of inline diffs
 
 Review hunks, recorded Edit details and Flow previews previously paired changed lines by position, which made fully replaced lines look like inline edits. They now render a pair only when the lines share at least two non-whitespace characters at the beginning or end; otherwise each line stays a separate removal or insertion. The review summary counts those as removed/added. JavaScript syntax and diff checks pass; tests and packaging were not run.
-

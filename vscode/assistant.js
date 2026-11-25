@@ -704,6 +704,7 @@ function claudeCommand(options, dir) {
   // shellWithoutAsking (a setting, off by default) lets Bash run in the working copy without asking as well.
   const allowed = (nativeFolder ? (options.reviewAfter
     ? FOLDER_TOOLS.filter(t => t !== "Bash" || options.shellWithoutAsking === true) : FOLDER_READ_TOOLS) : [])
+    .concat(nativeWebTools)
     .concat(options.tools.map(function (t) { return "mcp__" + SERVER + "__" + t; }));
   if (allowed.length) {
     args.push("--allowedTools", allowed.join(","));
@@ -739,6 +740,7 @@ function codexCommand(options, dir) {
     "--disable", "shell_tool", "--disable", "unified_exec",
     "--disable", "plugins", "--disable", "apps"
   ];
+  if (options.nativeWebSearch) args.push("--search");
   if (options.tools.length) {
     args.push("-c", "mcp_servers." + SERVER + ".url=" + options.url,
       "-c", "mcp_servers." + SERVER + ".tool_call_timeout_sec=900",

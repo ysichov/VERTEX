@@ -1,12 +1,18 @@
 "use strict";
-// Explicit searches and inherently live questions opt into billed search; ordinary questions stay ordinary chat.
-function requested(text){
-  const value=String(text||"").toLowerCase();
-  if(/(?:не\s+(?:ищи|искать|шукай|шукати|используй\s+(?:веб|интернет))|без\s+(?:веб|интернет)|do\s+not\s+(?:search|browse)|don['’]t\s+(?:search|browse)|without\s+(?:web|internet))/u.test(value))return false;
-  return /(?:погугли|загугли|google it|web search)/u.test(value) || /(?:найди|найти|поищи|ищи|пошукай|знайди|шукай|search|browse|look\s+up|find)[\s\S]{0,140}(?:интернет|інтернет|веб|онлайн|в\s+сети|\bweb\b|\bonline\b|\binternet\b)/u.test(value)
-    || /(?:проверь|проверить|перевір|check|verify)[\s\S]{0,100}(?:актуальн|latest|current|up.to.date)/u.test(value)
-    || /(?:в\s+(?:интернете|інтернеті|вебе)|on\s+the\s+web)[\s\S]{0,80}(?:найди|поищи|знайди|search|find)/u.test(value)
-    || /(?:погод(?:а|у)?|weather)[\s\S]{0,80}(?:сейчас|сегодня|now|today|current)/u.test(value)
-    || /(?:сейчас|сегодня|now|today|current)[\s\S]{0,80}(?:погод(?:а|у)?|weather)/u.test(value);
+
+async function decide(vscode, text, options = {}) {
+  const connection = await require("./review-jev").connection(vscode);
+  if (!connection) return { web: false, status: "unavailable" };
+  const state = { request: require("./context-protection").protect(String(text || "").slice(0, 4000)) };
+  const questions = { web: { type: "noul", instructions: "Does this request require fresh public internet information to answer accurately? Answer yes for current facts, prices, weather, news, websites or an explicit request to search. Answer no for supplied context, local code, SAP data, general knowledge, historical explanation, or when the user asks not to use the internet." } };
+  try {
+    const result = await require("./jev").evaluate(connection.provider, connection.key, connection.model, state, questions, { signal: options.signal });
+    const web = result.answers.web.noul >= 0.8;
+    return { web, status: "decided", provider: connection.provider, model: connection.model, state, questions, result };
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    return { web: false, status: "fallback", error: error.message };
+  }
 }
-module.exports={requested};
+
+module.exports = { decide };

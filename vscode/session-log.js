@@ -29,15 +29,34 @@ function readHeader(file) {
   let descriptor;
   try {
     descriptor=fs.openSync(file,"r");
-    const parts=[],buffer=Buffer.alloc(16384);let length=0;
-    while(length<4*1024*1024){
-      const count=fs.readSync(descriptor,buffer,0,buffer.length,null);
+    const buffer=Buffer.alloc(16384),limit=4*1024*1024;
+    let pending=Buffer.alloc(0),length=0,header=null;
+    // A routing decision may precede setContext in existing logs. Find the first
+    // recorded context before filtering the file, without loading its whole body.
+    while(length<limit){
+      const count=fs.readSync(descriptor,buffer,0,Math.min(buffer.length,limit-length),null);
       if(!count)break;
-      const end=buffer.subarray(0,count).indexOf(10),take=end<0?count:end;
-      parts.push(Buffer.from(buffer.subarray(0,take)));length+=take;
-      if(end>=0)break;
+      length+=count;
+      pending=Buffer.concat([pending,buffer.subarray(0,count)]);
+      let end;
+      while((end=pending.indexOf(10))>=0){
+        const line=pending.subarray(0,end).toString("utf8");
+        pending=pending.subarray(end+1);
+        if(!line.trim())continue;
+        let record;
+        try{record=JSON.parse(line);}catch(_){continue;}
+        if(!header)header=record;
+        if(record.vertex_context)return {...header,vertex_context:record.vertex_context};
+      }
     }
-    return JSON.parse(Buffer.concat(parts).toString("utf8"));
+    if(pending.length&&length<limit){
+      try{
+        const record=JSON.parse(pending.toString("utf8"));
+        if(!header)header=record;
+        if(record.vertex_context)return {...header,vertex_context:record.vertex_context};
+      }catch(_){/* An actively written last line may be incomplete. */}
+    }
+    return header;
   }catch(_){return null;}finally{if(descriptor!==undefined)try{fs.closeSync(descriptor);}catch(_){}}
 }
 
@@ -82,8 +101,8 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
   return {
     file, conversation,
     // Explicit Jev input is retained only when question logging is enabled.
-    decision(input) {
-      if (on.questions) write({ type: "vertex_decision", input: JSON.parse(JSON.stringify(input)) });
+    decision(input, always = false) {
+      if (on.questions || always) write({ type: "vertex_decision", input: JSON.parse(JSON.stringify(input)) });
     },
     setOperation(value){operation=String(value||"Chat");},
     setTurnId(value){turnId=typeof value==="string"&&/^[a-f0-9]{16}$/.test(value)?value:null;},

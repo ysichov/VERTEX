@@ -2,6 +2,28 @@
 
 The VS Code extension version is 0.9.122. The VSIX is built after the version changes are approved.
 
+## 2026-11-25 — Restore new conversations in Session Logs
+
+New conversations remain visible when Session Logs or chat history is filtered by their folder, SAP system or Zero context. Existing logs hidden after the web-intent change are readable again without rewriting the files.
+
+## 2026-11-25 — Authorize native web tools
+
+Claude Code and CodeMie now authorize their built-in web-search tools when VERTEX routes a request to live web search, preventing unavailable-tool replies.
+
+## 2026-11-25 — Native web search providers
+
+Web mode no longer uses Vercel AI Gateway. Codex uses live search and Gemini API uses Google Search grounding.
+
+OpenAI API now uses its native Responses API web search and returns source links.
+
+## 2026-11-25 — Jev chooses Web mode
+
+Jev now decides whether a request needs current public-web data, replacing fixed keyword rules for weather, prices and other live information.
+
+## 2026-11-25 — Search live weather by default
+
+A direct weather question, such as “Какая погода в Ромнах?”, now starts Web search automatically. Climate and typical-weather questions remain ordinary chat.
+
 ## 2026-11-25 — Native web tools for Claude Code and CodeMie
 
 In VS Code, live-web questions sent through Claude Code or CodeMie now receive Claude’s built-in `WebSearch` and `WebFetch` tools. This does not require a Vercel AI Gateway key; other providers retain the Gateway search route. “Без интернета” and equivalent opt-out wording still keeps the request in ordinary chat.
@@ -4554,4 +4576,3 @@ Flow now has a Context view beside Steps. It shows which earlier conversation me
 ## VSIX 0.9.111
 
 The VS Code extension version is 0.9.111. The VSIX is built after the version changes are approved.
-

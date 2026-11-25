@@ -606,3 +606,11 @@ test('a pause during a model call lets it finish, skips its tools and asks the m
  assert.equal(result.usage.input_tokens,220);assert.equal(result.usage.output_tokens,30);assert.equal(calls.length,2);
 });
 
+test('OpenAI Responses web search preserves citations',async()=>{
+ let body;
+ const result=await api.openaiWebSearch({apiKey:'key',model:'gpt-5',prompt:'Weather in Kyiv',request:async(id,key,route,value)=>{
+  body=value;return {model:'gpt-5',usage:{input_tokens:10,output_tokens:2},output:[{content:[{type:'output_text',text:'Snow.',annotations:[{type:'url_citation',title:'Weather',url:'https://example.com/weather'}]}]}]};
+ }});
+ assert.deepEqual(body.tools,[{type:'web_search'}]);
+ assert.match(result.plan.answer,/\[Weather\]\(https:\/\/example.com\/weather\)/);
+});
