@@ -917,8 +917,11 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         routedTopic=topicSelection.topic;
       }
       if(topicSelection&&mode!=="zero"&&!(options.routeTopics??config.get("context.routeTopics",false))){
-        const keptIndices=history.map((_,index)=>index);
-        topicSelection={...topicSelection,history,report:{...topicSelection.report,basis:"jev_topic_only",keptIndices,afterMessages:history.length}};
+        // A topic that no earlier message carries is new: nothing of the old context belongs to it.
+        const newTopic=topicSelection.report.status==="routed"&&topicSelection.report.basis!=="jev_uncertain"&&topicSelection.topic
+          &&!history.some(message=>require("./topic-routing").topicOf(message.topic)?.id===topicSelection.topic.id);
+        const keptIndices=newTopic?[]:history.map((_,index)=>index),keptHistory=newTopic?[]:history;
+        topicSelection={...topicSelection,history:keptHistory,keptIndices,report:{...topicSelection.report,basis:"jev_topic_only",keptIndices,afterMessages:keptHistory.length}};
       }
       if((mode==="folder"||mode==="both")&&workDir&&!images.length&&require("./review-jev").enabled(vscode)
         && gitRoot && await require("./skill-match").isVertexRepository(gitRoot)){
