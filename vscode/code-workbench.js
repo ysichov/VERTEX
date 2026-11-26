@@ -111,6 +111,13 @@ async function originStep(log, label, work) {
 const pathName = name => encodeURIComponent(String(name).replace(/^\/([^/]+)\//, "($1)"));
 
 function register(vscode, context, { active, auth, pin, pinned, systems }) {
+  context.subscriptions.push(vscode.commands.registerCommand('vertex.review.chooseFolder', async () => {
+    const picked = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false,
+      openLabel: 'Use this review folder' });
+    if (!picked?.length) { return; }
+    await vscode.workspace.getConfiguration('vertex.review').update('folder', picked[0].fsPath, vscode.ConfigurationTarget.Global);
+    vscode.window.showInformationMessage('VERTEX: review folder set to ' + picked[0].fsPath);
+  }));
   const events = require("./agent-events").createEmitter();
   const pendingRepositories = new Map();
   const repositories = new Map(), texts = new Map(), opened = new Map(), drafts = new Map();
@@ -2714,24 +2721,42 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     const mode = canStore ? wanted : 'file';
     const system = active().system || {};
     const systemName = String(system.name || system.url || 'system').replace(/[^\w.-]+/g, '_');
-    const folder = () => {
-      const setting = String(config.get('folder') || '').trim() || path.join('.vertex', 'reviews');
-      if (path.isAbsolute(setting)) { return path.join(setting, systemName); }
+    const folder = (required = false) => {
+      const setting = String(config.get('folder') || '').trim();
       const root = (vscode.workspace.workspaceFolders || [])[0];
-      if (!root) { throw new Error('Reviews are saved to files, and vertex.review.folder is relative, but no folder is open in VS Code. Open one, or set an absolute vertex.review.folder.'); }
-      return path.join(root.uri.fsPath, setting, systemName);
+      if (!setting && !required && !root) { return null; }
+      if (!setting && required) {
+        const message = 'Code reviews need a folder for file storage. Set vertex.review.folder to continue.';
+        vscode.window.showErrorMessage(message, 'Open setting', 'Choose folder').then(action => {
+          if (action === 'Open setting') { vscode.commands.executeCommand('workbench.action.openSettings', 'vertex.review.folder'); }
+          if (action === 'Choose folder') { vscode.commands.executeCommand('vertex.review.chooseFolder'); }
+        });
+        throw new Error(message);
+      }
+      if (setting && path.isAbsolute(setting)) { return path.join(setting, systemName); }
+      if (!root) {
+        if (!required) { return null; }
+        throw new Error('vertex.review.folder is relative, but no folder is open in VS Code. Set an absolute path or choose a folder.');
+      }
+      // Read the historical default location so reviews saved before the folder became required remain accessible.
+      return path.join(root.uri.fsPath, setting || '.vertex/reviews', systemName);
     };
-    const file = (trkorr, remote) => path.join(folder(), trkorr + (remote ? '__' + remote : '') + '.json');
+    const file = (trkorr, remote, required = false) => {
+      const base = folder(required);
+      return base && path.join(base, trkorr + (remote ? '__' + remote : '') + '.json');
+    };
     return { mode, wanted, canStore,
       list: async () => {
-        try { return (await fs.promises.readdir(folder(), { withFileTypes: true }))
+        const base = folder();
+        if (!base) { return []; }
+        try { return (await fs.promises.readdir(base, { withFileTypes: true }))
           .filter(entry => entry.isFile() && entry.name.endsWith('.json') && !entry.name.includes('__'))
           .map(entry => entry.name.slice(0, -5)); }
         catch (error) { if (error.code === 'ENOENT') return []; throw error; }
       },
       where: (trkorr, remote) => file(trkorr, remote),
-      read: async (trkorr, remote) => { try { return await fs.promises.readFile(file(trkorr, remote), 'utf8'); } catch (error) { if (error.code === 'ENOENT') { return null; } throw error; } },
-      write: async (trkorr, remote, text) => { const at = file(trkorr, remote); await fs.promises.mkdir(path.dirname(at), { recursive: true }); await fs.promises.writeFile(at, text, 'utf8'); return at; } };
+      read: async (trkorr, remote) => { const at = file(trkorr, remote); if (!at) { return null; } try { return await fs.promises.readFile(at, 'utf8'); } catch (error) { if (error.code === 'ENOENT') { return null; } throw error; } },
+      write: async (trkorr, remote, text) => { const at = file(trkorr, remote, true); await fs.promises.mkdir(path.dirname(at), { recursive: true }); await fs.promises.writeFile(at, text, 'utf8'); return at; } };
   }
   // Host/agent interface: create/modify only PREPARE and open a diff. Apply is UI-only.
   // The sources of a transpiler run of an SAP program: its active version and what it names (sap-transpile.js).

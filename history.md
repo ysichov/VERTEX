@@ -1,3 +1,19 @@
+## Keep existing reviews available without a save folder
+
+An unset `vertex.review.folder` no longer blocks links to reviews already saved in SAP or the earlier default `.vertex/reviews` location. A folder is still required when saving new file based reviews.
+
+## Choose a required folder for file reviews
+
+File based code reviews now require `vertex.review.folder`. **VERTEX: Choose Review Folder** opens a folder picker, and a missing-folder message offers a direct link to the setting.
+
+## MCP update button follows the selected server
+
+The chat toolbar shows **Update** only when the selected MCP server has a newer package version. Updates for other servers remain available in the MCP Servers window.
+
+## VSIX 0.9.124
+
+The VS Code extension version is 0.9.124. The VSIX is built after the version changes are approved.
+
 ## VSIX 0.9.123
 
 The VS Code extension version is 0.9.123. The VSIX is built after the version changes are approved.

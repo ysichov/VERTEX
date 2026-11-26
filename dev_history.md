@@ -1,3 +1,19 @@
+## Keep saved review reads independent of the required save folder
+
+File review listing and reading now treat an unset folder as the historical `.vertex/reviews` location relative to an open workspace, preserving access to earlier files. With no workspace they return no file matches, so SAP table reviews remain usable without a file path. Writes still require an explicit folder and retain the picker error. Automated tests were not run.
+
+## Require and choose the file review folder
+
+Removed the implicit `.vertex/reviews` fallback. An unset folder now raises an actionable error with **Open setting** and **Choose folder** actions; the latter invokes the native folder picker and saves an absolute path globally. Added the corresponding command and updated the VS Code guide and root history. Automated checks were not run; package integrity and runtime behavior remain unverified.
+
+## Hide unrelated MCP updates in the chat toolbar
+
+The toolbar's Update button now appears only when the selected MCP server has a pending package update. The MCP Servers window continues to offer per-server updates. Updated the VS Code user guide and root change history; version unchanged. Automated checks were not run.
+
+## Prepare VSIX 0.9.124
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
 ## Prepare VSIX 0.9.123
 
 The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.

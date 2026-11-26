@@ -60,8 +60,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     const localDateKey=time=>{const date=new Date(time);return Number.isFinite(date.getTime())?date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0")+"-"+String(date.getDate()).padStart(2,"0"):"";};
     const questionTime=time=>{const date=new Date(time);if(!Number.isFinite(date.getTime()))return "";const hhmm=String(date.getHours()).padStart(2,"0")+":"+String(date.getMinutes()).padStart(2,"0");if(localDateKey(time)===localDateKey(Date.now()))return hhmm;return String(date.getDate()).padStart(2,"0")+"."+String(date.getMonth()+1).padStart(2,"0")+"."+String(date.getFullYear()).slice(-2)+" "+hhmm;};
     const first = found.turns.find(turn => turn.time), when = first ? questionTime(first.time) : "";
-    await view.webview.postMessage({ chat: "VERTEX: Continued from the session log" + (when ? " of " + when : "") + ": " + count + " question" + (count === 1 ? "" : "s")
-      + (found.files > 1 ? " from " + found.files + " providers' logs" : "") + ". The next question carries them as history; the tools' results of that session are not repeated." });
+
     for (const turn of found.turns) {
       await view.webview.postMessage({ ...(turn.topic?{topic:{...turn.topic,label:restoredLabels.get(turn.topic.id)||turn.topic.label}}:{}), chat: "You: " + turn.question
         + (turn.images?.length ? "  [" + turn.images.length + " screenshot(s) restored]" : "")
@@ -830,7 +829,7 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button><button type="button" class="secondary" id="mcp-servers" title="MCP servers: descriptions, versions, toolsets and tools" aria-label="MCP servers: descriptions, versions, toolsets and tools" hidden>ⓘ</button><button type="button" class="secondary" id="mcp-update" hidden>Update</button>
-</span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden><a href="#" class="link" id="folder-name" title="Choose a project folder for VERTEX without changing the VS Code workspace"></a> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div></div>
+</span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden><a href="#" class="link" id="folder-name" title="Choose a project folder for VERTEX without changing the VS Code workspace"></a> <button class="secondary" data-action="gitHistory" id="git-history" title="GitHub operations">GIT</button></span></div></div>
 <details id="conversation-history"><summary>Conversations · Continue a chat<span id="topic-now"></span></summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"><button type="button" class="secondary" id="history-refresh">Refresh</button></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
 <div id="topic-view" class="line" hidden><label for="topic-view-select">Show conversation</label><select id="topic-view-select" aria-label="Visible conversation topic"><option value="current">Current topic</option><option value="all">All topics</option></select></div>
 <main id="messages" aria-live="polite"><p class="chat-empty">Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
@@ -859,12 +858,14 @@ function refreshTopicView(){
  const box=document.getElementById('messages'),control=document.getElementById('topic-view'),select=document.getElementById('topic-view-select');
  /* AI Review steps have no topic of their own: they stay visible and do not decide the current topic. */
  const messages=[...box.children].filter(item=>(item.classList.contains('you')||item.classList.contains('vertex'))&&!item.classList.contains('review-step'));
- const topics=new Map();for(const item of messages){const id=item.dataset.topicId;if(!id)continue;const text=(topicCatalog.find(t=>t.id===id)?.label||(item.classList.contains('you')?item.textContent.replace(/^You:\\s*/,''):'')).replace(/\\s+/g,' ').trim();if(!topics.has(id)||(!topics.get(id)&&text))topics.set(id,text);}
+ const topics=new Map();for(const item of messages){const id=item.dataset.topicId;if(!id)continue;const text=(topicCatalog.find(t=>t.id===id)?.label||(item.classList.contains('you')?item.textContent.replace(/^You:\\s*/,''):'')).replace(/\\s+/g,' ').trim();if(/^Build VSIX$/i.test(text))continue;if(!topics.has(id)||(!topics.get(id)&&text))topics.set(id,text);}
  control.hidden=!topics.size;
  select.replaceChildren();for(const [value,label] of [['current','Current topic'],['all','All topics'],['unassigned','Without a topic'],...Array.from(topics,([id,label])=>[id,'T'+Number(id.slice(6))+' · '+(label||'Untitled topic').slice(0,65)])]){const option=document.createElement('option');option.value=value;option.textContent=label;select.appendChild(option);}
  if(!['current','all','unassigned'].includes(topicViewMode)&&!topics.has(topicViewMode))topicViewMode='current';select.value=topicViewMode;
  const selected=topicViewMode==='current'?(messages.at(-1)?.dataset.topicId||''):topicViewMode==='unassigned'?'':topicViewMode;
- for(const item of messages)item.hidden=topicViewMode!=='all'&&(item.dataset.topicId||'')!==selected;
+ const visibleTopics=new Set(selected?[selected]:[]);
+ if(topicViewMode==='current'){const pending=[selected];while(pending.length){const topic=topicCatalog.find(item=>item.id===pending.pop());for(const dependency of topic?.dependencies||[])if(!visibleTopics.has(dependency)){visibleTopics.add(dependency);pending.push(dependency);}}}
+ for(const item of messages)item.hidden=topicViewMode!=='all'&&!visibleTopics.has(item.dataset.topicId||'');
 }
 document.getElementById('topic-view-select').onchange=e=>{topicViewMode=e.target.value;refreshTopicView();};
 window.addEventListener('message',e=>{const d=e.data||{};if(d.historyContinued)topicViewMode=d.viewTopic||'all';/* A pinned topic from Continue a chat must not hide the exchange that just arrived under a new topic. */if(d.progress?.topic&&topicViewMode.startsWith('topic_')&&topicViewMode!==d.progress.topic.id)topicViewMode='current';if(d.chat||d.cleared||d.topicList||d.historyContinued||d.progress?.topic||d.progress?.done)queueMicrotask(refreshTopicView);});
@@ -1479,7 +1480,8 @@ window.addEventListener('message', event => {
     mcpSelect.hidden = document.getElementById('mcp-label').hidden = document.getElementById('mcp-settings').hidden = document.getElementById('mcp-servers').hidden = false;
     document.getElementById('mcp-settings').title=document.getElementById('mcp-settings').ariaLabel=orchestratorSelected?'Configure orchestrator Jev model':'Settings of the selected MCP server';
     const waiting = event.data.mcp.updates || [], update = document.getElementById('mcp-update');
-    update.hidden = !waiting.length; update.title = waiting.length ? 'A newer version is out for ' + waiting.join(', ') + '. Opens MCP Servers, where you update it.' : '';
+    const selectedUpdate = waiting.includes(event.data.mcp.selected);
+    update.hidden = !selectedUpdate; update.title = selectedUpdate ? 'A newer version is out for ' + event.data.mcp.selected + '. Opens MCP Servers, where you update it.' : '';
   }
   if (event.data && event.data.ai) {
     const select = document.getElementById('provider-select');

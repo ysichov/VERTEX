@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.123**
+**Version: 0.9.124**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -298,8 +298,9 @@ next connection; **Open RFC trace folder** opens it.
 Code reviews are saved where `vertex.review.storage` says: `table` (default) - SAP's
 `ZAVE_REVIEW`, shared with AVE; `file` - one JSON file per request; `both` - the table is read
 first and every save writes both. A system without VERTEX's ABAP keeps reviews in files whatever
-the setting says. `vertex.review.folder` is where the files go, one `<system>/<request>.json`
-each; empty means `.vertex/reviews` in the first workspace folder.
+the setting says. `vertex.review.folder` is required when reviews use file storage; it contains one
+`<system>/<request>.json` per request. Run **VERTEX: Choose Review Folder** to select a directory,
+or enter its path in Settings. Relative paths use the first workspace folder.
 
 ```json
 "vertex.review.storage": "file",
@@ -829,7 +830,8 @@ in and whether it may change SAP. Versions and tool lists are those kept from ea
 server's last start in VERTEX, so nothing has to run to show them; **Read tools**
 starts a server once to read them. After VS Code loads, and again each time this window opens, VERTEX asks npm whether
 a newer ARC-1 or mcp-abap-adt is out; if so, **Update** appears beside the MCP list
-and in the window. Nothing is installed until you press it: the newer version is
+when the selected server has an update, and in the window beside each server that
+can be updated. Nothing is installed until you press it: the newer version is
 written to `vertex.chat.mcpVersions`, the server starts on it and its tool list is
 kept. SAP ADT updates with SAP's extension and vibing-steampunk with its own
 executable; for them the window shows the version the server reports.

@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.123",
+  "version": "0.9.124",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -182,6 +182,10 @@
       {
         "command": "vertex.tools",
         "title": "VERTEX Tools"
+      },
+      {
+        "command": "vertex.review.chooseFolder",
+        "title": "VERTEX: Choose Review Folder"
       },
       {
         "command": "vertex.switchSystem",
@@ -1150,7 +1154,7 @@
         "vertex.review.folder": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Folder for reviews saved to files, one `<system>/<request>.json` each. Empty means `.vertex/reviews` in the first workspace folder; a relative path is taken from there too."
+          "markdownDescription": "Required for file reviews: folder for one `<system>/<request>.json` each. Run **VERTEX: Choose Review Folder** to pick a folder, or enter a path here. Relative paths use the first workspace folder."
         },
         "vertex.rfcTrace": {
           "type": "number",
