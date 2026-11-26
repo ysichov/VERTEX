@@ -1,3 +1,7 @@
+## Fix the VERTEX chat render loop with an empty topic catalog
+
+The current-topic filter popped its pending ID inside the `find` predicate. An empty catalog never called the predicate, and a longer catalog could consume the ID during the first comparison. The filter now removes one ID per iteration before looking it up and skips IDs already visited. The regression test reproduces the original timeout and passes with empty history, missing topic metadata, cyclic dependencies, and unassigned messages. The four other failures in the sidebar suite also occur with the original source.
+
 ## Keep saved review reads independent of the required save folder
 
 File review listing and reading now treat an unset folder as the historical `.vertex/reviews` location relative to an open workspace, preserving access to earlier files. With no workspace they return no file matches, so SAP table reviews remain usable without a file path. Writes still require an explicit folder and retain the picker error. Automated tests were not run.

@@ -1,3 +1,7 @@
+## Fix VS Code freeze when opening VERTEX chat
+
+The VERTEX panel now opens with an empty conversation history. The current-topic filter shows related topics when their metadata is available.
+
 ## Keep existing reviews available without a save folder
 
 An unset `vertex.review.folder` no longer blocks links to reviews already saved in SAP or the earlier default `.vertex/reviews` location. A folder is still required when saving new file based reviews.

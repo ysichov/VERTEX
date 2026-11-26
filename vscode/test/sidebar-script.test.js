@@ -2,6 +2,42 @@
 const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 
+test("current topic refresh finishes with empty history and follows dependencies", () => {
+  const folder = path.join(__dirname, "..");
+  const sandbox = { module: { exports: {} }, require, __dirname: folder };
+  vm.runInNewContext(fs.readFileSync(path.join(folder, "sidebar.js"), "utf8") + "\nmodule.exports.render = html;", sandbox);
+  const script = sandbox.module.exports.render("topics").match(/<script nonce="topics">([\s\S]*?)<\/script>/)[1];
+  const refresh = script.slice(script.indexOf("function refreshTopicView()"), script.indexOf("document.getElementById('topic-view-select').onchange"));
+  const messages = { children: [] };
+  const control = {};
+  const select = { replaceChildren() {}, appendChild() {} };
+  const nodes = { messages, "topic-view": control, "topic-view-select": select };
+  const context = vm.createContext({
+    document: { getElementById: id => nodes[id], createElement: () => ({}) },
+    topicViewMode: "current",
+    topicCatalog: [],
+  });
+  vm.runInContext(refresh + "\nrefreshTopicView();", context, { timeout: 500 });
+  assert.equal(control.hidden, true);
+
+  const message = id => ({ dataset: { topicId: id }, classList: { contains: name => name === "you" }, textContent: id });
+  messages.children = ["", "topic_1", "topic_2", "topic_3"].map(message);
+  vm.runInContext("refreshTopicView();", context, { timeout: 500 });
+  assert.deepEqual(messages.children.map(item => item.hidden), [true, true, true, false]);
+
+  context.topicCatalog = [
+    { id: "topic_1", label: "Unrelated" },
+    { id: "topic_2", label: "Dependency", dependencies: ["topic_3"] },
+    { id: "topic_3", label: "Current", dependencies: ["topic_2"] },
+  ];
+  vm.runInContext("refreshTopicView();", context, { timeout: 500 });
+  assert.deepEqual(messages.children.map(item => item.hidden), [true, true, false, false]);
+
+  context.topicViewMode = "unassigned";
+  vm.runInContext("refreshTopicView();", context, { timeout: 500 });
+  assert.deepEqual(messages.children.map(item => item.hidden), [false, true, true, true]);
+});
+
 test("Edit scene changes to AI reasoning when the tool returns", () => {
   const folder = path.join(__dirname, "..");
   const sandbox = { module: { exports: {} }, require, __dirname: folder };

@@ -863,8 +863,19 @@ function refreshTopicView(){
  select.replaceChildren();for(const [value,label] of [['current','Current topic'],['all','All topics'],['unassigned','Without a topic'],...Array.from(topics,([id,label])=>[id,'T'+Number(id.slice(6))+' · '+(label||'Untitled topic').slice(0,65)])]){const option=document.createElement('option');option.value=value;option.textContent=label;select.appendChild(option);}
  if(!['current','all','unassigned'].includes(topicViewMode)&&!topics.has(topicViewMode))topicViewMode='current';select.value=topicViewMode;
  const selected=topicViewMode==='current'?(messages.at(-1)?.dataset.topicId||''):topicViewMode==='unassigned'?'':topicViewMode;
- const visibleTopics=new Set(selected?[selected]:[]);
- if(topicViewMode==='current'){const pending=[selected];while(pending.length){const topic=topicCatalog.find(item=>item.id===pending.pop());for(const dependency of topic?.dependencies||[])if(!visibleTopics.has(dependency)){visibleTopics.add(dependency);pending.push(dependency);}}}
+ const visibleTopics=new Set([selected]);
+ if(topicViewMode==='current'&&selected){
+   const pending=[selected];
+   while(pending.length){
+     const id=pending.pop();
+     const topic=topicCatalog.find(item=>item.id===id);
+     for(const dependency of topic?.dependencies||[]){
+       if(visibleTopics.has(dependency))continue;
+       visibleTopics.add(dependency);
+       pending.push(dependency);
+     }
+   }
+ }
  for(const item of messages)item.hidden=topicViewMode!=='all'&&!visibleTopics.has(item.dataset.topicId||'');
 }
 document.getElementById('topic-view-select').onchange=e=>{topicViewMode=e.target.value;refreshTopicView();};
