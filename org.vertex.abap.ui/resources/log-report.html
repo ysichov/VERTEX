@@ -1521,7 +1521,7 @@ function markdown(text, target) {
       }
       if(node.kind==="model"){
         if(node.editRounds){
-          inspector.appendChild(el("p","muted","Visual group of recorded model rounds, not necessarily one model request."));
+          inspector.appendChild(el("p","muted",node.inferredEdit ? "Edit group inferred from consecutive tool calls." : "Visual group of recorded model rounds, not necessarily one model request."));
           node.editRounds.forEach(function(round){
             inspector.appendChild(el("h3","","Round " + round.round));
             if(round.metadata){var entry=detailSection({type:"Provider response metadata",text:JSON.stringify(round.metadata,null,2)},prompt,"");if(entry)inspector.appendChild(entry);}
@@ -1617,16 +1617,18 @@ function markdown(text, target) {
     var states = flowView.states || (flowView.states = Object.create(null));
     var state = states[sessions[index].id] || (states[sessions[index].id] = {});
     if (topicSync && typeof topicSync.value === "string") state.topicFilter = topicSync.value;
-    flowDispose = window.vertexLogFlow.mount(root, sessions[index], { details: showFlowDetail, state: state, followRight: topicSync?.followRight === true,
+    flowDispose = window.vertexLogFlow.mount(root, sessions[index], { details: showFlowDetail, state: state, promptKey: topicSync?.promptKey, followRight: topicSync?.followRight === true,
       onTopicChange: function (topic) { if (topicSync && topicSync.onChange) topicSync.onChange(topic); } });
   }
   var lastReport = null, lastRenderedRecords = [], pendingConversationOpen = null, listState = { query: "", hiddenKinds: {}, context: null, contextObject: null, placeInitialized: false, topic: "all", showSkills: false };
-  // Filter recorded matches, never infer a skill from the wording of a question.
+  function isSkillRequest(prompt) {
+    return chat(prompt) && (prompt.matchedSkill || /^\s*\/?vsix\s*$/i.test(prompt.text || ""));
+  }
   function visibleSkillSession(session, showSkills) {
     if (showSkills) return session;
-    var hidden = session.prompts.filter(function (p) { return chat(p) && p.matchedSkill; });
+    var hidden = session.prompts.filter(isSkillRequest);
     if (!hidden.length) return session;
-    if (!session.prompts.some(function (p) { return chat(p) && !p.matchedSkill; })) return null;
+    if (!session.prompts.some(function (p) { return chat(p) && !isSkillRequest(p); })) return null;
     var turns = new Set(hidden.map(function (p) { return p.turnId; }).filter(Boolean));
     return Object.assign({}, session, { prompts: session.prompts.filter(function (p) {
       return !hidden.includes(p) && !(p.relatedTurnId && turns.has(p.relatedTurnId));
@@ -1649,7 +1651,7 @@ function markdown(text, target) {
     } else if (contextChanged && rawSession && lastReport) lastRenderedRecords = render(lastReport) || [];
     if(contextChanged&&!rawSession)return;
     var record = lastRenderedRecords.find(function (item) { return item.item.id === request.id || request.conversationId && item.item.conversation === request.conversationId; });
-    if (record) { pendingConversationOpen = null; record.toggle(request.mode, request.live); }
+    if (record) { pendingConversationOpen = null; record.toggle(request.mode, request.live, request.promptKey); }
   }
   var conversationScreen = document.getElementById("conversation-screen"), listScroll = 0, conversationState = null;
   function closeConversation(clearState) {
@@ -1661,12 +1663,13 @@ function markdown(text, target) {
     document.body.classList.remove("conversation-open");
     window.scrollTo(0, listScroll);
   }
-  function openConversation(session, actions, requestedMode, requestedLive) {
+  function openConversation(session, actions, requestedMode, requestedLive, promptKey) {
     var reopening = conversationState && conversationState.id === session.id;
     if (!conversationState) listScroll = window.scrollY;
     var previous=conversationState&&conversationState.id===session.id?conversationState:null;
     var topicIds=new Map();session.prompts.forEach(function(prompt){var topic=prompt.topic;if(topic&&topic.id&&!topicIds.has(topic.id))topicIds.set(topic.id,topic.label||"");});
     var chosenTopic=previous?.topic||listState.topic||"all";
+    if(promptKey)chosenTopic="all";
     if(chosenTopic!=="all"&&!topicIds.has(chosenTopic))chosenTopic="all";
     conversationState = { id: session.id, mode: requestedMode || (previous ? previous.mode : "logs"), topic:chosenTopic, live:requestedLive === undefined ? Boolean(previous?.live) : requestedLive === true };
     // Capture Flow's viewport while it is still attached and has a scroll range.
@@ -1712,8 +1715,9 @@ function markdown(text, target) {
       logs.hidden = flowing; graph.hidden = !flowing;
       logsButton.classList.toggle("active", !flowing); logsButton.setAttribute("aria-pressed", String(!flowing));
       flowButton.classList.toggle("active", flowing); flowButton.setAttribute("aria-pressed", String(flowing));
-      if (flowing) flowView(graph, [session], {value:conversationState.topic,followRight:conversationState.live,onChange:function(topic){conversationState.topic=topic;conversationTopic.value=topic;}});
+      if (flowing) flowView(graph, [session], {value:conversationState.topic,promptKey:promptKey,followRight:conversationState.live,onChange:function(topic){conversationState.topic=topic;conversationTopic.value=topic;}});
       else if (flowDispose) { flowDispose(); flowDispose = null; }
+      if (flowing) promptKey = "";
     }
     conversationTopic.onchange=function(){conversationState.topic=conversationTopic.value||"all";logs.replaceChildren(promptTable(session,conversationState.topic));show(conversationState.mode);};
     logsButton.onclick = function () { show("logs"); };
@@ -1842,10 +1846,10 @@ function markdown(text, target) {
     });
     if(!topicCounts.has(listState.topic))listState.topic="all";
     topicSelect.value=listState.topic;topicSelect.hidden=!topicCounts.size;tools.appendChild(topicSelect);
-    if (report.sessions.some(function (s) { return s.prompts.some(function (p) { return chat(p) && p.matchedSkill; }); })) {
+    if (report.sessions.some(function (s) { return s.prompts.some(isSkillRequest); })) {
       var skillBox = el("input"); skillBox.type = "checkbox"; skillBox.checked = listState.showSkills;
       var skillLabel = el("label", "kind-filter");
-      skillLabel.title = "Show requests matched to a skill; recorded usage totals still include hidden requests";
+      skillLabel.title = "Show skill requests and VSIX commands; recorded usage totals still include hidden requests";
       skillLabel.appendChild(skillBox); skillLabel.appendChild(document.createTextNode(" Skill requests")); tools.appendChild(skillLabel);
       skillBox.addEventListener("change", function () { listState.showSkills = skillBox.checked; render(lastReport, true); });
     }
@@ -1939,7 +1943,17 @@ function markdown(text, target) {
         : s.context.mode === "both" ? s.context.folder + " · SAP " + s.context.system + (s.context.client ? " · client " + s.context.client : "")
         : "SAP system " + s.context.system + (s.context.client ? ", client " + s.context.client : "");
       if (s.context) place.appendChild(document.createTextNode(" · "));
-      place.appendChild(el("span", "provider", s.provider));
+      var modelPrompts = s.prompts.filter(chat), modelNames = [], modelDetails = [];
+      if (!modelPrompts.length) modelPrompts = s.prompts;
+      modelPrompts.forEach(function (p) {
+        var name = p.displayModel || p.model || "Model unknown";
+        if (!modelNames.includes(name)) modelNames.push(name);
+        var detail = name + " · " + p.provider;
+        if (!modelDetails.includes(detail)) modelDetails.push(detail);
+      });
+      var modelLabel = el("span", "session-models model-name", modelNames.join(" · ") || "Model unknown");
+      modelLabel.title = modelDetails.join("\n") || "Provider: " + s.provider;
+      place.appendChild(modelLabel);
       var conversationJev=jevLink(s.usageByKind.jev,s.costs.jev);if(conversationJev){place.appendChild(document.createTextNode(", "));place.appendChild(conversationJev);}
       title.appendChild(place);
       title.tabIndex = 0;
@@ -1983,11 +1997,11 @@ function markdown(text, target) {
       detail.appendChild(body);
       detail.hidden = true;
       var record = { item: s, rows: [main, detail], technical: technical, kind: technical ? kindOf(s) : "", context: contextKey(s.context), open: false, loaded: false,
-        text: (s.prompts.map(function (p) { return p.text || ""; }).join(" ") + " " + s.provider + " " + models.join(" ")).toLowerCase() };
+        text: (s.prompts.map(function (p) { return p.text || ""; }).join(" ") + " " + s.provider + " " + models.join(" ") + " " + modelNames.join(" ")).toLowerCase() };
       // The questions' table is built the first time the conversation opens, and kept.
-      record.toggle = function (mode, live) {
+      record.toggle = function (mode, live, promptKey) {
         if (typeof flowSelectedId !== "undefined") flowSelectedId = s.id;
-        openConversation(s, actions, mode, live);
+        openConversation(s, actions, mode, live, promptKey);
       };
       main.addEventListener("click", function (event) { if (event.target.closest("input, button, a")) return; record.toggle(); });
       title.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); record.toggle(); } });
@@ -2272,7 +2286,7 @@ function markdown(text, target) {
       conversationScreen.hidden = false;
       document.body.classList.add("conversation-open");
     }
-    if (m.action === "openConversation") { pendingConversationOpen = { id:String(m.id || ""), conversationId:String(m.conversationId||""), mode:m.mode === "flow" ? "flow" : "logs", live:m.live===true, placeKey:String(m.placeKey||""), place:m.place&&typeof m.place==="object"?m.place:null, date:String(m.date||"") }; openRequestedConversation(); }
+    if (m.action === "openConversation") { pendingConversationOpen = { id:String(m.id || ""), promptKey:String(m.promptKey||""), conversationId:String(m.conversationId||""), mode:m.mode === "flow" ? "flow" : "logs", live:m.live===true, placeKey:String(m.placeKey||""), place:m.place&&typeof m.place==="object"?m.place:null, date:String(m.date||"") }; openRequestedConversation(); }
     if (m.action === "data") {
       deferredReport = null;
       var scrollX = window.scrollX, scrollY = window.scrollY;

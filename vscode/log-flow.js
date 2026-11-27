@@ -441,6 +441,27 @@
     return groups.sort((a, b) => (a.prompt.time || 0) - (b.prompt.time || 0));
   }
 
+  function codexStepRounds(timeline) {
+    let section = null;
+    return timeline.flatMap(node => {
+      if (["request", "user_interjection", "answer"].includes(node.kind) || node.title === "Response"
+        || /^Provider usage \(cli_run\)$|^Change verification (?:with Jev|\(Jev\))$/.test(node.title)) section = null;
+      if (node.kind === "note" || node.kind === "model") section = "model";
+      if (node.kind !== "tool") return [node];
+      if (/^(?:verification|review)$/i.test(node.title)) {
+        section = null;
+        return [node];
+      }
+      const editing = node.title === "Edit" || node.title === "VERTEX Edit retry";
+      const next = editing ? "edit" : "tools";
+      if (section === next || (!editing && section === "model")) return [node];
+      section = next;
+      return [{ kind: "model", title: editing ? "Edit group" : "Inferred model processing",
+        label: "Inferred from tool calls · response metadata not recorded", time: node.time,
+        detailIndices: [], noteEventIndices: [], inferredEdit: editing, state: "unknown" }, node];
+    });
+  }
+
   function groupUsage(group,kind="model") {
     const result = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, costReported: false, costMissing: false, costEstimated: false };
     for (const item of [group.prompt,...(group.children || [])].filter(Boolean)) {
@@ -503,6 +524,11 @@
     followedWidth = Number.isFinite(state.followedWidth) ? state.followedWidth : null;
     let followPaused=state.followPaused===true,lastScrollLeft=Number(state.scrollLeft)||0;
     selectedPrompt = Math.max(0, Math.min(Number.isInteger(state.selectedPrompt) ? state.selectedPrompt : selectedPrompt, Math.max(0, prompts.length - 1)));
+    const requestedPrompt = options?.promptKey ? prompts.findIndex(group => group.prompt.key === options.promptKey) : -1;
+    if (requestedPrompt >= 0) {
+      selectedPrompt = requestedPrompt;
+      Object.assign(state, { view: "step", page: 0, scrollLeft: 0, scrollTop: 0 });
+    }
     let selectedTopic = typeof state.topicFilter === "string" ? state.topicFilter : "all";
     const topicOptions = new Map();
     let hasUntagged = false;
@@ -613,7 +639,7 @@
             // without inventing a separate model turn for each tool.
             const firstRound = timeline.findIndex(node => node.kind === "note" || node.kind === "model");
             const firstTool = timeline.findIndex(node => node.kind === "tool" && !/^(?:verification|review)$/i.test(node.title || ""));
-            if (firstTool >= 0 && firstRound >= 0 && firstTool < firstRound && timeline[firstRound].kind === "note") {
+            if (prompt.provider !== "codex" && firstTool >= 0 && firstRound >= 0 && firstTool < firstRound && timeline[firstRound].kind === "note") {
               timeline.splice(firstTool, 0, { kind: "model", title: "Inferred model processing",
                 label: "Inferred from tool calls · response metadata not recorded", time: timeline[firstTool].time,
                 detailIndices: [], noteEventIndices: [], state: "unknown" });
@@ -622,14 +648,14 @@
             if (answerPreview && !timeline.some(node => node.detailIndex === (prompt.details || []).lastIndexOf(lastAnswer) || node.title === "Response")) timeline.push({ kind: "answer", title: prompt.operation === "Screenshot recognition" ? "Image recognition result" : "LLM response",
               label: (prompt.operation === "Screenshot recognition" ? recognitionText(answerPreview) : String(answerPreview)).replace(/\s+/g," ").slice(0,180), ...(lastAnswer ? { detailIndex: (prompt.details || []).lastIndexOf(lastAnswer) } : {}),
               time: prompt.end || prompt.time || 0, order: Number.MAX_SAFE_INTEGER, state: prompt.failed ? "failed" : "recorded" });
-            return timeline;
+            return prompt.provider === "codex" ? codexStepRounds(timeline) : timeline;
           }
           return timeline;
         }
         const main = stages(prompt).filter(node => node.kind === "prompt" || !group.children.some(item => normalize(item.operation) === normalize(node.title)));
         return main.concat(group.children.map(technical)).sort((a, b) => a.time - b.time);
       });
-      if (followRight && view === "step" && blocks[0]) {
+      if (followRight && view === "step" && blocks[0] && shown[0]?.prompt.provider !== "codex") {
         const priorKeys = state.liveFlowKeys, deadlines = state.liveFlowDeadlines || (state.liveFlowDeadlines = {}), keys = [];
         let nextDeadline = Math.max(Date.now(), ...Object.values(deadlines).filter(value => value > Date.now()).map(value => value + 120)), earliest = Infinity;
         blocks[0].forEach(node => {
@@ -671,6 +697,20 @@
             noteRunByRow.set(index, run);
           }
         });
+        if (noteRounds.length && !stepNodes.slice(0, noteRounds[0].row).some(node => node.kind === "model")) {
+          const first = noteRounds[0];
+          let boundary = -1;
+          for (let row = first.row - 1; row >= 0; row--) {
+            if (stepNodes[row].kind === "request" || stepNodes[row].kind === "user_interjection") { boundary = row; break; }
+          }
+          for (let row = boundary + 1; row < first.row; row++) {
+            if (stepNodes[row].kind !== "tool" || preparationRows.has(row)) continue;
+            first.run.startRow = Math.min(first.run.startRow, row);
+            first.run.rows.push(row);
+            leadingRoundToolRows.add(row);
+            detailRounds.set(stepNodes[row].detailIndex, first.run);
+          }
+        }
         stepNodes.forEach((node, index) => {
           if (node.kind !== "model") return;
           const relatedRounds = noteRounds.filter(note => (node.noteEventIndices || []).includes(note.eventOrder)).map(note => note.run);
@@ -791,7 +831,7 @@
         // Keep boundaries at every Thinking, response, non-Edit operation or other stage.
         const editRun = run => {
           const header = stepNodes[run.rows[0]];
-          return !!run.editRounds || run.round != null && header?.kind === "model" && !(header.noteEventIndices || []).length
+          return !!run.editRounds || run.round != null && header?.kind === "model" && header.state !== "unknown" && !(header.noteEventIndices || []).length
             && !(header.detailIndices || []).some(index => shown[0]?.prompt.details?.[index]?.type === "answer")
             && run.rows.length > 1 && run.rows.every((row, index) => row === run.rows[0] + index
               && (index === 0 || stepNodes[row]?.kind === "tool" && stepNodes[row].title === "Edit"));
@@ -808,6 +848,11 @@
           hiddenRoundRows.add(next.rows[0]);
           run.rows.push(...next.rows.slice(1));
           stepRuns.splice(index + 1, 1);
+        }
+        for (const run of stepRuns) {
+          if (!stepNodes[run.rows[0]]?.inferredEdit) continue;
+          run.editRounds = [{ round: run.round, inferred: true }];
+          run.editDetailIndices = run.rows.slice(1).map(row => stepNodes[row].detailIndex);
         }
       }
       if (view === "step") for (const run of stepRuns) {
@@ -1024,7 +1069,7 @@
           const editGroupHeader = roundRun?.editRounds && row === roundRun.rows[0];
           button.setAttribute("aria-label", (stepView ? "Prompt " + promptNumber + ", " : "Prompt " + promptNumber + ": ")
             + (editGroupHeader ? "Edit group, " + effectiveToolCount + " tool calls" : node.title + ", " + node.label));
-          button.title = editGroupHeader ? "Edit group · visual grouping of recorded rounds" : node.title + ": " + node.label;
+          button.title = editGroupHeader ? node.inferredEdit ? "Edit group · inferred from tool calls" : "Edit group · visual grouping of recorded rounds" : node.title + ": " + node.label;
           if (isPrompt) {
             button.appendChild(make("span", "flow-model", modelName(prompt)));
             const promptText = make("span", "flow-prompt-text", node.label); button.appendChild(promptText);

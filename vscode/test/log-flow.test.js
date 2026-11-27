@@ -39,6 +39,15 @@ function flowHost() {
     viewport: () => elements.find(node => node.className === "flow-viewport") };
 }
 
+test("Flow opens the requested historical prompt over the saved selection", () => {
+  const host = flowHost(), state = { selectedPrompt: 1, view: "context" };
+  const prompts = ["first", "last"].map(key => ({ key, text: key, model: "model" }));
+  const close = flow.mount(host.root, { prompts }, { state, promptKey: "first" });
+  close();
+  assert.equal(state.selectedPrompt, 0);
+  assert.equal(state.view, "step");
+});
+
 test("Flow restores scroll after sizing on remount and smoothly follows appended columns", () => {
   const session = count => ({ prompts: [{ text: "Fix", model: "model", flow: { eventItems:
     Array.from({ length: count }, (_, i) => ({ kind: i % 2 ? "tool" : "note", title: "Stage " + i, time: i + 1 })) } }] });
@@ -235,7 +244,7 @@ test("Thinking cards use their available body for multiline previews, not a trun
   assert.match(prompt.flow.eventItems[0].preview, /Какие инструменты/);
   const host = flowHost(), dispose = flow.mount(host.root, { prompts: [prompt] }, { state: {} });
   const card = host.elements.find(node => node.className?.includes("flow-thinking-note"));
-  assert.equal(card.children[0].textContent, "Thinking");
+  assert.equal(card.children[0].textContent, "Round 1: Model unknown");
   assert.equal(card.children[1].className, "flow-step-preview");
   assert.equal(card.children[1].textContent, prompt.flow.eventItems[0].preview);
   assert.equal(card.style.height, "75px");
@@ -660,6 +669,38 @@ test("Step groups tools before the first Thinking in an inferred initial round",
   assert.deepEqual(tools.map(card => card.style.left), [rounds[0].style.left, rounds[0].style.left, rounds[1].style.left]);
   assert.ok(Number(tools[0].style.top.replace("px", "")) > Number(rounds[0].style.top.replace("px", "")));
   dispose();
+});
+
+test("Codex Step keeps tool sections and the Edit group in live and saved logs", () => {
+  const details = ["Read", "Grep", "Edit", "VERTEX Edit retry", "Read", "Edit", "Verification"].map((name, index) =>
+    ({ type: "tool", name, tool_id: String(index) }));
+  const tools = details.map((_, detail) => ({ kind: "tool", detail }));
+  const events = [{ kind: "request" }, ...tools.slice(0, 5),
+    { kind: "note", model: { text: "Revise the change" } }, ...tools.slice(5)];
+  const state = {}, snapshots = [];
+  for (const [open, recorded] of [[true, events.slice(0, 3)], [true, events], [false, [...events, { kind: "model", model: { usageScope: "cli_turn" } }]]]) {
+    const prompt = { key: "codex-turn", provider: "codex", model: "Luna", text: "Fix", details, events: recorded, open };
+    const host = flowHost(), selected = [];
+    const dispose = flow.mount(host.root, { prompts: [prompt] }, { state, followRight: open, details: (...args) => selected.push(args) });
+    const cards = host.elements.filter(node => node.className?.includes("flow-step-node"));
+    const operations = cards.filter(node => node.className.includes("flow-operation"));
+    const editGroups = cards.filter(node => node.children[0]?.textContent === "Edit group · Luna");
+    assert.equal(operations[0].style.left, operations[1].style.left);
+    if (recorded.length > 3) {
+      assert.equal(editGroups.length, 2);
+      assert.deepEqual(operations.slice(2, 4).map(node => node.style.left), [editGroups[0].style.left, editGroups[0].style.left]);
+      assert.notEqual(operations[4].style.left, editGroups[0].style.left);
+      assert.equal(operations[5].style.left, editGroups[1].style.left);
+      const dialog = host.elements.find(node => node.tagName === "DIALOG");
+      dialog.showModal = () => { dialog.open = true; }; dialog.close = () => { dialog.open = false; };
+      editGroups[0].onclick();
+      assert.deepEqual(selected[0][1].detailIndices, [2, 3]);
+    }
+    snapshots.push(operations.map(node => node.style.left));
+    dispose();
+  }
+  assert.deepEqual(snapshots[0], snapshots[1].slice(0, 2));
+  assert.deepEqual(snapshots[1], snapshots[2]);
 });
 
 test("tool numbering restarts per request and ignores non-tool events", () => {

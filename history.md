@@ -1,3 +1,31 @@
+## VSIX 0.9.125
+
+The VS Code extension version is 0.9.125. The VSIX is built after the version changes are approved.
+
+## Keep Codex Flow sections in live and saved logs
+
+Codex tool calls stay in the same sections as a request runs and when it is reopened from history. Consecutive Edit calls appear in a dedicated Edit group.
+
+## Report a missing path when editing project files
+
+Edit and Write now tell the assistant to supply the target file path when it is missing.
+
+## Hide VSIX skill requests in conversation logs
+
+The Logs list hides recorded skill requests and standalone VSIX commands by default. Enable Skill requests to show them.
+
+## Clarify project edit access for Codex in Folder mode
+
+When Edit or Write is available, VERTEX tells Codex to use those tools for project changes under VERTEX review.
+
+## Check technical reviews for hangs and infinite loops
+
+The built-in Technical review prompt now requires checking hangs, infinite loops, cyclic traversal and recursion, unbounded retries, unresolved waits and blocked UI work. It explicitly asks for progress and exit checks, including empty data and error paths, plus cancellation or timeouts for long-running work.
+
+## Show models in the Session Logs conversation list
+
+Conversation rows now show model names instead of provider names. Hover a model name to see its provider; conversations that used several models show each name once. The separate Jev link remains available.
+
 ## Fix VS Code freeze when opening VERTEX chat
 
 The VERTEX panel now opens with an empty conversation history. The current-topic filter shows related topics when their metadata is available.

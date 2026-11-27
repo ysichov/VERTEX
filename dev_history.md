@@ -1,3 +1,35 @@
+## Prepare VSIX 0.9.125
+
+The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## Keep Codex Flow sections in live and saved logs
+
+The VS Code Step renderer uses recorded Thinking events and groups Codex tool calls without round metadata into display sections. Consecutive Edit calls and VERTEX retries reuse the existing Edit group card and inspector. The inspector marks these sections as inferred because Codex CLI usage records describe the whole turn. Live Codex renders each update with the same grouping as the saved report. The Eclipse assistant uses a separate Flow renderer.
+
+## Validate edit targets before preparing the review copy
+
+Edit and Write require a non-empty file path before entering the existing review-copy flow. A missing path previously resolved to the project directory and produced a misleading file size error.
+
+## Hide VSIX requests in the Logs list
+
+The existing skill request filter also recognizes standalone VSIX commands in older logs, where a skill match may not have been recorded. Linked records are filtered with their originating turn when that identifier is available.
+
+## Clarify Codex sandbox scope for reviewed folder edits
+
+Reused the existing VERTEX MCP tools and review path. Requests offering Edit or Write now explain that the Codex CLI sandbox controls direct filesystem access and that VERTEX processes project edits through MCP under its review rules. The CLI sandbox and tool approvals stay in place.
+
+## Require termination and responsiveness checks in technical reviews
+
+Searched the VS Code review prompts, Eclipse assistant sources and shared review resources; reused the existing Technical review checklist in `vscode/git-prompts.js`. Added a mandatory item for hangs, infinite loops, cyclic traversal/recursion, unbounded retries/polling, unresolved waits, deadlocks and UI/event-loop blocking. It asks reviewers to verify progress and reachable exits on continue/error paths, exercise empty data and repeated/cyclic states, and check cancellation or timeouts for long-running work and external waits. User prompt overrides remain editable through the existing prompt mechanism.
+
+The completed post-change Git prompt suite (`node --test vscode/test/git-prompts.test.js`) passed 13/13 with zero failures on Node v24.14.0, as confirmed by the host completion output. No separate syntax-check result was returned. No new tests or runtime logic were added. Packaging was not run; the version is unchanged.
+
+## Show conversation models with provider details on hover
+
+Reused the shared Session Logs page, existing model name styling and recorded displayModel/model fields after searching VS Code, Eclipse and the shared resources. Conversation rows collect unique names from Chat/Web search prompts, keeping linked Jev calls out of the caption; standalone technical conversations use their own prompts. The native tooltip preserves each model/provider pair, including one model reached through different providers. Missing model metadata shows Model unknown. Search includes the displayed names as well as recorded model IDs and providers.
+
+The two existing model-list parsing tests passed before and after the change. Both inline page scripts passed syntax checks, and a rendering probe passed for multiple models, duplicates, provider mappings, linked Jev calls, missing model metadata and search. Diff whitespace checks passed. Actual VS Code/Eclipse rendering in light and dark themes and packaging were not checked; the version is unchanged.
+
 ## Fix the VERTEX chat render loop with an empty topic catalog
 
 The current-topic filter popped its pending ID inside the `find` predicate. An empty catalog never called the predicate, and a longer catalog could consume the ID during the first comparison. The filter now removes one ID per iteration before looking it up and skips IDs already visited. The regression test reproduces the original timeout and passes with empty history, missing topic metadata, cyclic dependencies, and unassigned messages. The four other failures in the sidebar suite also occur with the original source.

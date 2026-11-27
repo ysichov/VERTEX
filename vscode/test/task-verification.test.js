@@ -1,5 +1,12 @@
 "use strict";
 const test=require('node:test'),assert=require('node:assert/strict'),checks=require('../task-verification');
+test('Codex write refusal is untested only when reviewed edits are offered and untried',()=>{
+ const refusal='Текущий режим доступа разрешает только чтение файлов. Попыток редактирования не было.';
+ const evidence=checks.createEvidence().snapshot(), schemas=[{name:'Edit'}];
+ assert.equal(checks.untestedWriteClaim(refusal,evidence,schemas),true);
+ assert.equal(checks.untestedWriteClaim(refusal,{...evidence,change_attempted:true},schemas),false);
+ assert.equal(checks.untestedWriteClaim(refusal,evidence,[{name:'Read'}]),false);
+});
 test('successful local reads disprove a claimed connection error',()=>{
  const evidence={tools:[{tool:'Read',arguments:{file_path:'vscode/log-flow.js'},result:{text:'source'}}],omitted_tools:0,pending:0};
  assert.equal(checks.falseLocalConnectionClaim('Чтение завершилось ошибкой соединения с локальным инструментом VERTEX.',evidence),true);

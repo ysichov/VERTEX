@@ -118,6 +118,13 @@ function continuationQuestion(task, evidence) {
    ? "После повторной попытки выполнение задачи не подтверждено."+(reason?" Последняя записанная ошибка инструмента: "+reason:"")+"\n\nПродолжить работу? Напишите «продолжай» в этом чате. При необходимости сначала смените модель и затем продолжите: исходная задача и результаты попыток останутся в истории."
    : "Task completion was not confirmed after the recovery attempt."+(reason?" Last recorded tool error: "+reason:"")+"\n\nContinue working? Type ‘continue’ in this chat. You can switch models first; the original task and attempt results remain in the conversation history.";
 }
+function untestedWriteClaim(answer, evidence, schemas) {
+ if (!schemas.some(tool => tool.name === "Write" || tool.name === "Edit") ||
+     evidence.change_attempted || evidence.pending) return false;
+ const text = String(answer || "");
+ return /read[- ]only|только (?:для )?чтени[ея]/i.test(text) &&
+   /не (?:могу|получится|удалось)|(?:правки|изменения) не внесены|не (?:выполнял|предпринимал)|(?:попыт(?:к[аи]|ок)|вызов|запис[ьи])[^.\n]{0,50}не |cannot|can't|unable to|did not (?:edit|write)/i.test(text);
+}
 function falseLocalConnectionClaim(answer, evidence) {
  const tools=evidence?.tools||[];
  if(!tools.length || evidence.omitted_tools || evidence.pending || tools.some(tool=>tool.error))return false;
@@ -146,4 +153,4 @@ function createEvidence() {
    }
  },snapshot(){return {started_at:startedAt,tools:tools.slice(),pending:pending.size,total_tools:count,omitted_tools:Math.max(0,count-tools.length),change_attempted:changeAttempted};}};
 }
-module.exports={OPERATION,CODE_QUESTIONS,evaluate,verifyTask,format,createEvidence,canRecover,continuationQuestion,falseLocalConnectionClaim};
+module.exports={OPERATION,CODE_QUESTIONS,evaluate,verifyTask,format,createEvidence,canRecover,continuationQuestion,falseLocalConnectionClaim,untestedWriteClaim};

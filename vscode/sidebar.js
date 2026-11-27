@@ -66,7 +66,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         + (turn.images?.length ? "  [" + turn.images.length + " screenshot(s) restored]" : "")
         + (turn.missingScreenshots ? "  [" + turn.missingScreenshots + " screenshot(s) unavailable]" : ""),questionTime:questionTime(turn.time) });
       await view.webview.postMessage({ ...(turn.topic?{topic:{...turn.topic,label:restoredLabels.get(turn.topic.id)||turn.topic.label}}:{}), chat: "VERTEX: " + (turn.answer || (turn.failed
-        ? "(request did not complete; your question and available screenshots were restored for the next request)" : "(no answer was logged)")),logSessionId:turn.logId,logConversationId:turn.conversation,questionDate:localDateKey(turn.time) });
+        ? "(request did not complete; your question and available screenshots were restored for the next request)" : "(no answer was logged)")),logPromptKey:turn.key,logSessionId:turn.logId,logConversationId:turn.conversation,questionDate:localDateKey(turn.time) });
     }
     // Continue on a topic's last question: the whole conversation comes back, and the next question continues that topic.
     await view.webview.postMessage({ historyContinued: true, viewTopic: selectedTopic?.id || "all",...(selectedTopic?{routeTopics:true}:{}),topicList:restoredTopics });
@@ -398,7 +398,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if (message.action === "showHistoricalLog") {
           const date=String(message.date||"");
-          await vscode.commands.executeCommand("vertex.showLogs",{sessionId:String(message.sessionId||""),conversationId:String(message.conversationId||""),fullScreen:true,mode:"flow",date:/^\d{4}-\d\d-\d\d$/.test(date)?date:""});
+          await vscode.commands.executeCommand("vertex.showLogs",{sessionId:String(message.sessionId||""),conversationId:String(message.conversationId||""),fullScreen:true,mode:"flow",promptKey:String(message.promptKey||""),date:/^\d{4}-\d\d-\d\d$/.test(date)?date:""});
           return;
         }
         if(message.action==="openProjectFile"){try{await require("./file-links").open(vscode,message.reference);}catch(error){vscode.window.showWarningMessage("VERTEX: "+error.message);}return;}
@@ -830,7 +830,7 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button><button type="button" class="secondary" id="mcp-servers" title="MCP servers: descriptions, versions, toolsets and tools" aria-label="MCP servers: descriptions, versions, toolsets and tools" hidden>ⓘ</button><button type="button" class="secondary" id="mcp-update" hidden>Update</button>
 </span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden><a href="#" class="link" id="folder-name" title="Choose a project folder for VERTEX without changing the VS Code workspace"></a> <button class="secondary" data-action="gitHistory" id="git-history" title="GitHub operations">GIT</button></span></div></div>
-<details id="conversation-history"><summary>Conversations · Continue a chat<span id="topic-now"></span></summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"><button type="button" class="secondary" id="history-refresh">Refresh</button></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
+<details id="conversation-history"><summary>Conversations · Continue a chat<span id="topic-now"></span></summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
 <div id="topic-view" class="line" hidden><label for="topic-view-select">Show conversation</label><select id="topic-view-select" aria-label="Visible conversation topic"><option value="current">Current topic</option><option value="all">All topics</option></select></div>
 <main id="messages" aria-live="polite"><p class="chat-empty">Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
@@ -967,7 +967,6 @@ function historyTime(value){const date=new Date(value);if(!Number.isFinite(date.
 }
 function loadHistory(){if(historyLoading||historyOpening)return;historyLoading=true;historyStatus.textContent='Loading conversations…';api.postMessage({action:'conversationHistory',requestId:++historyRequest});}
 historyBox.ontoggle=()=>{if(historyBox.open)loadHistory();};
-document.getElementById('history-refresh').onclick=loadHistory;
 document.getElementById('history-search').oninput=renderHistory;
 window.addEventListener('message',event=>{const data=event.data||{};
  if(data.conversationHistory){if(data.conversationHistory.requestId!==historyRequest)return;historyLoading=false;historyItems=data.conversationHistory.items||[];renderHistory();if(data.conversationHistory.message)historyStatus.textContent=data.conversationHistory.message;}
@@ -1572,8 +1571,8 @@ window.addEventListener('message', event => {
       if(event.data.logSessionId){
         const log=document.createElement('button');log.className='secondary copy-answer';log.textContent='Log';log.title='Open this historical conversation in Logs & Cost';
         log.addEventListener('click',()=>api.postMessage({action:'openLogConversation',sessionId:event.data.logSessionId,conversationId:event.data.logConversationId,date:event.data.questionDate}));
-        const flow=document.createElement('button');flow.className='secondary copy-answer';flow.textContent='⛶';flow.title='Open this historical run full screen in Flow';flow.setAttribute('aria-label',flow.title);
-        flow.addEventListener('click',()=>api.postMessage({action:'showHistoricalLog',sessionId:event.data.logSessionId,conversationId:event.data.logConversationId,date:event.data.questionDate}));
+        const flow=document.createElement('button');flow.className='secondary copy-answer';flow.innerHTML='<svg aria-hidden="true" viewBox="0 0 20 20" width="13" height="13" style="vertical-align:middle" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h4l2-4 3 8 2-4h3"/><circle cx="3" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="17" cy="10" r="1.5" fill="currentColor" stroke="none"/></svg>';flow.title='Open this historical run full screen in Flow';flow.setAttribute('aria-label',flow.title);
+        flow.addEventListener('click',()=>api.postMessage({action:'showHistoricalLog',promptKey:event.data.logPromptKey,sessionId:event.data.logSessionId,conversationId:event.data.logConversationId,date:event.data.questionDate}));
         logButtons.push(log,flow);
       }
     }

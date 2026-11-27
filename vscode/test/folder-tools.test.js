@@ -30,6 +30,15 @@ test("repeated edits count actual Unicode changes and local result bytes indepen
   await assert.rejects(agent.call("Edit", { file_path: "a.txt", old_string: "missing", new_string: "x" }));
   assert.equal(steps.at(-1).changeCounts, undefined);
 });
+test("Write without a target reports the missing path before preparing a worktree", async t => {
+  const { agent, steps } = fixture(t, {
+    reviewAfter: false,
+    prepareEdit: async () => assert.fail("Invalid Write must not prepare a worktree")
+  });
+  await assert.rejects(agent.call("Write", { content: "# Test\n" }), /requires a non-empty file_path/);
+  assert.equal(steps.at(-1).is_error, true);
+});
+
 test("Write measures UTF-8 bytes for inserted, removed and replaced Unicode text", async t => {
   const { agent, steps } = fixture(t);
   await agent.call("Read", { file_path: "a.txt" });

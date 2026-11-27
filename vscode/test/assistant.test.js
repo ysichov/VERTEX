@@ -542,6 +542,8 @@ test("Codex delegates only supplied local-tool approvals to VERTEX", async () =>
   assert.ok(args.includes('mcp_servers.vertex.tools.Edit.approval_mode="approve"'));
   assert.ok(!args.some(arg => /tools\.(Bash|read_sap_object)\.approval_mode/.test(arg)));
   assert.equal(after(args, "-s"), "read-only");
+  assert.match(spawn.calls[0].input, /read-only sandbox applies to its direct filesystem access/);
+  assert.match(spawn.calls[0].input, /available VERTEX MCP tools \(Edit\) after reading/);
 });
 
 test("Codex runs the tools of an MCP server VERTEX passes on, and only those it was given", async () => {

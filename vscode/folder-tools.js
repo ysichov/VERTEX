@@ -242,6 +242,9 @@ function create(vscode, options) {
       return { matches, truncated };
     }
     if (name === "Edit" || name === "Write") {
+      if (typeof args.file_path !== "string" || !args.file_path.trim()) {
+        throw new Error(name + " requires a non-empty file_path, for example test.md. Retry with the target file path.");
+      }
       await switchToReview();
       const file = resolve(args.file_path);
       const before = fs.existsSync(file) ? read(file) : null;
@@ -369,7 +372,7 @@ function create(vscode, options) {
         active();
         if(name==="Bash"&&inPlaceSed(args.command)&&!reviewAfter&&!options.prepareEdit)
           throw new Error("In-place shell edits need a review copy. Use Edit or Write for this folder.");
-        if((name==="Edit"||name==="Write"||name==="Bash"&&inPlaceSed(args.command))&&options.prepareEdit)await switchToReview();
+        if(name==="Bash"&&inPlaceSed(args.command)&&options.prepareEdit)await switchToReview();
         if(name==="Bash"&&inPlaceSed(args.command)&&reviewAfter){
           const escape=value=>value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
           let command=args.command;

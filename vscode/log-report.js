@@ -517,10 +517,15 @@ function placeKey(context) {
 }
 
 /** place: show only the conversations held there. The chat's own list passes the place it is working in. */
+function isSkillRequest(prompt) {
+  return Boolean(prompt.matchedSkill) || /^\s*\/?vsix\s*$/i.test(prompt.text || "");
+}
+
 function conversationList(report, place) {
   const groups = new Map();
   for (const session of report.sessions) {
-    const prompts = session.prompts.filter(prompt => prompt.operation === "Chat" || prompt.operation === "Web search");
+    const prompts = session.prompts.filter(prompt =>
+      (prompt.operation === "Chat" || prompt.operation === "Web search") && !isSkillRequest(prompt));
     if (!prompts.length) continue;
     const key = session.conversation || session.id;
     if (!groups.has(key)) groups.set(key, { prompts: [], providers: new Set(), context: null });
@@ -574,7 +579,7 @@ function conversationTurns(report, sessionId, point) {
     visiting.delete(end.key);
     return result;
   }
-  const prompts = history(target);
+  const prompts = history(target).filter(prompt => !isSkillRequest(prompt));
   const notLogged = text => !text || /^\[[^\]]*not logged[^\]]*\]$/i.test(text.trim());
   if (!prompts.length || prompts.every(prompt => notLogged(prompt.text))) {
     throw new Error("This conversation was logged without its questions; turn on vertex.ai.log.questions for conversations to come.");
@@ -710,7 +715,7 @@ function open(vscode, options = {}, context) {
   if (panel) {
     panel.reveal(options.fullScreen ? vscode.ViewColumn.One : vscode.ViewColumn.Beside, false);
     if (options.openSessionId && options.openSessionLive && redrawLivePanel) redrawLivePanel(options);
-    else if(options.openSessionId)void panel.webview.postMessage({action:"openConversation",id:options.openSessionId,conversationId:options.openConversationId||"",mode:options.openSessionMode||"logs",live:options.openSessionLive===true,placeKey:options.openSessionPlace||"",place:options.openSessionContext||null,date:options.openSessionDate||""});
+    else if(options.openSessionId)void panel.webview.postMessage({action:"openConversation",id:options.openSessionId,conversationId:options.openConversationId||"",promptKey:options.openPromptKey||"",mode:options.openSessionMode||"logs",live:options.openSessionLive===true,placeKey:options.openSessionPlace||"",place:options.openSessionContext||null,date:options.openSessionDate||""});
     return panel;
   }
   panel = vscode.window.createWebviewPanel("vertex.logReport", "VERTEX: Logs & Cost", options.fullScreen ? vscode.ViewColumn.One : vscode.ViewColumn.Beside,
@@ -781,7 +786,7 @@ function open(vscode, options = {}, context) {
       const delivered = await view.webview.postMessage({ action: "data", automatic,
         usageRows: require("./usage-report").readUsage(root, activeRange).rows, report: { ...listReport(full), current: currentPlace(vscode) } });
       if (disposed || refreshGeneration !== generation) return;
-      if(pendingOpenSessionId){const id=pendingOpenSessionId,conversationId=pendingOpenConversationId,mode=pendingOpenSessionMode,live=pendingOpenSessionLive,placeKey=options.openSessionPlace||"",place=options.openSessionContext||null,date=pendingOpenSessionDate;pendingOpenSessionId="";await view.webview.postMessage({action:"openConversation",id,conversationId,mode,live,placeKey,place,date});}
+      if(pendingOpenSessionId){const id=pendingOpenSessionId,conversationId=pendingOpenConversationId,mode=pendingOpenSessionMode,live=pendingOpenSessionLive,placeKey=options.openSessionPlace||"",place=options.openSessionContext||null,date=pendingOpenSessionDate;pendingOpenSessionId="";await view.webview.postMessage({action:"openConversation",id,conversationId,promptKey:options.openPromptKey||"",mode,live,placeKey,place,date});}
       if (delivered !== false) lastState = state;
     } catch (error) {
       if (!disposed && !automatic) await view.webview.postMessage({ action: "error", error: error.message });
@@ -961,7 +966,7 @@ function open(vscode, options = {}, context) {
 function register(vscode, context, options) {
   context.subscriptions.push(vscode.commands.registerCommand("vertex.showLogs", target => open(vscode, target?.sessionId ? {...options,
     openSessionId:String(target.sessionId),fullScreen:target.fullScreen===true,openSessionMode:target.mode==="flow"?"flow":"logs",openSessionLive:target.live===true,
-    openConversationId:typeof target.conversationId==="string"?target.conversationId:"",openSessionPlace:typeof target.placeKey==="string"?target.placeKey:"",
+    openPromptKey:typeof target.promptKey==="string"?target.promptKey:"",openConversationId:typeof target.conversationId==="string"?target.conversationId:"",openSessionPlace:typeof target.placeKey==="string"?target.placeKey:"",
     openSessionDate:/^\d{4}-\d\d-\d\d$/.test(target.date||"")?target.date:""} : options, context)));
 }
 

@@ -1263,6 +1263,8 @@ test('Stop aborts the active provider, suppresses late tools and retains complet
     prompts.push(options.prompt);
     if(options.prompt.endsWith('blocked turn')) {
       blockedOptions=options;ready();
+      options.onStep({kind:'use',id:'read-one',name:'Read',input:{file_path:'a.js'}});
+      options.onStep({kind:'result',id:'read-one',name:'Read',content:'RECORDED_RESULT'});
       await new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}));
     }
     return {plan:{answer:'kept answer'},model:'test',usage:null};
@@ -1276,7 +1278,8 @@ test('Stop aborts the active provider, suppresses late tools and retains complet
   assert.equal(blockedOptions.isActive(),false);
   assert.equal((await blocked).stopped,true);
   await ask('next turn');
-  assert.match(prompts.at(-1),/completed turn/);assert.match(prompts.at(-1),/kept answer/);assert.doesNotMatch(prompts.at(-1),/blocked turn/);
+  assert.match(prompts.at(-1),/completed turn/);assert.match(prompts.at(-1),/kept answer/);assert.match(prompts.at(-1),/blocked turn/);
+  assert.match(prompts.at(-1),/RECORDED_RESULT/);
   ask.dispose();
 });
 

@@ -791,8 +791,14 @@ function codexCommand(options, dir) {
   });
   // The instructions travel with the request: exec has no separate channel
   // for them once the person's own configuration is left out.
+  const editTools = options.localTools
+    ? ["Edit", "Write"].filter(name => options.tools.includes(name))
+    : [];
+  const folderAccess = editTools.length
+    ? "Codex's read-only sandbox applies to its direct filesystem access. VERTEX project edits run through the host's MCP tools and follow VERTEX review rules. For requested changes, use the available VERTEX MCP tools (" + editTools.join(", ") + ") after reading the relevant files. If the tool rejects a change, report the actual tool error."
+    : "";
   args.push("-");
-  return { args: args, input: options.instructions + "\n\n" + options.prompt, answerFile: answerFile };
+  return { args: args, input: options.instructions + "\n\n" + (folderAccess ? folderAccess + "\n\n" : "") + options.prompt, answerFile: answerFile };
 }
 
 function readClaude(result) {
