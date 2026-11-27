@@ -799,7 +799,7 @@ function open(vscode, options = {}, context) {
       }
     }
   };
-  const timer = setInterval(() => refresh(true), 500);
+  const timer = setInterval(() => refresh(true), 250);
   timer.unref?.();
   const visibility = view.onDidChangeViewState?.(() => { if (view.visible) return refresh(true); });
   panel.webview.onDidReceiveMessage(async message => {

@@ -685,6 +685,9 @@ test("Codex Step keeps tool sections and the Edit group in live and saved logs",
     const cards = host.elements.filter(node => node.className?.includes("flow-step-node"));
     const operations = cards.filter(node => node.className.includes("flow-operation"));
     const editGroups = cards.filter(node => node.children[0]?.textContent === "Edit group · Luna");
+    const toolGroup = cards.find(node => node.children[0]?.textContent === "Tool group · Luna");
+    assert.ok(toolGroup, "the initial inferred tool group has a descriptive header");
+
     assert.equal(operations[0].style.left, operations[1].style.left);
     if (recorded.length > 3) {
       assert.equal(editGroups.length, 2);
@@ -789,15 +792,12 @@ test("CLI usage suppresses only identical single-model fields", () => {
   assert.deepEqual(modelOnly, ["Run model · terra", "terra · 4 input · estimated $0"]);
 });
 
-test("live Flow reveals newly recorded tool batches in order without replaying old cards", async () => {
+test("live Flow shows newly recorded tool batches immediately", () => {
   const state = {}, prompt = { key: "live", text: "Fix", flow: { eventItems: [{ kind: "model", title: "Thinking", time: 1 }] } };
   const first = flowHost(), stop = flow.mount(first.root, { prompts: [prompt] }, { state, followRight: true });
   stop();
   prompt.flow.eventItems.push(...["a", "b", "c"].map((title, i) => ({ kind: "tool", title, time: i + 2 })));
   const host = flowHost(), close = flow.mount(host.root, { prompts: [prompt] }, { state, followRight: true });
-  const count = () => host.elements.filter(node => node.className?.includes("flow-operation") && node.parent).length;
-  assert.equal(count(), 1);
-  await new Promise(resolve => setTimeout(resolve, 280));
   const lane = host.elements.filter(node => node.className?.includes("flow-step-lane")).pop();
   assert.equal(lane.children.filter(node => node.className?.includes("flow-operation")).length, 3);
   close();

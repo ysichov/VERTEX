@@ -1,6 +1,14 @@
+## Reduce live Flow lag
+
+Removed artificial staggered tool-card reveal and shortened the log refresh interval. Codex tool-only sections are labelled as tool groups, while recorded model rounds and Edit groups retain their existing treatment.
+
 ## Prepare VSIX 0.9.125
 
 The deterministic VSIX workflow updated both host version manifests, the lockfile and current version references in a review copy. Packaging runs after all files are applied; a verified build is reported separately.
+
+## Choose the Jev model from Auto
+
+Reused the existing VS Code orchestrator decision-model picker from the Auto history control's context menu, retaining its selection and request-in-progress checks. The adjacent selector stays hidden and the Auto tooltip reports the selected provider and model. Searched the VS Code and Eclipse interfaces and shared resources for existing context menus and decision-model pickers. Host and theme interaction still needs verification after review.
 
 ## Keep Codex Flow sections in live and saved logs
 

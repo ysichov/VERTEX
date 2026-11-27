@@ -1,6 +1,14 @@
+## Show live Flow steps promptly
+
+Live Flow shows recorded tool calls immediately and labels inferred Codex tool groups without an empty model round.
+
 ## VSIX 0.9.125
 
 The VS Code extension version is 0.9.125. The VSIX is built after the version changes are approved.
+
+## Choose the Jev model from Auto
+
+Right-click the selected Auto (Jev) control to choose its decision model. The selected model appears in its tooltip; Shift+F10 opens the choice from the keyboard.
 
 ## Keep Codex Flow sections in live and saved logs
 

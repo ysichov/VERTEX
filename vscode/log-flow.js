@@ -458,7 +458,7 @@
       section = next;
       return [{ kind: "model", title: editing ? "Edit group" : "Inferred model processing",
         label: "Inferred from tool calls · response metadata not recorded", time: node.time,
-        detailIndices: [], noteEventIndices: [], inferredEdit: editing, state: "unknown" }, node];
+        detailIndices: [], noteEventIndices: [], inferredEdit: editing, inferredTools: !editing, state: "unknown" }, node];
     });
   }
 
@@ -655,26 +655,6 @@
         const main = stages(prompt).filter(node => node.kind === "prompt" || !group.children.some(item => normalize(item.operation) === normalize(node.title)));
         return main.concat(group.children.map(technical)).sort((a, b) => a.time - b.time);
       });
-      if (followRight && view === "step" && blocks[0] && shown[0]?.prompt.provider !== "codex") {
-        const priorKeys = state.liveFlowKeys, deadlines = state.liveFlowDeadlines || (state.liveFlowDeadlines = {}), keys = [];
-        let nextDeadline = Math.max(Date.now(), ...Object.values(deadlines).filter(value => value > Date.now()).map(value => value + 120)), earliest = Infinity;
-        blocks[0].forEach(node => {
-          const key = String(shown[0]?.prompt?.key || shown[0]?.prompt?.time || "") + ":" + node.stepNumber + ":" + node.kind + ":" + node.title;
-          keys.push(key);
-          if (priorKeys?.length && !priorKeys.includes(key) && node.kind === "tool") { deadlines[key] = nextDeadline; nextDeadline += 120; }
-          else if (priorKeys?.length && !priorKeys.includes(key) && nextDeadline > Date.now() + 120) deadlines[key] = nextDeadline - 120;
-        });
-        state.liveFlowKeys = keys;
-        blocks[0] = blocks[0].filter(node => {
-          const key = String(shown[0]?.prompt?.key || shown[0]?.prompt?.time || "") + ":" + node.stepNumber + ":" + node.kind + ":" + node.title;
-          if (deadlines[key] > Date.now()) { earliest = Math.min(earliest, deadlines[key]); return false; }
-          delete deadlines[key]; return true;
-        });
-        if (Number.isFinite(earliest)) {
-          const timer = win.setTimeout(() => { revealTimers.delete(timer); if (!disposed) layout(); }, Math.max(1, earliest - Date.now()));
-          revealTimers.add(timer);
-        }
-      }
       const stepNodes = blocks[0] || [];
       const hiddenRoundRows = new Set(), noteRounds = [], noteRunByRow = new Map(), modelRunByRow = new Map(), detailRounds = new Map();
       const stepRuns = [], roundSources = [], thinkingParagraphs = new Map(), preparationRows = new Set(), leadingRoundToolRows = new Set();
@@ -1089,6 +1069,7 @@
             if (stepView && stepPosition && stepRuns[stepPosition.column]?.rows[0] === row && stepRuns[stepPosition.column]?.vertexRound !== 0) {
               const run = stepRuns[stepPosition.column];
               if (run.editRounds) cardTitle = "Edit group · " + modelName(target);
+              else if (node.inferredTools) cardTitle = "Tool group · " + modelName(target);
               else if (run.round != null) cardTitle = "Round " + run.round + ": " + modelName(target);
               else if (run.side === "VERTEX") cardTitle = "VERTEX: " + cardTitle;
               else if (run.side === "User") cardTitle = "User: " + cardTitle;
