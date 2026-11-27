@@ -1198,3 +1198,14 @@ test("New in includes historical Claude cache creation and preserves Codex count
   assert.match(page, /n\(newInput\(s.usage\)\)/);
   assert.match(page, /n\(newInput\(p.usage\)\)/);
 });
+
+test("live Flow reveals hidden skill requests and resets stale prompt selection", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const start = page.indexOf("function openRequestedConversation()");
+  const open = page.slice(start, page.indexOf("var conversationScreen", start));
+  assert.match(open, /request\.live && !listState\.showSkills/);
+  assert.match(open, /listState\.showSkills = true/);
+  const screen = page.slice(page.indexOf("function openConversation(session"), page.indexOf("function closeConversation", page.indexOf("function openConversation(session")) > 0 ? page.indexOf("function closeConversation", page.indexOf("function openConversation(session")) : undefined);
+  assert.match(screen, /requestedLive === true && !promptKey/);
+  assert.match(screen, /delete flowView\.states\[session\.id\]\.selectedPrompt/);
+});

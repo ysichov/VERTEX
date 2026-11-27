@@ -436,6 +436,9 @@ function readSessions(root, filter = {}) {
       if(!matches){cached.set(entry.name,item);continue;}
     }
     const sessionField=filter.listOnly?"listSession":"session";
+    // A full session has all fields required by the sidebar list. Reuse it when
+    // Session Logs has already parsed this unchanged file.
+    if (filter.listOnly && !item.listSession && item.session) item.listSession = item.session;
     if(!item[sessionField]){
       item[sessionField]=parseSession(fs.readFileSync(file,"utf8"),entry.name,!!filter.listOnly);
       cached.set(entry.name,item);
@@ -448,7 +451,7 @@ function readSessions(root, filter = {}) {
   sessions.sort((a, b) => b.start - a.start);
   // Topics tagged afterwards by Tag topics (Jev), kept beside the logs; a topic the log itself records wins.
   const tagged = new Map();
-  for (const session of sessions) {
+  for (const session of filter.listOnly ? [] : sessions) {
     if (!session.conversation) continue;
     if (!tagged.has(session.conversation)) tagged.set(session.conversation, require("./topic-backfill").readTags(folder, session.conversation));
     const tags = tagged.get(session.conversation);

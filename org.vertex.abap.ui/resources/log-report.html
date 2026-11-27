@@ -1637,6 +1637,10 @@ function markdown(text, target) {
   function openRequestedConversation() {
     if (!pendingConversationOpen) return;
     var request = pendingConversationOpen;
+    if (request.live && !listState.showSkills) {
+      listState.showSkills = true;
+      if (lastReport) lastRenderedRecords = render(lastReport) || [];
+    }
     var rawSession = lastReport && lastReport.sessions.find(function (item) { return request.conversationId && item.conversation === request.conversationId || item.id === request.id; });
     var catalogPlace=lastReport?.places?.find(function(item){return item.key===request.placeKey;});
     var wantedContext = rawSession?.context || request.place || catalogPlace?.context;
@@ -1669,11 +1673,14 @@ function markdown(text, target) {
     var previous=conversationState&&conversationState.id===session.id?conversationState:null;
     var topicIds=new Map();session.prompts.forEach(function(prompt){var topic=prompt.topic;if(topic&&topic.id&&!topicIds.has(topic.id))topicIds.set(topic.id,topic.label||"");});
     var chosenTopic=previous?.topic||listState.topic||"all";
-    if(promptKey)chosenTopic="all";
+    if(promptKey || requestedLive === true)chosenTopic="all";
     if(chosenTopic!=="all"&&!topicIds.has(chosenTopic))chosenTopic="all";
     conversationState = { id: session.id, mode: requestedMode || (previous ? previous.mode : "logs"), topic:chosenTopic, live:requestedLive === undefined ? Boolean(previous?.live) : requestedLive === true };
     // Capture Flow's viewport while it is still attached and has a scroll range.
     if (flowDispose) { flowDispose(); flowDispose = null; }
+    if (requestedLive === true && !promptKey && flowView.states?.[session.id]) {
+      delete flowView.states[session.id].selectedPrompt;
+    }
     conversationScreen.textContent = "";
     var head = el("div", "conversation-screen-head");
     var back = el("button", "continue-session", "← Back");

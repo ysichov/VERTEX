@@ -307,14 +307,14 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         if (message.action === "conversationHistory") {
           const requestId = Number(message.requestId) || 0;
           try {
-            const logs = require("./log-report");
-            // The chat continues its own work: only the conversations held where it is working now. Session
-            // Logs is the place to see every folder and system.
-            const place = logs.currentPlace(vscode);
-            const report = logs.readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""), { place, listOnly: true });
+            const logs = require("./log-report"), place = logs.currentPlace(vscode);
+            const now = new Date();
+            const today = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+            const date = /^\d{4}-\d\d-\d\d$/.test(message.date || "") ? message.date : today;
+            const report = logs.readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""), { place, listOnly: true, from: date, to: date });
             const items = logs.conversationList(report, place);
             await view.webview.postMessage({ conversationHistory: { requestId, items,
-              message: report.configured ? (items.length || !report.sessions.length ? "" : "No conversation of this folder or system yet. Session Logs shows every one.")
+              message: report.configured ? (items.length ? "" : "No conversations for this date.")
                 : "Choose a log folder in Session Logs to save and continue conversations." } });
           } catch (error) { await view.webview.postMessage({ conversationHistory: { requestId, items: [], message: error.message } }); }
           return;
@@ -705,13 +705,14 @@ body.vertex-motion-off #messages .vertex.task { padding-left: 0; }
 body.vertex-motion-off *, body.vertex-motion-off *::before, body.vertex-motion-off *::after { animation: none !important; }
 ${require(require("path").join(__dirname,"task-visual")).css}
 #messages .vertex.task[data-task-kind]::before{display:none}
-#messages .vertex.task .task-scene{display:block;width:100%;margin-top:6px}
+#messages .vertex.task .task-scene{display:block;width:100%;margin-top:6px;cursor:pointer}
 #messages .vertex.task:is([data-task-kind="thinking"],[data-task-kind="search"],[data-task-kind="tooling"]) .task-scene{position:absolute;left:0;top:0;width:36px;height:36px;margin:0}
 #messages .vertex.task[data-task-kind="thinking"] .stream-part.thinking{position:relative;padding-left:42px}
 #messages .vertex.task[data-task-kind="thinking"] .stream-part.thinking .task-scene{left:0;right:auto;top:auto;bottom:0}
 #messages .vertex.task:is([data-task-kind="thinking"],[data-task-kind="search"],[data-task-kind="tooling"]) .task-timed{width:36px;height:36px}
 #messages .vertex.task:is([data-task-kind="thinking"],[data-task-kind="search"],[data-task-kind="tooling"]) .task-timed>.vertex-task-visual{flex:none}
-#messages .vertex.task:is([data-task-kind="thinking"],[data-task-kind="search"],[data-task-kind="tooling"]) .task-timer{display:none}
+#messages .vertex.task .task-scene .task-timer{display:none}
+#messages .request-timer{display:inline-block;margin-top:6px;color:var(--vscode-descriptionForeground);font-variant-numeric:tabular-nums}
 #vercel-row-break { display:none; }
 body[data-provider="vercel-api"] #vercel-row-break, body[data-provider="opencode-api"] #vercel-row-break, body[data-provider="openrouter-api"] #vercel-row-break { display:block; flex-basis:100%; height:0; }
 #subprovider-select[hidden] { display:none; }
@@ -757,8 +758,14 @@ textarea { width: 100%; resize: vertical; padding: 8px; }
 .prompt-box { position: relative; }
 .chat-actions{display:flex;justify-content:flex-end;gap:6px;padding-top:6px}
 #chat #new-conversation,#chat #chat-stop{display:inline-flex;align-items:center;width:auto;margin:0}
-#chat #chat-stop{gap:6px;margin-right:auto}
-#chat #chat-stop[hidden]{display:none}
+#chat #chat-stop{gap:6px}
+#chat #chat-stop[hidden],#chat #new-conversation[hidden]{display:none}
+.chat-actions #topic-picker-label{margin-right:auto}
+#messages .task-flow { position:absolute;left:0;top:2px;width:32px;height:32px;padding:0;margin:0;background:transparent;border:0;cursor:pointer; }
+body.vscode-reduce-motion:not(.vertex-motion-on) #messages .task-flow,body.vertex-motion-off #messages .task-flow { position:static;width:auto;height:auto;padding:2px 6px;color:var(--vscode-button-foreground);background:var(--vscode-button-background); }
+body.vscode-reduce-motion:not(.vertex-motion-on) #messages .task-flow::after,body.vertex-motion-off #messages .task-flow::after { content:'Flow'; }
+@media (prefers-reduced-motion: reduce) { body:not(.vertex-motion-on) #messages .task-flow { position:static;width:auto;height:auto;padding:2px 6px;color:var(--vscode-button-foreground);background:var(--vscode-button-background); } body:not(.vertex-motion-on) #messages .task-flow::after { content:'Flow'; } }
+#messages .task:not(.working) .task-flow { display:none; }
 #chat #expand-prompt { position: absolute; top: 4px; right: 4px; width: auto; margin: 0; padding: 0 6px; font-size: 14px; line-height: 20px; opacity: .75; }
 #chat #expand-prompt:hover { opacity: 1; }
 button { margin: 8px 0; padding: 8px 12px; border: 0; border-radius: 4px; cursor: pointer; font: inherit; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
@@ -813,7 +820,7 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 #conversation-history{flex:none;margin:6px 0;border-bottom:1px solid var(--vscode-panel-border)}
 #conversation-history>summary{cursor:pointer;padding:6px 0;color:var(--vscode-foreground)}
 .history-controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}
-#history-search{flex:1;min-width:100px;font:inherit;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));padding:5px}
+#history-search{flex:1 0 100%;box-sizing:border-box;min-width:0;font:inherit;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));padding:5px}
 #history-list{max-height:30vh;overflow:auto;margin:4px 0}
 button.history-item{display:block;width:100%;text-align:left;margin:3px 0;padding:7px 9px}
 .history-title,.history-meta{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -834,14 +841,14 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button><button type="button" class="secondary" id="mcp-servers" title="MCP servers: descriptions, versions, toolsets and tools" aria-label="MCP servers: descriptions, versions, toolsets and tools" hidden>ⓘ</button><button type="button" class="secondary" id="mcp-update" hidden>Update</button>
 </span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden><a href="#" class="link" id="folder-name" title="Choose a project folder for VERTEX without changing the VS Code workspace"></a> <button class="secondary" data-action="gitHistory" id="git-history" title="GitHub operations">GIT</button></span></div></div>
-<details id="conversation-history"><summary>Conversations · Continue a chat<span id="topic-now"></span></summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
+<details id="conversation-history"><summary>Conversations · Continue a chat<span id="topic-now"></span></summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"><button type="button" class="secondary" id="history-prev" aria-label="Previous day" title="Previous day">←</button><input type="date" id="history-date" aria-label="Conversation date"><button type="button" class="secondary" id="history-next" aria-label="Next day" title="Next day">→</button></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
 <div id="topic-view" class="line" hidden><label for="topic-view-select">Show conversation</label><select id="topic-view-select" aria-label="Visible conversation topic"><option value="current">Current topic</option><option value="all">All topics</option></select></div>
 <main id="messages" aria-live="polite"><p class="chat-empty">Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model · Ctrl+C / Cmd+C copies the model ID"><option value="">Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <div id="work-composer">
 ${require(require("path").join(__dirname,"jev-panel")).html}
-<form id="chat"><span id="topic-picker-label" title="Jev assigns a topic to each request whenever the selected decision model is available. Choose whether chat history includes everything or only the topic Jev selects. Right-click Auto to choose the decision model (or press Shift+F10)." hidden><span class="vertex-segment-toggle" id="history-mode" role="group" aria-label="History"><button type="button" data-history="full" class="active" aria-pressed="true">Full history</button><button type="button" data-history="auto" aria-pressed="false" title="Right-click or press Shift+F10 to choose the decision model">Auto (Jev)</button></span><select id="topic-picker" hidden aria-hidden="true"><option value="full">Full history</option><option value="auto">Auto (Jev)</option></select><select id="decision-provider" aria-label="Decision model for Auto" title="Decision model for Auto, topic tagging and ASK Jev" hidden></select></span><span id="context-optimization-status" class="note" role="status"></span><section id="ai-review-box" aria-label="AI Review" hidden><div class="ai-review-head"><strong id="ai-review-title">AI Review</strong><span id="ai-review-scope" class="note"></span><button type="button" class="secondary" id="ai-review-restart" title="Start a new review of the current changes">Check again</button><button type="button" class="secondary" id="ai-review-close" title="Close AI Review and continue with the ordinary chat, its history and tools" aria-label="Close AI Review and continue in chat">×</button></div><p id="ai-review-stale" hidden>Changes have updated. This review checks the earlier snapshot. Select Check again to start a new review.</p><details id="ai-review-settings" open><summary id="ai-review-settings-label">Review settings · Technical review</summary><label class="ai-review-task">Requirements for this review (optional)<textarea id="ai-review-task" rows="3" placeholder="Enter requirements relevant to these changes"></textarea></label>${require(require("path").join(__dirname,"git-prompt-bar")).html(require(require("path").join(__dirname,"html-escape")).escapeHtml)}</details><p id="ai-review-status" role="status" aria-live="polite"></p></section><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><details id="review-result-preview" hidden><summary>Attached review result</summary><div id="review-result-body"></div></details><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button><button type="button" class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div></form>
+<form id="chat"><span id="context-optimization-status" class="note" role="status"></span><section id="ai-review-box" aria-label="AI Review" hidden><div class="ai-review-head"><strong id="ai-review-title">AI Review</strong><span id="ai-review-scope" class="note"></span><button type="button" class="secondary" id="ai-review-restart" title="Start a new review of the current changes">Check again</button><button type="button" class="secondary" id="ai-review-close" title="Close AI Review and continue with the ordinary chat, its history and tools" aria-label="Close AI Review and continue in chat">×</button></div><p id="ai-review-stale" hidden>Changes have updated. This review checks the earlier snapshot. Select Check again to start a new review.</p><details id="ai-review-settings" open><summary id="ai-review-settings-label">Review settings · Technical review</summary><label class="ai-review-task">Requirements for this review (optional)<textarea id="ai-review-task" rows="3" placeholder="Enter requirements relevant to these changes"></textarea></label>${require(require("path").join(__dirname,"git-prompt-bar")).html(require(require("path").join(__dirname,"html-escape")).escapeHtml)}</details><p id="ai-review-status" role="status" aria-live="polite"></p></section><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><details id="review-result-preview" hidden><summary>Attached review result</summary><div id="review-result-body"></div></details><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><span id="topic-picker-label" title="Jev assigns a topic to each request whenever the selected decision model is available. Choose whether chat history includes everything or only the topic Jev selects. Right-click Auto to choose the decision model (or press Shift+F10)." hidden><span class="vertex-segment-toggle" id="history-mode" role="group" aria-label="History"><button type="button" data-history="full" class="active" aria-pressed="true">Full history</button><button type="button" data-history="auto" aria-pressed="false" title="Right-click or press Shift+F10 to choose the decision model">Auto (Jev)</button></span><select id="topic-picker" hidden aria-hidden="true"><option value="full">Full history</option><option value="auto">Auto (Jev)</option></select><select id="decision-provider" aria-label="Decision model for Auto" title="Decision model for Auto, topic tagging and ASK Jev" hidden></select></span><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button><button type="button" class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div></form>
 <button class="secondary" data-action="tools" id="tools"><span class="tools-logo" aria-hidden="true"></span>VERTEX Tools</button>
 </div>
 </div>
@@ -920,7 +927,7 @@ document.getElementById('chat').addEventListener('submit',event=>{
  setChatRunning(true);reviewBusy=true;document.getElementById('ai-review-restart').disabled=true;document.getElementById('ai-review-settings').inert=true;reviewStatus('');
  document.querySelector('#messages .chat-empty')?.remove();
  const you=document.createElement('p');you.className='you review-step';you.textContent='You: '+(text||reviewKind())+'  [AI Review · '+reviewObject+']';
- const step=document.createElement('div');step.className='vertex task working review-step';
+ const step=document.createElement('div');step.className='vertex task working review-step';addTaskFlow(step);
  const body=document.createElement('div');body.className='progress-body streaming-answer';body.textContent='VERTEX: Reviewing changes…';step.appendChild(body);
  document.getElementById('messages').append(you,step);progressItems.set(requestId,step);
  reviewSend({action:'send',requestId,text,task:document.getElementById('ai-review-task').value,...window.promptOptions()});
@@ -969,11 +976,18 @@ function historyTime(value){const date=new Date(value);if(!Number.isFinite(date.
  button.append(title,meta);button.onclick=()=>{if(chatRunning||historyOpening)return;historyOpening=true;historyStatus.textContent='Restoring conversation…';renderHistory();api.postMessage({action:'continueHistory',id:item.id});};list.appendChild(button);}
  if(!historyLoading&&!historyOpening)historyStatus.textContent=matches.length?'Select a conversation to continue.':query?'No matching conversations.':'No saved conversations.';
 }
-function loadHistory(){if(historyLoading||historyOpening)return;historyLoading=true;historyStatus.textContent='Loading conversations…';api.postMessage({action:'conversationHistory',requestId:++historyRequest});}
-historyBox.ontoggle=()=>{if(historyBox.open)loadHistory();};
+const historyDate=document.getElementById('history-date');
+function historyLocalDate(date){const pad=n=>String(n).padStart(2,'0');return date.getFullYear()+'-'+pad(date.getMonth()+1)+'-'+pad(date.getDate());}
+historyDate.value=historyLocalDate(new Date());
+function loadHistory(){if(historyOpening)return;historyLoading=true;if(!historyItems.length)historyStatus.textContent='Loading conversations…';api.postMessage({action:'conversationHistory',date:historyDate.value,requestId:++historyRequest});}
+function changeHistoryDate(offset){const parts=historyDate.value.split('-').map(Number),date=new Date(parts[0],parts[1]-1,parts[2]);if(!Number.isFinite(date.getTime()))return;date.setDate(date.getDate()+offset);historyDate.value=historyLocalDate(date);historyItems=[];renderHistory();loadHistory();}
+document.getElementById('history-prev').onclick=()=>changeHistoryDate(-1);
+document.getElementById('history-next').onclick=()=>changeHistoryDate(1);
+historyDate.onchange=()=>{historyItems=[];renderHistory();if(historyDate.value)loadHistory();};
+historyBox.ontoggle=()=>{if(historyBox.open){renderHistory();loadHistory();}};
 document.getElementById('history-search').oninput=renderHistory;
 window.addEventListener('message',event=>{const data=event.data||{};
- if(data.conversationHistory){if(data.conversationHistory.requestId!==historyRequest)return;historyLoading=false;historyItems=data.conversationHistory.items||[];renderHistory();if(data.conversationHistory.message)historyStatus.textContent=data.conversationHistory.message;}
+ if(data.conversationHistory){if(data.conversationHistory.requestId!==historyRequest)return;historyLoading=!!data.conversationHistory.partial;historyItems=data.conversationHistory.items||[];renderHistory();if(data.conversationHistory.message)historyStatus.textContent=data.conversationHistory.message;}
  if(data.historyContinued){historyOpening=false;historyBox.open=false;renderHistory();}
  if(data.historyError){historyOpening=false;renderHistory();historyStatus.textContent=data.historyError;}
 });
@@ -1068,6 +1082,13 @@ document.getElementById('model-select').addEventListener('change', event => {
   drawModelCapabilities(); drawEffort(document.getElementById('provider-select').value); document.getElementById('model-status').textContent = '';
   api.postMessage({ action: 'setModel', model: event.target.value });
 });
+function openCurrentFlow(){const date=new Date(),key=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');api.postMessage({action:'showCurrentLog',sessionId:activeLogSessionId,conversationId:activeLogConversationId,date:key});}
+function addTaskFlow(item){const button=document.createElement('button');button.type='button';button.className='task-flow';button.title=button.ariaLabel='Open live Flow';button.addEventListener('click',openCurrentFlow);item.appendChild(button);
+  const clock=document.createElement('span'),started=Date.now();clock.className='request-timer';clock.setAttribute('aria-label','Elapsed request time');item.appendChild(clock);
+  const stop=()=>{clearInterval(timer);clock.remove();};
+  const tick=()=>{if(!item.isConnected||!item.classList.contains('working')){stop();return;}const seconds=Math.floor((Date.now()-started)/1000);clock.textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');};
+  clock.textContent='00:00';const timer=setInterval(tick,1000);item.stopRequestTimer=stop;
+}
 document.querySelectorAll('button[data-action]').forEach(button => {
   button.addEventListener('click', () => {
     if(button.dataset.action==='showCurrentLog'){
@@ -1139,7 +1160,7 @@ document.getElementById('chat').addEventListener('submit', event => {
   const optimisticBody = document.createElement('div');
   optimisticBody.className = 'progress-body streaming-answer';
   optimisticBody.textContent = 'VERTEX: Working…';
-  optimisticTask.appendChild(optimisticBody);
+  optimisticTask.appendChild(optimisticBody); addTaskFlow(optimisticTask);
   document.getElementById('messages').appendChild(optimisticTask);
   progressItems.set(requestId, optimisticTask);
   if(images.length)requestScreenshots.set(requestId,images.map(image=>({media_type:image.media_type,data:image.data})));
@@ -1182,7 +1203,7 @@ document.getElementById('prompt').addEventListener('paste', event => {
 // The message field grows with what is typed or pasted, up to a few lines; ⤢ lets it take most of the panel.
 let chatRunning = false, chatStopping = false, activeLogSessionId = '', activeLogConversationId = '';
 const stopChat = document.getElementById('chat-stop');
-function setChatRunning(value) { chatRunning=value;if(!value){chatStopping=false;activeLogSessionId='';activeLogConversationId='';}stopChat.hidden=!value;stopChat.disabled=chatStopping;const button=document.getElementById('new-conversation');button.textContent=value?'AI magic':'New conversation';button.title=value?'AI magic — open the current run’s recorded steps full screen':'Start a new conversation';button.setAttribute('aria-label',button.title);button.dataset.action=value?'showCurrentLog':'newConversation';document.getElementById('prompt').title=value?'Send this as an addition to the active conversation; it will be included at the next model step.':'Enter sends a new message.';renderHistory(); }
+function setChatRunning(value) { chatRunning=value;if(!value){chatStopping=false;activeLogSessionId='';activeLogConversationId='';}stopChat.hidden=!value;stopChat.disabled=chatStopping;document.getElementById('new-conversation').hidden=value;document.getElementById('prompt').title=value?'Send this as an addition to the active conversation; it will be included at the next model step.':'Enter sends a new message.';renderHistory(); }
 stopChat.addEventListener('click',()=>{chatStopping=true;stopChat.disabled=true;api.postMessage({action:'stopChat'});});
 const promptField = document.getElementById('prompt'), expandPrompt = document.getElementById('expand-prompt');
 function fitPrompt() { promptField.style.height = 'auto'; promptField.style.height = promptField.scrollHeight + 2 + 'px'; }
@@ -1230,7 +1251,7 @@ function paintTaskScene(item,update){
       if(typeof update.subject==='string')item.dataset.taskSubject=update.subject;
       let scene=item.querySelector('.task-scene');
       if(update.done){if(scene)scene.remove();}
-      else if(taskVisuals[item.dataset.taskKind]){if(!scene){scene=document.createElement('span');scene.className='task-scene';scene.setAttribute('aria-hidden','true');item.appendChild(scene);}const want=item.dataset.taskKind,said=item.dataset.taskSubject||'';
+      else if(taskVisuals[item.dataset.taskKind]){if(!scene){scene=document.createElement('span');scene.className='task-scene';scene.setAttribute('role','button');scene.setAttribute('tabindex','0');scene.setAttribute('aria-label','Open live Flow');scene.title='Open live Flow';scene.addEventListener('click',openCurrentFlow);scene.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openCurrentFlow();}});item.appendChild(scene);}const want=item.dataset.taskKind,said=item.dataset.taskSubject||'';
         if(scene.dataset.kind!==want||scene.dataset.said!==said||(want==='recognize'&&scene.dataset.imageIndex!==String(update.imageIndex||0))){scene.dataset.kind=want;scene.dataset.said=said;scene.dataset.imageIndex=String(update.imageIndex||0);
         scene.innerHTML=want==='start'&&window.vertexTaskVisual?window.vertexTaskVisual.html('start',true,said):taskVisuals[want];
         if(want==='recognize'){
@@ -1320,11 +1341,11 @@ window.addEventListener('message', event => {
       document.getElementById('messages').appendChild(userItem);
     }
     if (!item && !update.remove) {
-      item = document.createElement('div'); item.className = update.step === 'review' ? 'vertex task working review-step' : 'vertex task working';
+      item = document.createElement('div'); item.className = update.step === 'review' ? 'vertex task working review-step' : 'vertex task working'; addTaskFlow(item);
       document.getElementById('messages').appendChild(item);
       progressItems.set(update.id, item);
     }
-    if (item && update.remove) { item.remove(); progressItems.delete(update.id);requestScreenshots.delete(update.id); }
+    if (item && update.remove) { item.stopRequestTimer?.(); item.remove(); progressItems.delete(update.id);requestScreenshots.delete(update.id); }
     else if (item) {
       if(update.topic){setTopic(item,update.topic);let prior=item.previousElementSibling;if(prior?.classList.contains('you'))setTopic(prior,update.topic);}
       // The text first, the waiting scene right under it.
@@ -1383,6 +1404,7 @@ window.addEventListener('message', event => {
       if (update.done) {
         requestScreenshots.delete(update.id);
         item.classList.remove('working');
+        item.stopRequestTimer?.();
         const answer = item.dataset.answer || '';
         if (!body.querySelector('.stream-part.answer')) appendPart('answer', answer || 'No answer returned.');
         body.classList.remove('streaming-answer');

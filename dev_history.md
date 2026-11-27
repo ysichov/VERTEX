@@ -1,3 +1,23 @@
+## Filter sidebar conversations by day
+
+The sidebar sends a local calendar date to the existing date-filtered session reader, defaulting to today. Unchanged full session parses are reused for list reads and topic backfill is skipped.
+
+## Open hidden live requests directly
+
+Live Flow enables skill requests before resolving its conversation and resets the saved prompt selection on an explicit live open. Automatic refreshes preserve manual navigation.
+
+## Keep the chat request timer independent of scenes
+
+Moved the elapsed display to the active request in the VS Code sidebar, so changes to progress scenes do not reset or hide it. The timer stops when the request completes or is removed. Searched the shared task visuals and both chat hosts for existing elapsed displays. Host and theme interaction remains to be verified after review.
+
+## Connect progress scenes to live Flow
+
+The progress scene can move inside the reasoning block or cover its separate overlay. It now handles pointer and keyboard activation directly through the existing live Flow action, including while the session is being created.
+
+## Move chat controls and open Flow from the active prompt
+
+Moved the existing history selector into the action row and swapped New conversation for Stop while running. The active prompt logo opens the existing live Flow action, including its pending-session handling. Searched VS Code chat, Eclipse and shared resources for existing controls. Host and theme interaction still needs verification after review.
+
 ## Reduce live Flow lag
 
 Removed artificial staggered tool-card reveal and shortened the log refresh interval. Codex tool-only sections are labelled as tool groups, while recorded model rounds and Edit groups retain their existing treatment.

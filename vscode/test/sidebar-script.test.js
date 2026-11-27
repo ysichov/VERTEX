@@ -62,7 +62,7 @@ test('chat sends while the model picker is still loading', () => {
   const make=()=>({value:'',hidden:true,disabled:false,children:[],handlers:{},addEventListener(name,fn){this.handlers[name]=fn;},appendChild(child){this.children.push(child);}});
   const get=id=>{if(!nodes.has(id))nodes.set(id,make());return nodes.get(id);};
   get('model-select').value='';get('model-select').disabled=true;get('review-chip').hidden=true;get('prompt').value='Find ZCL_EXAMPLE';
-  const context={document:{body:{classList:{toggle(){},remove(){},add(){}}},getElementById:get,createElement:make,querySelector:()=>null},api:{postMessage:m=>posted.push(m)},modelCatalog:[],images:[],chatRunning:false,historyOpening:false,progressItems:new Map(),refreshTopicView(){},setChatRunning(value){context.chatRunning=value;},drawImages(){},fitPrompt(){}};
+  const context={document:{body:{classList:{toggle(){},remove(){},add(){}}},getElementById:get,createElement:make,querySelector:()=>null},api:{postMessage:m=>posted.push(m)},modelCatalog:[],images:[],chatRunning:false,historyOpening:false,progressItems:new Map(),addTaskFlow(){},refreshTopicView(){},setChatRunning(value){context.chatRunning=value;},drawImages(){},fitPrompt(){}};
   const start=script.indexOf("document.getElementById('system-select').addEventListener('change'");
   vm.runInNewContext(script.slice(start,script.indexOf('// Screenshots pasted',start)),context);
   get('chat').handlers.submit({preventDefault(){}});
@@ -78,7 +78,7 @@ test('Enter sends successive chat requests and clears the prompt', () => {
   const get=id=>{if(!nodes.has(id))nodes.set(id,make());return nodes.get(id);};
   get('chat').requestSubmit=()=>get('chat').handlers.submit({preventDefault(){}});
   get('model-select').value='';get('model-select').disabled=true;
-  const context={document:{body:{classList:{toggle(){},remove(){}}},getElementById:get,createElement:make,querySelector:()=>null},api:{postMessage:m=>posted.push(m)},modelCatalog:[],images:[],chatRunning:false,historyOpening:false,progressItems:new Map(),refreshTopicView(){},setChatRunning(value){context.chatRunning=value;},drawImages(){},fitPrompt(){}};
+  const context={document:{body:{classList:{toggle(){},remove(){}}},getElementById:get,createElement:make,querySelector:()=>null},api:{postMessage:m=>posted.push(m)},modelCatalog:[],images:[],chatRunning:false,historyOpening:false,progressItems:new Map(),addTaskFlow(){},refreshTopicView(){},setChatRunning(value){context.chatRunning=value;},drawImages(){},fitPrompt(){}};
   const start=script.indexOf("document.getElementById('system-select').addEventListener('change'");
   vm.runInNewContext(script.slice(start,script.indexOf('// Screenshots pasted',start)),context);
   const keyStart=script.indexOf("document.getElementById('prompt').addEventListener('keydown'");
@@ -128,6 +128,16 @@ test('early AI magic click opens the live flow when the session becomes availabl
   assert.equal(commands.length,2);assert.equal(commands[1][1].sessionId,'session');
 });
 
+test('progress animation opens live Flow by click and keyboard', () => {
+  const folder=path.join(__dirname,'..'), sandbox={module:{exports:{}},require,__dirname:folder};
+  vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.render=html;',sandbox);
+  const markup=sandbox.module.exports.render('scene-test');
+  const script=markup.match(/<script nonce="scene-test">([\s\S]*?)<\/script>/)[1];
+  assert.match(script, /scene\.addEventListener\('click',openCurrentFlow\)/);
+  assert.match(script, /scene\.addEventListener\('keydown'/);
+  assert.match(script, /scene\.setAttribute\('aria-label','Open live Flow'\)/);
+});
+
 test('AI magic stays available before the log session is ready', () => {
   const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};
   vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.render=html;',sandbox);
@@ -136,17 +146,15 @@ test('AI magic stays available before the log session is ready', () => {
   const context={document:{getElementById:get},renderHistory(){get('new-conversation').disabled=false;}};
   const start=script.indexOf('let chatRunning = false');
   vm.runInNewContext(script.slice(start,script.indexOf("stopChat.addEventListener",start))+'\nthis.setRunning=setChatRunning;',context);
-  context.setRunning(true);assert.equal(get('new-conversation').textContent,'AI magic');
-  assert.equal(get('new-conversation').disabled,false);assert.equal(get('new-conversation').dataset.action,'showCurrentLog');
-  context.setRunning(false);assert.equal(get('new-conversation').textContent,'New conversation');
+  context.setRunning(true);assert.equal(get('new-conversation').hidden,true);
+  context.setRunning(false);assert.equal(get('new-conversation').hidden,false);
 });
 
 test('Stop stays at the left of the action row and retains its running state and action', () => {
   const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};
   vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.render=html;',sandbox);
   const markup=sandbox.module.exports.render('stop-test');
-  assert.match(markup, /#chat #chat-stop\{gap:6px;margin-right:auto\}/);
-  assert.match(markup, /<div class="chat-actions"><button type="button" id="chat-stop"[^>]* hidden>[\s\S]*?<\/button><button type="button" class="secondary" data-action="newConversation"/);
+  assert.match(markup, /<div class="chat-actions"><span id="topic-picker-label"[\s\S]*?id="chat-stop"[\s\S]*?id="new-conversation"/);
   assert.equal((markup.match(/id="chat-stop"/g)||[]).length,1);
   const script=markup.match(/<script nonce="stop-test">([\s\S]*?)<\/script>/)[1];
   const nodes=new Map(),posted=[];
@@ -365,4 +373,19 @@ test('topic catalog refresh updates existing badges and stale incoming labels us
  vm.runInContext('setTopic(item,{id:"topic_0006",label:"stale Screenshot observations"});',context);
  assert.equal(item.badge.textContent,'topic_0006 · Launchpad Content Manager — SAP_GRC_RM');
  assert.equal(item.badge.onclick,undefined);assert.equal(picker.value,'full');assert.equal(picker.options.length,0);
+});
+
+test("sidebar history requests only the selected day", async () => {
+  const source=fs.readFileSync(path.join(__dirname,"../sidebar.js"),"utf8");
+  const start=source.indexOf('        if (message.action === "conversationHistory") {');
+  const handler=source.slice(start,source.indexOf('        if (message.action === "continueHistory")',start));
+  const filters=[],sent=[];
+  const logs={currentPlace:()=>({mode:"folder",folder:"C:/project"}),readSessions:(_root,filter)=>{filters.push(filter);return {configured:true,sessions:[]};},conversationList:()=>[]};
+  const context={message:{action:"conversationHistory",requestId:7,date:"2026-11-26"},require:id=>id==="./log-report"?logs:require(id),
+    vscode:{workspace:{getConfiguration:()=>({get:()=>""})}},view:{webview:{postMessage:async value=>sent.push(value)}}};
+  vm.createContext(context);
+  await vm.runInContext("(async()=>{"+handler+"})()",context);
+  assert.equal(filters[0].from,"2026-11-26");
+  assert.equal(filters[0].to,"2026-11-26");
+  assert.equal(sent[0].conversationHistory.requestId,7);
 });

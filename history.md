@@ -1,3 +1,23 @@
+## Choose a date for conversations
+
+The sidebar opens today’s conversations by default. Use the date picker or arrows to browse another day.
+
+## Open the current VSIX run in live Flow
+
+The progress animation opens the current request even when it is a VSIX skill request hidden from the normal log list.
+
+## Keep the request timer running
+
+The chat timer now counts continuously until the response finishes, including while the assistant changes tasks.
+
+## Open live Flow from progress animation
+
+Selecting the progress animation opens the current live Flow, including during reasoning and tool activity.
+
+## Open live Flow from the running prompt
+
+The history mode controls are below the message field. During a request, Stop replaces New conversation; click the animated VERTEX logo to open live Flow.
+
 ## Show live Flow steps promptly
 
 Live Flow shows recorded tool calls immediately and labels inferred Codex tool groups without an empty model round.
