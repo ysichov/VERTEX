@@ -17,7 +17,7 @@ function report(name) {
 
 /* The tool's identity determines its scene. Local Bash work uses its own construction mark;
    only the result returns to the model's reasoning scene. */
-const SCENES = { Read: "search", Glob: "search", Grep: "search", Edit: "edit", Write: "edit", Bash: "tooling", Verification: null };
+const SCENES = { Read: "search", Glob: "search", Grep: "search", Edit: "edit", Write: "edit", "VERTEX Edit retry": "edit", Bash: "tooling", Verification: null };
 
 function scene(name) {
   const tool = String(name || "").replace(/^mcp__vertex__/, "");

@@ -200,7 +200,15 @@ function parseSession(text, file, listOnly = false) {
       continue;
     }
     if (record.type === "vertex_decision") {
-      if (record.input) { if (current) current.decision = record.input; else pendingDecision = record.input; }
+      if (record.input && current?.operation === "Skill match with Jev") {
+        const first = current.decision;
+        const input = { provider: first?.provider || provider, model: first?.model || current.selectedModelId, ...record.input };
+        (current.skillDecisions ||= first ? [first] : []).push(input);
+        current.decision ||= input;
+      } else if (record.input) {
+        if (current) current.decision = record.input;
+        else pendingDecision = record.input;
+      }
       continue;
     }
     if (record.type === "vertex_user_interjection") {

@@ -33,8 +33,9 @@ test('Jev review places each decision beside its own prompt, including split fil
  assert.equal(output.children[6].textContent,'Jev result 2 · a.js');assert.equal(output.children[8].children[0].textContent,'Jev Prompt 2 · a.js');
  assert.equal(output.children[9].textContent,'Jev result 3 · b.js');
  assert.equal(output.children[4].children[0].children[1].textContent,'Yes');assert.equal(output.children[7].children[0].children[1].textContent,'No');
- output.children[8].children[1].children.at(-1).onclick();assert.equal(sent.at(-1).action,'testJevPrompt');assert.equal(sent.at(-1).id,id);assert.equal(sent.at(-1).index,1);
- const single=run({rows:rows('No'),scope:'block',model:'jev',elapsedMs:1,taskProvided:true},[prompt('single')]).output;
+ const toolbar=output.children[0];toolbar.children[1].value='1';toolbar.children[2].onclick();assert.equal(sent.at(-1).action,'testJevPrompt');assert.equal(sent.at(-1).id,id);assert.equal(sent.at(-1).index,1);
+ const singleRun=run({rows:rows('No'),scope:'block',model:'jev',elapsedMs:1,taskProvided:true},[prompt('single')]),single=singleRun.output;
+ single.children[0].children[1].onclick();assert.equal(singleRun.sent.at(-1).index,0);
  assert.deepEqual(single.children.map(node=>node.tag),['div','strong','table','details','p']);
 });
 

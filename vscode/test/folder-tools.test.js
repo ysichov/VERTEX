@@ -30,6 +30,26 @@ test("repeated edits count actual Unicode changes and local result bytes indepen
   await assert.rejects(agent.call("Edit", { file_path: "a.txt", old_string: "missing", new_string: "x" }));
   assert.equal(steps.at(-1).changeCounts, undefined);
 });
+test("Read without a target reports the missing path and accepts a corrected call", async t => {
+  const { agent, steps } = fixture(t);
+  for (const args of [{}, { offset: 2 }, { file_path: " " }]) {
+    await assert.rejects(agent.call("Read", args), /Read requires a non-empty file_path/);
+    assert.equal(steps.at(-1).is_error, true);
+  }
+  const result = await agent.call("Read", { file_path: "a.txt", offset: 2, limit: 1 });
+  assert.equal(result.text, "2: two");
+});
+
+test("Edit and Write report an error when the resulting content is unchanged", async t => {
+  const { agent, steps } = fixture(t);
+  await agent.call("Read", { file_path: "a.txt" });
+  await assert.rejects(agent.call("Edit", { file_path: "a.txt", old_string: "one", new_string: "one" }), /No changes/);
+  assert.equal(steps.at(-1).is_error, true);
+  await assert.rejects(agent.call("Write", { file_path: "a.txt", content: "one\ntwo\n" }), /No changes/);
+  assert.equal(steps.at(-1).is_error, true);
+  assert.deepEqual(agent.changes(), []);
+});
+
 test("Write without a target reports the missing path before preparing a worktree", async t => {
   const { agent, steps } = fixture(t, {
     reviewAfter: false,

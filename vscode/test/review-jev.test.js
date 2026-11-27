@@ -123,6 +123,24 @@ test('multi-file and split-file reviews retain each prompt and its own answers i
  assert.deepEqual(result.rows.map(r=>r.answer),['No','Yes','Yes','No']);
 });
 
+test('ASK Jev receives removed and added lines and explains the resulting code',async t=>{
+ const env=await setup(),prompts=[];
+ t.mock.method(require('../ai-accounting'),'begin',()=>({callbacks:{},decision(){},finish(){},fail(){}}));
+ t.mock.method(require('../jev'),'evaluate',async(_provider,_key,_model,state,questions)=>{
+  prompts.push({state,questions});return {model:'jev-test',elapsedMs:1,usage:{},answers:{implementation:{noul:0.9},syntax:{noul:0.1}}};
+ });
+ const block=context().blocks[0];
+ for(const [before,after] of [[['removed();'],[]],[[],['added();']],[['old();'],['new();']]]){
+  await service.assess(env.vscode,{...context(),blocks:[{...block,before,after}]});
+ }
+ assert.match(prompts[0].state,/- removed\(\);/);
+ assert.doesNotMatch(prompts[0].state,/\+ removed/);
+ assert.match(prompts[1].state,/\+ added\(\);/);
+ assert.match(prompts[2].state,/- old\(\);\n\+ new\(\);/);
+ assert.match(prompts[0].state,/строки с префиксом - удалены/);
+ assert.match(prompts[0].questions.syntax.instructions,/Не считай удалённые строки/);
+});
+
 test('ASK Jev excludes Markdown files at review, file and block scope',async t=>{
  const env=await setup(),prompts=[];
  t.mock.method(require('../ai-accounting'),'begin',()=>({callbacks:{},decision(){},finish(){},fail(){}}));

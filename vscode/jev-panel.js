@@ -23,7 +23,8 @@ function buildQuestions(drafts) {
   }
   return {questions,labels};
 }
-const html = `<form id="jev-panel" hidden aria-label="Jev decision request">
+const html = `<form id="jev-panel" aria-label="Jev decision request">
+<div class="line"><select id="jev-model" aria-label="Jev model"></select><button type="button" class="secondary" id="new-jev-request">New request</button></div>
 <p class="note">Enter context and questions. Jev returns decisions and probabilities. Each Run is a separate request.</p>
 <label for="jev-state">Context</label><div class="prompt-box"><button type="button" id="jev-expand-context" class="secondary" title="Expand the context field" aria-label="Expand the context field" aria-pressed="false">⤢</button><textarea id="jev-state" rows="12" aria-label="Context" placeholder="Paste the text you want to evaluate"></textarea></div>
 <div id="jev-questions" aria-label="Questions"></div>
@@ -34,11 +35,12 @@ const html = `<form id="jev-panel" hidden aria-label="Jev decision request">
 const css = `
 #jev-panel[hidden]{display:none}
 #jev-panel textarea{margin:4px 0 10px}
-#jev-state{min-height:16em;max-height:65vh;overflow-y:auto;padding-right:34px;font-family:var(--vscode-editor-font-family,monospace)}
+#jev-state{min-height:16em;max-height:65vh;overflow-y:auto;padding-right:34px;font-family:var(--vscode-editor-font-family,monospace);border:1px solid var(--vscode-input-border,var(--vscode-panel-border,ButtonBorder))}
 #jev-state.expanded{min-height:60vh;max-height:75vh}
 #jev-expand-context{position:absolute;top:4px;right:4px;width:auto;margin:0;padding:0 6px;font-size:14px;line-height:20px;opacity:.75}
 #jev-expand-context:hover{opacity:1}
 .jev-question{border:1px solid var(--vscode-panel-border);border-radius:4px;margin:0 0 10px;padding:8px;min-width:0}
+.jev-question textarea{field-sizing:content;min-height:3.5em;max-height:55vh;overflow-y:auto;resize:vertical}
 .jev-question .line{justify-content:space-between}
 .jev-option{display:flex;align-items:center;gap:6px;margin:6px 0}
 .jev-option label{flex:none;min-width:4.5em;opacity:.8}
@@ -61,8 +63,7 @@ const css = `
  #jev-result td:first-child{font-weight:600}
  #jev-result td::before{display:block;content:attr(data-label);font-weight:normal;font-size:.9em;opacity:.75;margin-bottom:3px;white-space:normal}
 }
-body[data-decision="true"] #chat,body[data-decision="true"] #messages,body[data-decision="true"] #context-controls,body[data-decision="true"] #effort-select{display:none}
-body[data-decision="true"] .dock{overflow-y:auto;max-height:100vh}
+.jev-window #jev-panel{max-width:none}
 `;
 const script = `
 const buildJevQuestions=${buildQuestions.toString()};
@@ -89,9 +90,10 @@ function resetJevDraft(){
   document.getElementById('jev-result').replaceChildren();
   document.getElementById('jev-status').textContent='';
   renderJevQuestions();
-  if(document.body.dataset.decision==='true')document.getElementById('jev-state').focus();
+  document.getElementById('jev-state').focus();
 }
 function restoreJevDraft(input){
+  jevSelected=input.provider+'|'+input.model;drawJevModels();
   const field=document.getElementById('jev-state');
   field.value=typeof input.state==='string'?input.state:JSON.stringify(input.state,null,2);
   jevRestoredState={text:field.value,value:input.state};
@@ -140,29 +142,54 @@ function renderJevQuestions(){
     type.addEventListener('change',()=>{draft.type=type.value;paint();});paint();card.appendChild(options);root.appendChild(card);
   });
 }
-function drawDecisionMode(){
-  const panel=document.getElementById('jev-panel');if(!panel)return;
-  const provider=document.getElementById('provider-select').value;
-  const model=modelCatalog.find(m=>m.id===document.getElementById('model-select').value);
-  const decision=provider==='typesafe-api'||model?.modelKind==='decision';panel.hidden=!decision;document.body.dataset.decision=String(decision);
+let jevModels=[],jevUnavailable=[],jevSelected='';
+const jevPicker=document.getElementById('jev-model');
+function drawJevModels(){
+  jevPicker.replaceChildren(...jevModels.map(item=>new Option(item.providerLabel+' · '+item.label,item.provider+'|'+item.model)));
+  for(const {providerLabel,reason} of jevUnavailable){
+    const option=new Option(providerLabel+' · '+reason,'');
+    option.disabled=true;
+    jevPicker.appendChild(option);
+  }
+  if(jevModels.some(item=>item.provider+'|'+item.model===jevSelected))jevPicker.value=jevSelected;
+  else if(jevSelected)jevPicker.selectedIndex=-1;
 }
+jevPicker.addEventListener('change',()=>{jevSelected=jevPicker.value;});
+window.addEventListener('message',event=>{
+  const catalog=event.data?.decisionModels;
+  if(!catalog)return;
+  jevModels=catalog.models;
+  jevUnavailable=catalog.unavailable||[];
+  if(!jevSelected&&jevModels.some(item=>item.provider===catalog.selected?.provider&&item.model===catalog.selected?.model))jevSelected=catalog.selected.provider+'|'+catalog.selected.model;
+  drawJevModels();
+});
 function setDecisionRunning(running){
-  document.getElementById('new-conversation').disabled=running;
-  decisionRunning=running;document.getElementById('jev-run').disabled=running;document.getElementById('jev-stop').hidden=!running;
-  document.getElementById('provider-select').disabled=running;document.getElementById('model-select').disabled=running||!modelCatalog.length;document.getElementById('subprovider-select').disabled=running||!modelCatalog.length;
+  decisionRunning=running;jevPicker.disabled=running;
+  document.getElementById('new-jev-request').disabled=running;
+  document.getElementById('jev-run').disabled=running;
+  document.getElementById('jev-stop').hidden=!running;
+  if(typeof renderHistory==='function')renderHistory();
 }
+window.addEventListener('message',event=>{
+  const update=event.data||{};
+  if(update.decisionDraft)restoreJevDraft(update.decisionDraft);
+  if(typeof update.decisionRunning==='boolean')setDecisionRunning(update.decisionRunning);
+  if(typeof update.decisionStatus==='string')document.getElementById('jev-status').textContent=update.decisionStatus;
+  if(update.decisionResult)showDecisionResult(update.decisionResult);
+});
+document.getElementById('new-jev-request').addEventListener('click',resetJevDraft);
 document.getElementById('jev-add-question').addEventListener('click',()=>{invalidateJevResult();jevDrafts.push({id:'question_'+(++jevNextQuestion),type:'noul',instructions:'',criteriaText:''});renderJevQuestions();});
 renderJevQuestions();
 document.getElementById('jev-panel').addEventListener('submit',event=>{
-  event.preventDefault();if(decisionRunning||chatRunning)return;const status=document.getElementById('jev-status');
+  event.preventDefault();if(decisionRunning)return;const status=document.getElementById('jev-status');
   document.getElementById('jev-result').replaceChildren();jevSubmittedLabels={};
   try{
-    const selectedModel=document.getElementById('model-select').value;
-    if(!modelCatalog.some(m=>m.id===selectedModel))throw new Error('No Jev model is ready. Select an enabled Jev model in LLM Providers. No request was sent.');
+    const [provider,model]=jevPicker.value.split('|');
+    if(!provider||!model)throw new Error('No Jev model is ready. Select an enabled Jev model in LLM Providers. No request was sent.');
     const state=document.getElementById('jev-state').value;if(!state.trim())throw new Error('Enter context.');
     const built=buildJevQuestions(jevDrafts);jevSubmittedLabels=built.labels;
     setDecisionRunning(true);status.textContent='Evaluating…';document.getElementById('jev-result').replaceChildren();
-    api.postMessage({action:'decision',model:document.getElementById('model-select').value,state:jevRestoredState&&jevRestoredState.text===state?jevRestoredState.value:state,questions:built.questions});
+    api.postMessage({action:'decision',provider,model,state:jevRestoredState&&jevRestoredState.text===state?jevRestoredState.value:state,questions:built.questions});
   }catch(error){status.textContent=error.message;}
 });
 document.getElementById('jev-stop').addEventListener('click',()=>api.postMessage({action:'stopChat'}));

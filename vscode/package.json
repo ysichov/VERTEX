@@ -1,6 +1,6 @@
 {
   "name": "vertex-abap",
-  "displayName": "SAP ABAP VERTEX Tools",
+  "displayName": "VERTEX AI Agent + SAP MCP/TOOLS",
   "description": "Standalone AI Code Agent for local Git projects in any language, plus SAP ABAP tools: file review and builds, serverless ABAP execution, visual debugger, code and data explorers, and MCP for AI assistants",
   "license": "MIT",
   "repository": {
@@ -96,7 +96,7 @@
       "vertex": [
         {
           "id": "vertex.launcher",
-          "name": "SAP Tools",
+          "name": "AI Agent + SAP MCP/TOOLS",
           "type": "webview"
         }
       ],
@@ -165,6 +165,10 @@
       {
         "command": "vertex.showPanel",
         "title": "VERTEX: Open Panel"
+      },
+      {
+        "command": "vertex.openJev",
+        "title": "VERTEX: Open Jev"
       },
       {
         "command": "vertex.showLogs",

@@ -44,10 +44,12 @@ test("Edit scene changes to AI reasoning when the tool returns", () => {
   vm.runInNewContext(fs.readFileSync(path.join(folder, "sidebar.js"), "utf8") + "\nmodule.exports.renderForTest = html;", sandbox);
   const markup = sandbox.module.exports.renderForTest("test-nonce");
   const script = markup.slice(markup.indexOf('<script nonce="test-nonce">') + '<script nonce="test-nonce">'.length, markup.indexOf("</script>"));
-  const source = script.slice(script.indexOf("function paintTaskScene("), script.indexOf("let plannerSettings="));
+  const source = script.slice(script.indexOf("function paintTaskScene("), script.indexOf("let orchestratorSelected="));
   const context = { taskVisuals: {}, window: {} };
   vm.runInNewContext(source + "\nthis.paint = paintTaskScene;", context);
   const item = { dataset: { taskKind: "edit", taskSubject: "file.js" }, querySelector: () => null, setAttribute() {} };
+  context.paint(item, {thinking:"Streaming reasoning"});
+  assert.equal(item.dataset.taskKind,"edit");
   context.paint(item, { kind: null });
   assert.equal(item.dataset.taskKind, "thinking");
   assert.equal(Object.hasOwn(item.dataset, "taskSubject"), false);
@@ -62,11 +64,11 @@ test('chat sends while the model picker is still loading', () => {
   const make=()=>({value:'',hidden:true,disabled:false,children:[],handlers:{},addEventListener(name,fn){this.handlers[name]=fn;},appendChild(child){this.children.push(child);}});
   const get=id=>{if(!nodes.has(id))nodes.set(id,make());return nodes.get(id);};
   get('model-select').value='';get('model-select').disabled=true;get('review-chip').hidden=true;get('prompt').value='Find ZCL_EXAMPLE';
-  const context={document:{body:{classList:{toggle(){},remove(){},add(){}}},getElementById:get,createElement:make,querySelector:()=>null},api:{postMessage:m=>posted.push(m)},modelCatalog:[],images:[],chatRunning:false,historyOpening:false,progressItems:new Map(),addTaskFlow(){},refreshTopicView(){},setChatRunning(value){context.chatRunning=value;},drawImages(){},fitPrompt(){}};
+  const context={document:{body:{classList:{toggle(){},remove(){},add(){}}},getElementById:get,createElement:make,querySelector:()=>null},api:{postMessage:m=>posted.push(m)},requestContextEdits:{agent:"Edited agent text"},requestContextChecks:[{dataset:{requestContext:"logs"},checked:false}],modelCatalog:[],images:[],chatRunning:false,historyOpening:false,progressItems:new Map(),addTaskFlow(){},refreshTopicView(){},setChatRunning(value){context.chatRunning=value;},drawImages(){},fitPrompt(){}};
   const start=script.indexOf("document.getElementById('system-select').addEventListener('change'");
   vm.runInNewContext(script.slice(start,script.indexOf('// Screenshots pasted',start)),context);
   get('chat').handlers.submit({preventDefault(){}});
-  assert.equal(posted[0].action,'chat');assert.equal(posted[0].text,'Find ZCL_EXAMPLE');assert.equal(context.chatRunning,true);
+  assert.equal(posted[0].requestContext.logs,false);assert.equal(posted[0].requestContextEdits.agent,'Edited agent text');assert.equal(posted[0].action,'chat');assert.equal(posted[0].text,'Find ZCL_EXAMPLE');assert.equal(context.chatRunning,true);
 });
 
 test('Enter sends successive chat requests and clears the prompt', () => {
@@ -78,7 +80,7 @@ test('Enter sends successive chat requests and clears the prompt', () => {
   const get=id=>{if(!nodes.has(id))nodes.set(id,make());return nodes.get(id);};
   get('chat').requestSubmit=()=>get('chat').handlers.submit({preventDefault(){}});
   get('model-select').value='';get('model-select').disabled=true;
-  const context={document:{body:{classList:{toggle(){},remove(){}}},getElementById:get,createElement:make,querySelector:()=>null},api:{postMessage:m=>posted.push(m)},modelCatalog:[],images:[],chatRunning:false,historyOpening:false,progressItems:new Map(),addTaskFlow(){},refreshTopicView(){},setChatRunning(value){context.chatRunning=value;},drawImages(){},fitPrompt(){}};
+  const context={document:{body:{classList:{toggle(){},remove(){}}},getElementById:get,createElement:make,querySelector:()=>null},api:{postMessage:m=>posted.push(m)},requestContextEdits:{},requestContextChecks:[{dataset:{requestContext:"logs"},checked:false}],modelCatalog:[],images:[],chatRunning:false,historyOpening:false,progressItems:new Map(),addTaskFlow(){},refreshTopicView(){},setChatRunning(value){context.chatRunning=value;},drawImages(){},fitPrompt(){}};
   const start=script.indexOf("document.getElementById('system-select').addEventListener('change'");
   vm.runInNewContext(script.slice(start,script.indexOf('// Screenshots pasted',start)),context);
   const keyStart=script.indexOf("document.getElementById('prompt').addEventListener('keydown'");
@@ -342,16 +344,17 @@ test('focused model selector copies the exact model ID rather than its display l
  field.value='';handlers.keydown({key:'c',metaKey:true});assert.equal(sent.length,1);
 });
 
-test("without AI providers the picker is hidden and loading model catalogs never block chat", () => {
+test("provider switching stays available when model catalogs are pending or unavailable", () => {
   const source = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "sidebar.js"), "utf8");
   assert.match(source, /body\.no-providers #provider-select,[^{]*body\.no-providers \.model-picker,[^{]*body\.no-providers #effort-select[^{]*\{ display:none !important; \}/);
+  assert.doesNotMatch(source, /body\.(?:models-loading|no-choice|model-list-pending) #provider-select\b/);
   assert.match(source, /document\.body\.classList\.toggle\('no-providers', !select\.options\.length\);/);
   assert.match(source,/body\.models-loading #vercel-row-break, body\.models-loading #subprovider-select, body\.models-loading \.model-picker, body\.models-loading #effort-select \{ display:none !important; \}/);
   assert.doesNotMatch(source,/model-select'\)\.disabled\)\{document\.getElementById\('model-status'\)\.textContent='Wait for the model list to load\.'/);
   assert.match(source,/if \(data\.error\)[\s\S]*?document\.body\.classList\.add\('no-choice'\)/);
-  assert.match(source,/document\.body\.classList\.remove\('models-loading'\);[\s\S]*?modelCatalog = data\.models;drawModelPickers\(data\.model\)/);
+  assert.match(source,/document\.body\.classList\.remove\('models-loading'\);[\s\S]*?modelCatalog = data\.models\.filter\(/);
    assert.match(source,/document\.body\.classList\.add\('no-choice'\);[\s\S]*?select\.title = data\.error/);
-   assert.match(source,/body\.model-list-pending #provider-select,[^{]*body\.model-list-pending \.model-picker[^\{]*\{ display:none !important; \}/);
+   assert.match(source,/body\.model-list-pending [^{]*body\.model-list-pending \.model-picker[^\{]*\{ display:none !important; \}/);
    assert.match(source,/document\.body\.classList\.add\('model-list-pending'\);[\s\S]*?api\.postMessage\(\{ action: 'setProvider'/);
    assert.match(source,/if \(!Array\.isArray\(event\.data\.ai\.providers\) \|\| !event\.data\.ai\.providers\.length\)[\s\S]*?classList\.remove\('models-loading', 'no-choice', 'model-list-pending'\)/);
    assert.match(source,/\} else if \(!Array\.isArray\(data\.models\) \|\| !data\.models\.length\)[\s\S]*?classList\.add\('no-choice'\)/);
@@ -375,17 +378,81 @@ test('topic catalog refresh updates existing badges and stale incoming labels us
  assert.equal(item.badge.onclick,undefined);assert.equal(picker.value,'full');assert.equal(picker.options.length,0);
 });
 
-test("sidebar history requests only the selected day", async () => {
+test("sidebar history requests the selected period", async () => {
   const source=fs.readFileSync(path.join(__dirname,"../sidebar.js"),"utf8");
   const start=source.indexOf('        if (message.action === "conversationHistory") {');
   const handler=source.slice(start,source.indexOf('        if (message.action === "continueHistory")',start));
   const filters=[],sent=[];
   const logs={currentPlace:()=>({mode:"folder",folder:"C:/project"}),readSessions:(_root,filter)=>{filters.push(filter);return {configured:true,sessions:[]};},conversationList:()=>[]};
-  const context={message:{action:"conversationHistory",requestId:7,date:"2026-11-26"},require:id=>id==="./log-report"?logs:require(id),
+  const context={message:{action:"conversationHistory",requestId:7,from:"2026-11-23",to:"2026-11-29"},require:id=>id==="./log-report"?logs:require(id),
     vscode:{workspace:{getConfiguration:()=>({get:()=>""})}},view:{webview:{postMessage:async value=>sent.push(value)}}};
   vm.createContext(context);
   await vm.runInContext("(async()=>{"+handler+"})()",context);
-  assert.equal(filters[0].from,"2026-11-26");
-  assert.equal(filters[0].to,"2026-11-26");
+  assert.equal(filters[0].from,"2026-11-23");
+  assert.equal(filters[0].to,"2026-11-29");
   assert.equal(sent[0].conversationHistory.requestId,7);
+});
+
+test("Jev history filters saved decisions and opens the selected input", async () => {
+  const source=fs.readFileSync(path.join(__dirname,"../sidebar.js"),"utf8");
+  const handler=source.slice(source.indexOf('    if (message.action === "jevHistory"'),source.indexOf('    if(message.action === "decision")'));
+  const input={provider:"typesafe-api",model:"jev-preview",state:"Saved context",questions:{q:{instructions:"Check this"}}};
+  const sessions=[{id:"session",prompts:[
+    {key:"old",time:new Date("2026-11-26T12:00:00").getTime(),decision:input},
+    {key:"chat",time:new Date("2026-11-27T12:00:00").getTime()},
+    {key:"jev",time:new Date("2026-11-27T12:00:00").getTime(),operation:"Review file with Jev",decision:input}
+  ]}];
+  const sent=[],opened=[];
+  const context=vm.createContext({pendingChat:null,require:()=>({readSessions:()=>({sessions})}),
+    vscode:{workspace:{getConfiguration:()=>({get:()=>""})},commands:{executeCommand:(...args)=>opened.push(args)}},
+    view:{webview:{postMessage:message=>sent.push(message)}}});
+  context.message={action:"jevHistory",from:"2026-11-27",to:"2026-11-27",requestId:3};
+  const run=()=>vm.runInContext("(async()=>{"+handler+"})()",context);
+  await run();
+  assert.equal(sent[0].conversationHistory.items.length,1);
+  const item=sent[0].conversationHistory.items[0];
+  assert.equal(item.lastQuestion,"Check this");
+  assert.equal(item.decisionType,"Review");
+  assert.equal(item.id,JSON.stringify(["session","jev"]));
+  context.message={action:"continueJevHistory",id:item.id};
+  await run();
+  assert.deepEqual(opened,[["vertex.continueDecision",input]]);
+});
+
+test("Void unchecks context sources and restores the previous selection", () => {
+  const source=fs.readFileSync(path.join(__dirname,"../sidebar.js"),"utf8");
+  const apply=source.slice(source.indexOf("function applyContextMode("),source.indexOf("${historyScript(false)}",source.indexOf("function applyContextMode(")));
+  const sync=source.slice(source.indexOf("function syncReferenceContextChecks("),source.indexOf("document.getElementById('folder-name').onclick"));
+  const requestContextChecks=[{checked:false},{checked:true}];
+  const folder={dataset:{context:"folder"},checked:true};
+  const reference={dataset:{referenceContext:"true"},checked:true};
+  const context={contextMode:"folder",previousContextMode:"folder",savedRequestContextChecks:[],requestContextChecks,drawContextLevel(){},
+    document:{getElementById:()=>({}),querySelectorAll:selector=>selector==="[data-context]"?[folder]:[reference]}};
+  vm.createContext(context);
+  vm.runInContext(apply+sync+'applyContextMode("zero");applyContextMode("zero");',context);
+  assert.deepEqual(requestContextChecks.map(input=>input.checked),[false,false]);
+  assert.equal(folder.checked,false);
+  assert.equal(reference.checked,false);
+  vm.runInContext('applyContextMode(previousContextMode);',context);
+  assert.deepEqual(requestContextChecks.map(input=>input.checked),[false,true]);
+  assert.equal(folder.checked,true);
+  assert.equal(reference.checked,true);
+});
+
+test("Jev has its own webview and the sidebar keeps folder controls together", () => {
+  const folder=path.join(__dirname,"..");
+  const sandbox={module:{exports:{}},require,__dirname:folder};
+  vm.runInNewContext(fs.readFileSync(path.join(folder,"sidebar.js"),"utf8")+"\nmodule.exports.render=html;",sandbox);
+  const chat=sandbox.module.exports.render("test");
+  const jev=sandbox.module.exports.render("test",true);
+  assert.doesNotMatch(chat,/<form id="jev-panel"/);
+  assert.match(chat,/id="jev-mode"[^\n]*Jev Decisions<\/button><div class="line sap-launcher-row">/);
+  assert.match(chat,/<div class="line window-launchers">[^\n]*id="tools" hidden/);
+  assert.match(jev,/<form id="jev-panel"/);
+  assert.match(jev,/Previous Jev requests/);
+  assert.doesNotMatch(jev,/<form id="chat"/);
+  assert.match(chat,/<div class="line folder-context-controls">[^\n]*id="folder-name"[^\n]*id="git-history"[^\n]*id="jev-mode"[^\n]*<div class="line" id="sap-context-controls"/);
+  for(const html of [chat,jev]){
+    for(const script of html.matchAll(/<script nonce="test">([\s\S]*?)<\/script>/g))new vm.Script(script[1]);
+  }
 });

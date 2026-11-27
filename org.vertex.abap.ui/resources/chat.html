@@ -53,8 +53,11 @@ textarea { box-sizing: border-box; width: 100%; min-height: 64px; max-height: 50
 .actions { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
 .actions.top { justify-content: flex-end; margin: 0 0 6px; }
 #working { color: var(--muted); margin-right: auto; display: inline-flex; align-items: center; gap: 6px; }
-#working-elapsed { font-variant-numeric: tabular-nums; }
+#working-elapsed { display: inline-flex; align-items: center; gap: 7px; padding: 3px 9px; border: 1px solid color-mix(in srgb, var(--vscode-focusBorder, var(--button)) 48%, transparent); border-radius: 999px; color: var(--vscode-foreground, var(--fg)); background: color-mix(in srgb, var(--vscode-editor-background, var(--bg)) 82%, var(--vscode-focusBorder, var(--button)) 18%); box-shadow: 0 0 12px color-mix(in srgb, var(--vscode-focusBorder, var(--button)) 18%, transparent), inset 0 0 8px color-mix(in srgb, var(--vscode-focusBorder, var(--button)) 8%, transparent); font: 600 11px/1.2 Consolas, "SFMono-Regular", monospace; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+#working-elapsed::before { content: ""; width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--vscode-focusBorder, var(--button)); box-shadow: 0 0 7px var(--vscode-focusBorder, var(--button)); animation: timer-pulse 1.6s ease-in-out infinite; }
 #working-elapsed[hidden] { display: none; }
+@keyframes timer-pulse { 50% { opacity: .45; box-shadow: 0 0 2px var(--vscode-focusBorder, var(--button)); } }
+@media (prefers-reduced-motion: reduce) { #working-elapsed::before { animation: none; } }
 #versionid { font: inherit; padding: 3px 6px; color: var(--fg); background: var(--input); border: 1px solid var(--border); border-radius: 4px; }
 
 /* Thin scrollbars in the theme's own colours instead of the engine's wide default. */

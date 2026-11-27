@@ -17,13 +17,16 @@ const questions = {
   autoapprove: {type:"choice",instructions:"If you were the automated reviewer, would you approve this change based on the supplied user requests and visible diff? Answer yes only when the requested outcome is visibly implemented and there is no visible defect or essential missing evidence. Answer no otherwise. This estimates an approval decision; it does not apply the change.",criteria:{yes:"Yes, auto-approve",no:"No, require human review"}}
 };
 const codeReviewQuestions = {
-  implementation: {type:"noul",instructions:"Реализация в блоке <code> соответствует одной из задач из блока <requirements>?"},
-  syntax: {type:"noul",instructions:"Есть синтаксические ошибки в блоке <code>?"}
+  implementation: {type:"noul",instructions:"Изменения в блоке <code> соответствуют одной из задач из блока <requirements>? Учитывай удалённые и добавленные строки."},
+  syntax: {type:"noul",instructions:"Есть синтаксические ошибки в коде после изменений в блоке <code>? Не считай удалённые строки частью итогового кода."}
 };
 function codePrompt(state) {
   const requirements=state.task.trim()||"Требования пользователя к этой ревью не связаны.";
-  const code=state.blocks.map(block=>"File: "+(block.file||state.object||"")+"\n"+block.after.join("\n")).join("\n\n");
-  return "<requirements>\n"+requirements+"\n</requirements>\n\n<code>\n"+code+"\n</code>";
+  const code=state.blocks.map(block=>"File: "+(block.file||state.object||"")+"\n"
+    +[...block.before.map(line=>"- "+line),...block.after.map(line=>"+ "+line)].join("\n")).join("\n\n");
+  return "<requirements>\n"+requirements+"\n</requirements>\n\n"
+    +"В блоке <code> строки с префиксом - удалены, строки с префиксом + добавлены. Префикс не является частью кода. Сравни версии до и после изменения.\n\n"
+    +"<code>\n"+code+"\n</code>";
 }
 function selection(vscode) {
   const own=vscode.workspace.getConfiguration("vertex.ai").get("decisionModel",null);

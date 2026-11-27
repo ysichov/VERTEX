@@ -387,11 +387,11 @@ Everything, with its settings and commands: [vscode/README.md](vscode/README.md)
 
 Jev answers in Session Logs show the question text, readable answer, confidence and labeled probabilities, matching the chat result labels.
 
-Enable question logging to retain the explicit Jev context and questions. Each saved Jev step offers **Continue** to restore its provider, model, context, question types and answer options into an editable draft. **Run Jev** creates a new step; Continue itself does not run inference. Older records without saved input cannot be restored.
+Enable question logging to retain the explicit Jev context and questions. Use **Test in Jev chat** in Session Logs or select a record in **Previous Jev requests** to restore the saved input for editing. Select **Run Jev** to run it. Older records without saved input cannot be restored.
 
 **ASK Jev** beside ASK AI (when TypeSafe Jev is set up) gives a quick advisory assessment of a review block. It never approves, declines or applies anything.
 
-TypeSafe Jev is a decision model, not a chat: with a TypeSafe API key in LLM Providers, the panel turns into a form with a context, questions and **Run Jev**, and answers come with confidence and probabilities.
+In VS Code, select **Jev Decisions** at the top right of the VERTEX panel to open the **VERTEX Jev** editor tab. Choose an enabled decision model, enter context and questions, and select **Run Jev**. Switching back to the chat keeps your draft while the Jev tab is open. See the [VS Code guide](vscode/README.md#decision-models-typesafe-jev-gemini-and-opencode) for provider setup and saved requests.
 
 #### OpenCode Console
 
@@ -535,16 +535,7 @@ Screenshot bytes are sent only to independent recognition. The main request and 
 
 Long chat histories keep earlier messages available while deferring offscreen layout. Session Logs defers offscreen session layout as well, reducing resize and scrolling work.
 
-**Optimize context (VS Code Main chat).** Enable the checkbox above the message field, or `vertex.ai.context.optimize`, to run the configured TypeSafe Jev model before each ordinary AI chat request with older exchanges. Save a TypeSafe key and enable a Jev model in LLM Providers first. The first pass sends only the current question and older user requests to TypeSafe, never full assistant answers or screenshots. Short/unclear requests can receive a second pass with a bounded first/concluding prose extract from their answer (not a model-generated summary; code blocks are omitted). Normal Jev charges apply.
-
-The current question, system instructions and at least the last three exchanges/six messages stay in context. Jev classifies older user questions for the current task, recent user requests, active requirements and dependencies; the associated answer follows the question. Payloads are packed into bounded portions, down to individual requests for long inputs. Each serialized request stays under 24,000 UTF-8 bytes as a conservative guard, not an exact token count. Requests that still do not fit are retained without assessment. A whole exchange may be omitted only when both Jev confidence and skip probability are at least 90%; uncertain decisions keep it. This is a model judgment and may miss a relevant older detail. Full history is retained in the chat and used if Jev is unavailable, errors, or its input limit is exceeded. Disable the checkbox to send full history again. Web mode, direct navigation and the independent AI Review chat retain their own context policies.
-
-Session Logs shows **Context optimization (Jev)** under the main question: selected exchange index ranges, probabilities, latency, Jev usage, and before/after history characters. Jev calls are grouped in a separate related conversation per selection, so Continue does not restore it as a user question. The composer reports history text reduction or a full-history fallback. Character reduction is not a guaranteed token or money saving: Jev adds latency and usage, and changed context may affect the main provider's cache. Compare total provider usage and answer quality in separate baseline/optimized runs for a real A/B evaluation. Question/request logging controls whether full decision inputs and model prompts are saved.
-
-After a topic is chosen, the line under the question box says which topic, how many earlier exchanges went with the question and how much shorter the history became - for example `T1 · Jev · 17 of 60 exchanges · history 65% shorter`. Nothing is deleted from the conversation; Session Logs shows each question's topic.
-
-The progress line says **JEV is optimizing context…**, including the current pass and portion. Log details include pass/batch sizes and aggregated Jev usage. In the monitor, **Basis** distinguishes question-only decisions from brief-answer clarification; the expanded strip shows the actual brief extract used. Full context is retained on errors.
-
+In the VS Code chat, the **System context** control beside the model selector shows **Full**, **Partial**, or **Void**. Open it to choose which blocks are sent, view or edit their text, and select the primary folder for edits. Right-click **Folder** to add reference folders for reading. The [VS Code guide](vscode/README.md#code-agent-and-git) explains the controls.
 
 ### Topic histories (VS Code, experimental)
 

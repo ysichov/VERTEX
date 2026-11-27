@@ -1,3 +1,79 @@
+## Keep chat controls visible in light themes
+
+The chat input, selectors and System context control use theme borders.
+
+## Keep the MCP selector compact
+
+The chat MCP selector keeps its width compact and retains full server names in the list and hover text.
+
+## Keep the Jev context field visible in light themes
+
+The Context field uses the theme’s panel border when the input border is undefined.
+
+## Open Jev in its own tab
+
+The Jev form and history open in a dedicated editor tab. The model picker sits inside the form, and question fields grow with their text. Folder controls stay together and SAP selectors sit to their right.
+
+## Compact the SAP controls in the chat header
+
+**Jev Decisions** sits at the right of the first row. When SAP is enabled, its selectors and the SAP Tools launcher share the second row. The selector labels appear on hover, and their borders follow the active theme.
+
+## Show the decision model in Auto
+
+The chat shows the selected Jev model on the **Auto (Jev)** button.
+
+## Show the SAP tools button in SAP context
+
+With SAP enabled, the chat header shows **SAP Tools** beside the Jev launcher.
+
+## Clear context checkboxes in Void
+
+Disable all clears the visible context checkboxes. Restore selection brings back the previous choices. Close the menu with **Close** or Escape.
+
+## Rename the VS Code extension
+
+The VS Code extension is displayed as **VERTEX AI Agent + SAP MCP/TOOLS**. The VERTEX sidebar view is titled **AI Agent + SAP MCP/TOOLS**.
+
+## Keep the edit animation across successive changes
+
+The chat keeps the edit animation visible across consecutive Edit and Write calls.
+
+## Restore Skill match requests in Jev history
+
+Previous Jev requests can reopen the skill match and VSIX version decision separately. The Jev history also offers a request type filter. Use **← Back to chat** to leave Jev and keep the draft. Right-click **Folder** to add reference folders.
+
+## Open Jev and manage system context from chat
+
+Use Jev to open the decision form and restore saved requests. The model picker shows why a decision provider is unavailable. Use SAP and Folder at the top of the chat to enable those sources. The system context icon beside the model selector manages the primary folder and reference folders. In Jev mode the conversation history becomes **Previous Jev requests**, with the same search, period picker and list. The System context button shows Full, Partial, or Void and lets you turn request blocks on or off and open them for editing. The Jev and context buttons show help on hover and keyboard focus.
+
+## Refresh the chat request timer
+
+The VS Code sidebar shows the active request time in a compact themed display.
+
+## Choose a period for previous conversations
+
+Previous conversations use the same date periods and navigation as Session Logs.
+
+## Open Jev review requests for testing
+
+Use **Test in Jev chat** beside **Rerun** in a review result to edit its request in the Jev panel.
+
+## Show Jev which code changed
+
+ASK Jev receives removed and added lines with their change markers when assessing a review.
+
+## Report edits that leave files unchanged
+
+The VS Code chat tells the assistant when Edit or Write leaves the file unchanged.
+
+## Report missing file paths in Read
+
+The VS Code chat's project Read tool now asks the assistant for a file path when its call omits one.
+
+## Keep provider switching available
+
+The VS Code chat keeps the provider selector visible while models load or when the selected provider has no available models. Review actions stay available when one provider’s model catalog fails. A message returned to the chat input remains a draft without a notice under the model selector.
+
 ## Choose a date for conversations
 
 The sidebar opens today’s conversations by default. Use the date picker or arrows to browse another day.

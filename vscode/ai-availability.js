@@ -1,6 +1,6 @@
 "use strict";
-/* Whether the chat has anything to ask: a provider with models. The AI panel learns it when it lists models;
-   review pages hide their ASK AI buttons while it is false and keep the prompt buttons. Unknown (null) hides nothing. */
+/* Whether the chat offers any configured provider, independent of model catalog health.
+   Review pages hide ASK AI only if no provider is offered. Unknown (null) hides nothing. */
 let available = null;
 const listeners = new Set();
 

@@ -113,6 +113,9 @@
   td.conversation-title { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-textLink-foreground); }
   td.conversation-body { padding: 0 0 8px 24px; }
   body.conversation-open > header, body.conversation-open > #status, body.conversation-open > #date-error, body.conversation-open > #content, body.conversation-open > #usage-content { display: none; }
+  body.conversation-open > #conversation-screen .conversation-date-range { display: flex; flex: none; }
+  body.conversation-open #conversation-screen .conversation-screen-head { flex-wrap: wrap; }
+  body.conversation-open #conversation-screen .conversation-date-range { flex-wrap: wrap; }
   #conversation-screen[hidden] { display: none; }
   #conversation-screen { box-sizing: border-box; height: calc(100vh - 24px); min-height: 360px; display: flex; flex-direction: column; background: var(--vscode-editor-background); }
   #conversation-screen > .flow-root:not([hidden]), #conversation-screen .log-flow { display: flex; flex: 1; flex-direction: column; min-height: 0; }
@@ -308,7 +311,7 @@
 <div id="usage-content" hidden></div>
 <div id="conversation-screen" hidden></div>
 <script id="vertex-date-range" nonce="{{NONCE}}">
-function vertexDateRange(root, changed) {
+window.vertexDateRange = function vertexDateRange(root, changed) {
   var from = root.querySelector('[data-date="from"]'), to = root.querySelector('[data-date="to"]');
   var period = root.querySelector('[data-date="period"]'), previous = root.querySelector('[data-date="previous"]'), next = root.querySelector('[data-date="next"]'), label = root.querySelector('[data-date="label"]');
   function date(value) { var a = value.split('-').map(Number); return new Date(a[0], a[1]-1, a[2], 12); }
@@ -1688,6 +1691,25 @@ function markdown(text, target) {
     back.onclick = function () { closeConversation(); };
     head.appendChild(back);
     head.appendChild(el("span", "preview", promptPreview(session.prompts) || "Conversation"));
+    var conversationDateRange = document.createElement("div");
+    conversationDateRange.id = "conversation-date-range";
+    conversationDateRange.className = "list-tools conversation-date-range";
+    conversationDateRange.setAttribute("aria-label", "Date range");
+    conversationDateRange.innerHTML = '<button data-date="previous" title="Previous period" aria-label="Previous period">←</button><label><select data-date="period" class="log-context"><option value="all">All dates</option><option value="day">Day</option><option value="week">Week</option><option value="month">Month</option><option value="year">Year</option><option value="custom">Custom range</option></select></label><span data-date="label" class="muted" aria-live="polite"></span><button data-date="next" title="Next period" aria-label="Next period">→</button><label>From <input type="date" data-date="from" class="log-context"></label><label>To <input type="date" data-date="to" class="log-context"></label>';
+    var listDateRange = document.getElementById("date-range");
+    var listFrom = listDateRange.querySelector('[data-date="from"]'), listTo = listDateRange.querySelector('[data-date="to"]');
+    var conversationFrom = conversationDateRange.querySelector('[data-date="from"]'), conversationTo = conversationDateRange.querySelector('[data-date="to"]');
+    var listPeriod = listDateRange.querySelector('[data-date="period"]'), conversationPeriod = conversationDateRange.querySelector('[data-date="period"]');
+    conversationPeriod.value = listPeriod.value;
+    conversationFrom.value = listFrom.value; conversationTo.value = listTo.value;
+    head.appendChild(conversationDateRange);
+    window.vertexDateRange(conversationDateRange, function () {
+      listPeriod.value = conversationPeriod.value;
+      listFrom.value = conversationFrom.value; listTo.value = conversationTo.value;
+      window.vertexDateRange(listDateRange, function () {});
+      vscode.postMessage({action:"dateRange",from:listFrom.value,to:listTo.value});
+      if (lastReport) render(lastReport, true);
+    });
     var conversationTopic=el("select","log-context conversation-topic-filter");
     conversationTopic.setAttribute("aria-label","Filter this conversation by topic");
     var allConversationTopics=el("option","","All topics");allConversationTopics.value="all";conversationTopic.appendChild(allConversationTopics);
@@ -1732,7 +1754,7 @@ function markdown(text, target) {
     show(conversationState.mode);
     if (!reopening) { window.scrollTo(0, 0); back.focus(); }
   }
-  vertexDateRange(document.getElementById("date-range"), function () {
+  window.vertexDateRange(document.getElementById("date-range"), function () {
     if (lastReport) render(lastReport); if (reportMode === "costs") renderCosts();
     vscode.postMessage({action:"dateRange",from:document.getElementById("from").value,to:document.getElementById("to").value});
   });
@@ -1741,6 +1763,14 @@ function markdown(text, target) {
     if (!conversationState?.waiting) closeConversation(false);
     if (typeof flowDispose === "function") { flowDispose(); flowDispose = null; }
     var from = document.getElementById("from").value, to = document.getElementById("to").value;
+    var conversationFrom = conversationScreen.querySelector('.conversation-date-range [data-date="from"]');
+    var conversationTo = conversationScreen.querySelector('.conversation-date-range [data-date="to"]');
+    if (conversationFrom && conversationTo) {
+      conversationFrom.value = from; conversationTo.value = to;
+      var conversationPeriod = conversationScreen.querySelector('.conversation-date-range [data-date="period"]');
+      conversationPeriod.value = document.querySelector('#date-range [data-date="period"]').value;
+      window.vertexDateRange(conversationScreen.querySelector('.conversation-date-range'), function () {});
+    }
     document.getElementById("date-error").textContent = from && to && from > to ? "From date must be on or before To date." : "";
     if (from && to && from > to) return;
     var localDay = function (time) { var d = new Date(time); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };

@@ -7,6 +7,7 @@ SelecTor's **Technical names / Text** toggle changes field labels in Selection a
 Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code points in the VERTEX source editor gutter. Click a point to remove it from SAP and VERTEX Smart Debugger too. Conditions, disabled state and logpoint mode are synchronized; opening a source tab refreshes its points.
 
 - **VERTEX: Open Panel** — also available from the VERTEX icon in the Activity Bar.
+- **VERTEX: Open Jev** — opens the VERTEX Jev editor tab. The **Jev Decisions** button in the chat header opens the same tab.
   The panel holds the VERTEX chat, the active SAP-system selector, provider and
   model controls, and the **VERTEX Tools** button.
 - **VERTEX Tools** — opens the unified tools window. Choose an object type,

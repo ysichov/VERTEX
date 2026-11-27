@@ -175,8 +175,8 @@ This also applies to a selected non-git folder; file edit/write review is unchan
 directories, such as an external logs folder, still ask. Commands are not sandboxed: they can access
 other files, shared git state and the network. Working-copy changes wait for review; direct project
 changes are already applied and do not wait for **Apply**. A project build still cannot run while
-working-copy edits remain unapplied. While the assistant has a folder, the VERTEX panel shows it as **Folder** beside
-**SAP system** (the full path on hover); the SAP system stays the one its SAP tools use. Project rules in `AGENTS.md` and `CLAUDE.md` apply. Claude Code can additionally load its personal instructions according to its settings. A SAP tab, or a file outside the workspace, works as
+working-copy edits remain unapplied. The primary folder appears beside **Folder** in the chat header. Hover over its name for the full path.
+The **System context** control beside the model selector lets you choose the primary folder for edits. Project rules in `AGENTS.md` and `CLAUDE.md` apply. Claude Code can additionally load its personal instructions according to its settings. A SAP tab, or a file outside the workspace, works as
 before, through VERTEX's SAP tools: a change goes into its editor tab unsaved, and you review it
 and use Save & Activate or Review & Activate.
 

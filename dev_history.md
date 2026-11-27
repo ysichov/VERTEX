@@ -1,3 +1,63 @@
+## Move Jev to a dedicated webview
+
+Reuse the sidebar history renderer in the Jev editor tab. Route saved inputs from Session Logs and review to the tab and keep draft state while the tab is open.
+
+## Move the decision model label to Auto
+
+The Auto button uses the existing decision catalog selection and the header drops the separate planner label.
+
+## Tie the SAP tools button to SAP context
+
+The header groups the existing SAP Tools action with the Jev launcher. SAP Tools is visible in SAP and hybrid context modes.
+
+## Restore context checkboxes after Void
+
+The sidebar saves the request block selection on entry to Void and renders reference folder checkboxes from their stored settings when leaving it.
+
+## Rename the VS Code extension
+
+Updated the VS Code manifest display name and Marketplace README title.
+
+## Keep the edit animation across successive changes
+
+Coalesce edit-scene completion updates across successive tool calls. Keep the shared helix attached to the request while reasoning streams.
+
+## Restore Skill match requests in Jev history
+
+Preserve both Skill match decision inputs in log parsing and recover missing version-decision metadata from the preceding match. The history list groups saved decision operations for filtering alongside the existing date range and search.
+
+## Separate Jev and system context from chat models
+
+Jev selects its own model and restores saved decision inputs from Session Logs. The decision catalog reports provider availability separately from runnable models. The sidebar keeps SAP and Folder in the header beside Jev and stores reference folder selections per workspace. The System context menu sits beside the model selector. Local Read, Glob and Grep resolve reference paths alongside the existing primary project and review copy. Chat and Jev reuse the same sidebar history markup and date controller. Jev lists saved decision inputs and opens the selected input in the existing form. The sidebar sends per-block switches and text edits with each request. Preview and request assembly share the instruction block builders.
+
+## Style the sidebar request timer
+
+Updated the existing sidebar timer with a theme-aware pulsing signal that respects reduced-motion settings. The timer follows the progress scene and uses the inherited surface. Searched the shared task visuals and the VS Code and Eclipse chat hosts for existing timers.
+
+## Reuse the Logs date range in previous conversations
+
+The VS Code sidebar embeds the existing Logs date-range markup and controller and passes its bounds to the existing session reader. The current project or SAP place filter remains in effect.
+
+## Place Jev testing beside rerun
+
+Moved the existing review request handoff to the result toolbar. Results with multiple requests provide a selector for the exact prompt passed to the existing Jev panel action.
+
+## Include removed lines in Jev reviews
+
+Review requests now include both versions of each changed block with explicit removal and addition markers. The syntax question asks about the resulting code. The same request is recorded and available for testing in Jev chat.
+
+## Detect unchanged content before review
+
+Compare the resulting content with the current file before approval, writing, or recording a change. Identical content returns a tool error so the assistant can retry with an actual replacement.
+
+## Validate the target of project Read calls
+
+Read uses the existing Edit and Write path check before resolving its target. Previously, an omitted target resolved to the project directory and produced the file size error. The regression test covers omitted and blank paths and a successful retry with an explicit path.
+
+## Keep provider switching available
+
+The sidebar hides only model controls when the catalog is pending, empty, or unavailable. It keeps the existing provider selector available so users can switch providers without waiting for the catalog. Review surfaces use the configured provider list for availability. Decision model discovery isolates credential failures per provider. Rejected additions still restore the draft and screenshots without writing a chat notice to the model status.
+
 ## Filter sidebar conversations by day
 
 The sidebar sends a local calendar date to the existing date-filtered session reader, defaulting to today. Unchanged full session parses are reused for list reads and topic backfill is skipped.

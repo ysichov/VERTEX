@@ -96,6 +96,7 @@ function create(vscode, options) {
     if (target === "directory" && (typeof args.directory !== "string" || args.directory.includes("\0") || !path.isAbsolute(args.directory))) throw new Error("target=directory requires an absolute existing directory requested by the user.");
     const cwd = target === "directory" ? fs.realpathSync(args.directory) : target === "project" ? project : root;
     if (!fs.statSync(cwd).isDirectory()) throw new Error("Command target is not a directory.");
+    if (target === "directory" && readOnlyFolders.some(folder=>folder!==project && contains(folder,cwd))) throw new Error("This folder is available for reading only.");
     return { purpose, target, cwd };
   }
   const approve = approval.set(vscode);
@@ -131,15 +132,26 @@ function create(vscode, options) {
     if (rel.split(path.sep).some(part => part.toLowerCase() === ".git" || part.includes(":"))) throw new Error("Repository metadata and alternate streams are unavailable.");
   };
   const displayPath=file=>{
+    if (readOnlyFolders.some(folder=>folder!==project && contains(folder,file))) return file;
     const relative=path.relative(project,file);
     return relative!==".."&&!relative.startsWith(".."+path.sep)&&!path.isAbsolute(relative)
       ? relative:path.relative(root,file);
   };
+  const readOnlyFolders = (options.readOnlyFolders || []).flatMap(folder => {
+    try { return [fs.realpathSync(folder)]; } catch (_) { return []; }
+  });
+  const contains = (base, file) => {
+    const relative = path.relative(base,file);
+    return relative !== ".." && !relative.startsWith(".."+path.sep) && !path.isAbsolute(relative);
+  };
   function resolve(given = ".", reading = false) {
     if (typeof given !== "string" || given.includes("\0")) throw new Error("Invalid project path.");
+    const requested = path.resolve(project,given);
+    const reference = readOnlyFolders.find(folder=>folder!==project && contains(folder,requested) && !contains(folder,project));
     const relative = relativeToProject(given);
-    const base = reading && !changedFiles.has(path.normalize(relative).toLowerCase()) ? project : root;
-    const file = path.resolve(base, relative);
+    if (!reading && (reference || readOnlyFolders.some(folder=>folder!==project && !contains(folder,project) && contains(folder,path.resolve(project,relative))))) throw new Error("This folder is available for reading only.");
+    const base = reference || (reading && !changedFiles.has(path.normalize(relative).toLowerCase()) ? project : root);
+    const file = reference ? requested : path.resolve(base, relative);
     within(file, base);
     // Check every ancestor, including dangling links. New files must not escape through a symlink.
     let current = base;
@@ -187,6 +199,11 @@ function create(vscode, options) {
   async function execute(name, args) {
     active();
     if ((name === "Write" || name === "Edit") && commandOutput.owns(args.file_path)) throw new Error("Command output logs are read-only.");
+    if (name === "Read" || name === "Edit" || name === "Write") {
+      if (typeof args.file_path !== "string" || !args.file_path.trim()) {
+        throw new Error(name + " requires a non-empty file_path, for example test.md. Retry with the target file path.");
+      }
+    }
     if (name === "Read") {
       if (commandOutput.owns(args.file_path)) return commandOutput.readPage(args.file_path, args.offset, args.limit);
       const file = resolve(args.file_path, true), text = read(file);
@@ -242,9 +259,6 @@ function create(vscode, options) {
       return { matches, truncated };
     }
     if (name === "Edit" || name === "Write") {
-      if (typeof args.file_path !== "string" || !args.file_path.trim()) {
-        throw new Error(name + " requires a non-empty file_path, for example test.md. Retry with the target file path.");
-      }
       await switchToReview();
       const file = resolve(args.file_path);
       const before = fs.existsSync(file) ? read(file) : null;
@@ -254,6 +268,7 @@ function create(vscode, options) {
       const input = { ...args, file_path: file };
       const change = approval.change(name, input, read);
       if (change.error) throw new Error(change.error);
+      if (change.after === before) throw new Error("No changes: the resulting file content is identical. Retry with a change to the file.");
       if (Buffer.byteLength(change.after) > MAX_FILE) throw new Error("File exceeds the 2 MB limit.");
       if (!reviewAfter) await permission(name, input);
       active(); resolve(args.file_path);

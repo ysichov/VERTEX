@@ -39,12 +39,12 @@ test("Jev chat controller offers decision models and supports cancellation witho
  t.mock.method(api,"models",async()=>[{id:"jev-latest",label:"Jev",modelKind:"decision"}]);
  t.mock.method(require("../ai-accounting"),"begin",()=>({callbacks:{},finish(){},fail(){}}));
  const ask=require("../chat").create(vscode,{schemas:[],execute(){throw Error("No tools expected");}},null,secrets,null,null);
- assert.ok(ask.state().providers.some(p=>p.setting==="typesafe-api"));
- assert.equal((await ask.listModels()).models[0].modelKind,"decision");
+ assert.ok(!ask.state().providers.some(p=>p.setting==="typesafe-api"));
+ assert.equal((await ask.decisionModels()).models[0].model,"jev-latest");
  let started;const ready=new Promise(resolve=>{started=resolve;});
  t.mock.method(api,"requestJson",async(id,key,route,body,max,timeout,signal)=>{assert.equal(id,"typesafe-api");assert.equal(key,"synthetic-key");started();return new Promise((resolve,reject)=>signal.addEventListener("abort",()=>reject(Error("aborted")),{once:true}));});
- const running=ask.evaluate({model:"jev-latest",state:"State",questions});await ready;
- await assert.rejects(ask.evaluate({model:"jev-latest",state:"State",questions}),/still working/);
+ const running=ask.evaluate({provider:"typesafe-api",model:"jev-latest",state:"State",questions});await ready;
+ await assert.rejects(ask.evaluate({provider:"typesafe-api",model:"jev-latest",state:"State",questions}),/still working/);
  assert.equal(ask.stop(),true);assert.deepEqual(await running,{stopped:true});
 });
 test("Jev builder creates typed questions without exposing request syntax",()=>{
@@ -55,33 +55,33 @@ test("Jev builder creates typed questions without exposing request syntax",()=>{
  assert.throws(()=>buildQuestions([]),/Add a question/);assert.doesNotMatch(html,/JSON|jev-state-format/);
 });
 test("Jev panel builds questions, preserves drafts and displays human answer labels",()=>{
- class Node{constructor(){this.value='';this.events={};this.children=[];}focus(){}setAttribute(k,v){this[k]=v;}addEventListener(k,fn){this.events[k]=fn;}replaceChildren(){this.children=[];}appendChild(x){this.children.push(x);return x;}append(...items){this.children.push(...items);}}
- const ids=Object.fromEntries(['new-conversation','jev-panel','jev-expand-context','provider-select','model-select','subprovider-select','jev-state','jev-questions','jev-add-question','jev-run','jev-stop','jev-status','jev-result'].map(id=>[id,new Node()]));
+ class Node{constructor(){this.value='';this.events={};this.children=[];this.classList={toggle(){}};this.dataset={};}focus(){}setAttribute(k,v){this[k]=v;}addEventListener(k,fn){this.events[k]=fn;}replaceChildren(){this.children=[];}appendChild(x){this.children.push(x);return x;}append(...items){this.children.push(...items);}}
+ const ids=Object.fromEntries(['new-jev-request','jev-model','jev-panel','jev-expand-context','provider-select','model-select','subprovider-select','jev-state','jev-questions','jev-add-question','jev-run','jev-stop','jev-status','jev-result'].map(id=>[id,new Node()]));
  ids['provider-select'].value='typesafe-api';ids['model-select'].value='jev-latest';
- const sent=[],context={document:{body:{dataset:{}},getElementById:id=>ids[id],createElement:()=>new Node()},modelCatalog:[{id:'jev-latest',modelKind:'decision'}],chatRunning:false,api:{postMessage:m=>sent.push(m)}};
- vm.runInNewContext(require('../jev-panel').script,context);context.drawDecisionMode();assert.equal(ids['jev-panel'].hidden,false);
+ const sent=[],context={window:{addEventListener(){}},document:{body:{dataset:{}},getElementById:id=>ids[id],createElement:()=>new Node()},modelCatalog:[{id:'jev-latest',modelKind:'decision'}],chatRunning:false,api:{postMessage:m=>sent.push(m)}};
+ vm.runInNewContext(require('../jev-panel').script,context);ids['jev-model'].value='typesafe-api|jev-latest';
  ids['jev-state'].value='Ticket';const card=ids['jev-questions'].children[0],type=card.children[1].children[0],options=card.children[3];
  type.value='choice';type.events.change();ids['jev-panel'].events.submit({preventDefault(){}});assert.equal(sent.length,0);
  options.children[1].children[1].value='Billing';options.children[1].children[1].events.input();options.children[2].children[1].value='Support';options.children[2].children[1].events.input();ids['jev-panel'].events.submit({preventDefault(){}});assert.equal(sent[0].action,'decision');assert.equal(sent[0].questions.question_1.criteria.option_2,'Support');
  options.children[1].children[1].value='Different';options.children[1].children[1].events.input();context.showDecisionResult({model:'jev',elapsedMs:100,answers:{question_1:{type:'choice',choice:'option_2',confidence:1,probabilities:{option_1:0,option_2:1}}}});
+ assert.equal(ids['jev-result'].children[0].children[1].children[1].textContent,'Support');assert.match(ids['jev-status'].textContent,/cost not reported/);
  options.children[2].children[2].events.click();
  assert.equal(options.children[1].children[1].value,'Support');
  type.value='score';type.events.change();assert.equal(options.children[1].children[0].textContent,'Level 0');
  assert.equal(options.children[1].children[1].value,'Support');
  type.value='noul';type.events.change();assert.equal(options.hidden,true);
  type.value='choice';type.events.change();assert.equal(options.children[1].children[1].value,'Support');
- assert.equal(ids['jev-result'].children[0].children[1].children[1].textContent,'Support');assert.match(ids['jev-status'].textContent,/cost not reported/);
- context.setDecisionRunning(false);ids['provider-select'].value='openai-api';context.modelCatalog=[{id:'jev-latest',modelKind:'language'}];context.drawDecisionMode();assert.equal(ids['jev-panel'].hidden,true);assert.equal(ids['jev-state'].value,'Ticket');
- const saved={state:{code:'METHOD test. ENDMETHOD.',requirements:['Independent total']},questions:{question_4:{type:'noul',instructions:'Repeated call safe?'},question_7:{type:'choice',instructions:'Decision?',criteria:{fix:'Fix',accept:'Accept'}},rating:{type:'score',instructions:'Risk?',criteria:['Low','High']}}};
+ context.setDecisionRunning(false);ids['provider-select'].value='openai-api';context.modelCatalog=[{id:'jev-latest',modelKind:'language'}];assert.equal(ids['jev-state'].value,'Ticket');
+ const saved={provider:'typesafe-api',model:'jev-latest',state:{code:'METHOD test. ENDMETHOD.',requirements:['Independent total']},questions:{question_4:{type:'noul',instructions:'Repeated call safe?'},question_7:{type:'choice',instructions:'Decision?',criteria:{fix:'Fix',accept:'Accept'}},rating:{type:'score',instructions:'Risk?',criteria:['Low','High']}}};
  context.restoreJevDraft(saved);assert.equal(sent.length,1,'restoring does not invoke Jev');
  assert.equal(ids['jev-questions'].children.length,3);assert.match(ids['jev-state'].value,/Independent total/);
  ids['jev-panel'].events.submit({preventDefault(){}});
- assert.deepEqual(sent[1].state,saved.state);assert.equal(sent[1].questions.question_7.criteria.option_1,'Fix');
+ assert.deepEqual(sent[1].state,saved.state);assert.equal(sent[1].questions.question_7.criteria.fix,'Fix');
  context.setDecisionRunning(false);ids['jev-state'].value='Changed context';ids['jev-panel'].events.submit({preventDefault(){}});assert.equal(sent[2].state,'Changed context');
  context.setDecisionRunning(false);ids['jev-add-question'].events.click();assert.equal(ids['jev-questions'].children[3].children[0].textContent,'Question 4');
- assert.equal(ids['new-conversation'].disabled,false);
- context.setDecisionRunning(true);assert.equal(ids['new-conversation'].disabled,true);
- context.setDecisionRunning(false);context.resetJevDraft();
+ assert.equal(ids['new-jev-request'].disabled,false);
+ context.setDecisionRunning(true);assert.equal(ids['new-jev-request'].disabled,true);
+ context.setDecisionRunning(false);ids['new-jev-request'].events.click();
  assert.equal(ids['jev-state'].value,'');assert.equal(ids['jev-result'].children.length,0);assert.equal(ids['jev-status'].textContent,'');
  assert.equal(ids['jev-questions'].children.length,1);assert.equal(ids['jev-questions'].children[0].children[2].value,'');
  ids['jev-add-question'].events.click();assert.equal(ids['jev-questions'].children.length,2);
@@ -90,7 +90,7 @@ test("Jev panel builds questions, preserves drafts and displays human answer lab
  ids['model-select'].disabled=true;ids['jev-panel'].events.submit({preventDefault(){}});
  assert.equal(sent.length,4,'a loaded selected model remains runnable despite stale disabled UI state');
  context.setDecisionRunning(false);context.showDecisionResult({model:'jev',elapsedMs:1,answers:{}});
- context.modelCatalog=[];ids['jev-panel'].events.submit({preventDefault(){}});
+ ids['jev-model'].value='';ids['jev-panel'].events.submit({preventDefault(){}});
  assert.equal(sent.length,4);assert.equal(ids['jev-result'].children.length,0);assert.match(ids['jev-status'].textContent,/No request was sent/);
 
 
@@ -121,7 +121,7 @@ test('Gemini Decision 1 uses native decisions input, reports tokens and never in
  assert.equal(jev.priceUsage('gemini-api',{input_tokens:510,cost:0}).cost_usd,0);
 });
 
-test('Auto choices contain all enabled decisions grouped by provider, and chat offers them too',async t=>{
+test('Auto choices contain all enabled decisions grouped by provider',async t=>{
  const api=require('../openai-compatible'),profiles=require('../key-profiles'),values={provider:'gemini-api',model:'gemini-chat',modelConfig:{'typesafe-api':{enabled:['jev-latest','jev-preview'],known:['jev-latest','jev-preview']},'gemini-api':{enabled:['gemini-chat','gemini-decision-1'],known:['gemini-chat','gemini-decision-1']}},decisionModel:{provider:'typesafe-api',model:'jev-preview'}},store=new Map();
  const secrets={get:async k=>store.get(k),store:async(k,v)=>store.set(k,v)};
  await profiles.save(secrets,'typesafe-api','TEST','typesafe-fixture');await profiles.save(secrets,'gemini-api','TEST','gemini-fixture');
@@ -129,5 +129,5 @@ test('Auto choices contain all enabled decisions grouped by provider, and chat o
  t.mock.method(api,'models',async id=>id==='typesafe-api'?[{id:'jev-latest',label:'JEV latest',modelKind:'decision'},{id:'jev-preview',label:'JEV preview',modelKind:'decision'}]:[{id:'gemini-chat',label:'Gemini chat'},{id:'gemini-decision-1',label:'Gemini Decision 1',modelKind:'decision'}]);
  const ask=require('../chat').create(vscode,{schemas:[],execute(){}},null,secrets,null,null);
  require('../review-jev').configure(secrets);
- const choices=await ask.decisionModels();assert.deepEqual(choices.models.map(m=>[m.provider,m.model]),[['typesafe-api','jev-latest'],['typesafe-api','jev-preview'],['gemini-api','gemini-decision-1']]);assert.equal(choices.selected.model,'jev-preview');assert.equal((await require('../review-jev').connection(vscode)).model,'jev-preview');assert.deepEqual((await ask.listModels()).models.map(m=>m.id),['gemini-chat','gemini-decision-1']);assert(ask.state().providers.some(p=>p.setting==='typesafe-api'));await ask.dispose();
+ const choices=await ask.decisionModels();assert.deepEqual(choices.models.map(m=>[m.provider,m.model]),[['typesafe-api','jev-latest'],['typesafe-api','jev-preview'],['gemini-api','gemini-decision-1']]);assert.equal(choices.selected.model,'jev-preview');assert.equal((await require('../review-jev').connection(vscode)).model,'jev-preview');assert.deepEqual((await ask.listModels()).models.map(m=>m.id),['gemini-chat','gemini-decision-1']);assert(!ask.state().providers.some(p=>p.setting==='typesafe-api'));await ask.dispose();
 });

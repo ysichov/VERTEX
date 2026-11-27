@@ -75,7 +75,30 @@ function reviewJevUi(api) {
     close.setAttribute('aria-label','Close Jev result');
     close.onclick=()=>{entry.output.hidden=true;};
     const toolbar=document.createElement('div');toolbar.className='jev-review-toolbar';
-    toolbar.append(rerun,close);entry.output.appendChild(toolbar);
+    toolbar.appendChild(rerun);
+    if(update.prompts?.length){
+      let picker;
+      if(update.prompts.length>1){
+        picker=document.createElement('select');
+        picker.setAttribute('aria-label','Jev prompt to test');
+        update.prompts.forEach((prompt,index)=>{
+          const option=document.createElement('option');
+          option.value=String(index);
+          const file=update.result?.decisions?.[index]?.file||prompt.state?.object;
+          option.textContent='Jev Prompt '+(index+1)+(file?' · '+file:'');
+          picker.appendChild(option);
+        });
+        toolbar.appendChild(picker);
+      }
+      const test=document.createElement('button');
+      test.type='button';
+      test.className='neutral';
+      test.textContent='Test in Jev chat';
+      test.title='Open this Jev request in the Jev chat for editing.';
+      test.onclick=()=>api.postMessage({action:'testJevPrompt',id:update.id,index:picker?Number(picker.value):0});
+      toolbar.appendChild(test);
+    }
+    toolbar.appendChild(close);entry.output.appendChild(toolbar);
     if(update.error){const error=document.createElement('p');error.textContent='ASK Jev: '+update.error;entry.output.appendChild(error);return;}
     const showRows=(rows,title)=>{
       if(!rows?.length)return;
@@ -129,13 +152,6 @@ function reviewJevUi(api) {
           content.appendChild(card);
         });
       }
-      const test=document.createElement('button');
-      test.type='button';
-      test.className='neutral';
-      test.classList.add('jev-prompt-test');
-      test.textContent='Test in Jev chat';
-      test.onclick=()=>api.postMessage({action:'testJevPrompt',id:update.id,index});
-      content.appendChild(test);
       details.append(summary,content);
       entry.output.appendChild(details);
     }

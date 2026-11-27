@@ -107,7 +107,7 @@ async function match(vscode, question, root, options = {}) {
     let versionChoice = null, usage = result.usage;
     if (winner.skill.name === "build-vertex-vsix") {
       const versionInput = versionDecision(currentRequest, winner.skill, options.topic);
-      audit.decision(versionInput);
+      audit.decision({ provider: connection.provider || "typesafe-api", model: connection.model, ...versionInput });
       const versionResult = await evaluate(connection.provider || "typesafe-api", connection.key, connection.model,
         versionInput.state, versionInput.questions, { ...audit.callbacks, signal: options.signal });
       if (options.signal?.aborted) { audit.finish(versionResult); return { matched: false, status: "aborted" }; }
